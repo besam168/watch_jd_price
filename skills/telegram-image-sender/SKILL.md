@@ -1,55 +1,80 @@
 ---
 name: telegram-image-sender
-description: Capture desktop screenshots on Windows and prepare images for sending in chat or email. Use when the user asks to screenshot the current screen, save a screenshot file, or prepare an image to send through Telegram-compatible workflows.
+description: Capture Windows desktop screenshots and return a Telegram-sendable image path. Use when the user asks to screenshot the current screen, send the current desktop in Telegram, or save a screenshot PNG for follow-up sharing.
 ---
 
 # telegram-image-sender
 
-A minimal local skill for screenshot-first image delivery.
+Use this skill for Windows desktop screenshots that should be sent back into Telegram or saved as PNG files.
 
-## When to use
-Use this skill when the user asks for any of the following:
-- "截个图给我"
-- "把当前屏幕发我"
-- "截图发邮箱"
-- "准备一张图片给 Telegram/聊天里发送"
+## Triggers
+Use when the user says things like:
+- 截个图给我
+- 把当前屏幕发我
+- 发我电脑屏幕
+- 截图发 Telegram
+- 保存一张屏幕截图
 
-## What this skill does now
-Current reliable capability:
-1. Capture the current Windows desktop to a PNG file
-2. Save the image into the workspace
-3. Return the saved path for follow-up delivery
-4. Optional fallback: attach the PNG to an email using an existing mail script
+## What this skill is good for
+- Capture the current primary screen as PNG
+- Optionally capture the full virtual desktop across monitors
+- Save screenshots into a predictable output directory
+- Return either:
+  - a plain file path, or
+  - `MEDIA:<path>` for direct OpenClaw media delivery
 
-## Current limitation
-This local version does **not** yet have a dedicated native Telegram media-upload tool.
-So the safe workflow is:
-1. Capture screenshot
-2. If native media sending is available in the current runtime, send it
-3. Otherwise send by email or keep the PNG locally
+## Files
+- Script: `{baseDir}/scripts/capture-screen.ps1`
+- Default output directory: `{baseDir}/output/`
 
-## Workflow
+## Default workflow
 
-### Capture current screen
-Run:
+### 1) Capture and directly prepare a Telegram-sendable result
+
+```powershell
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -EmitMedia
+```
+
+This prints:
+
+```text
+MEDIA:C:\path\to\telegram-screenshot_20260325_202500.png
+```
+
+Use that line directly in the assistant reply when the runtime supports outbound media.
+
+### 2) Capture and return only the PNG path
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1
 ```
 
-Optional custom output path:
+### 3) Capture to a custom path
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -OutputPath "C:\path\to\shot.png"
 ```
 
-### Result handling
-- On success, the script prints the full PNG path
-- Use that path for follow-up actions
-- Preferred default filename pattern:
-  - `screenshot_YYYYMMDD_HHMMSS.png`
+### 4) Capture all monitors as one virtual desktop image
+
+```powershell
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -EmitMedia -UseVirtualScreen
+```
+
+## Output conventions
+- Default filename pattern:
+  - `telegram-screenshot_YYYYMMDD_HHMMSS.png`
+- Default directory:
+  - `{baseDir}/output/`
+- `-EmitMedia` output format:
+  - `MEDIA:<absolute-path>`
+
+## Recommended response behavior
+- If the user asked to **see the screenshot in Telegram now**, run with `-EmitMedia` and send the returned `MEDIA:` line.
+- If the user asked to **save** a screenshot, return the file path.
+- If direct media sending is unavailable in the current runtime, keep the PNG and offer fallback delivery.
 
 ## Notes
 - Windows only
-- Captures the full primary desktop surface
-- If the user asks to send the screenshot in chat and no native image-send route exists, tell them clearly and offer email fallback
+- Uses PowerShell plus `System.Windows.Forms` and `System.Drawing`
+- The direct Telegram path has been verified in this workspace via OpenClaw `MEDIA:<path>` replies
