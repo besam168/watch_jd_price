@@ -2,11 +2,13 @@ param(
     [Parameter(Mandatory=$true)]
     [string]$Action,
     [string]$Arg1 = "",
-    [string]$Arg2 = ""
+    [string]$Arg2 = "",
+    [string]$Arg3 = "",
+    [string]$Arg4 = ""
 )
 
 Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName Microsoft.VisualBasic
 
 $signature = @"
 using System;
@@ -25,17 +27,48 @@ $MOUSEEVENTF_LEFTDOWN = 0x0002
 $MOUSEEVENTF_LEFTUP = 0x0004
 $MOUSEEVENTF_RIGHTDOWN = 0x0008
 $MOUSEEVENTF_RIGHTUP = 0x0010
+$MOUSEEVENTF_WHEEL = 0x0800
+
+function Invoke-LeftDown {
+    [DesktopInputNative]::mouse_event($MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Invoke-LeftUp {
+    [DesktopInputNative]::mouse_event($MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+}
 
 function Invoke-LeftClick {
-    [DesktopInputNative]::mouse_event($MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
+    Invoke-LeftDown
     Start-Sleep -Milliseconds 40
-    [DesktopInputNative]::mouse_event($MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+    Invoke-LeftUp
 }
 
 function Invoke-RightClick {
     [DesktopInputNative]::mouse_event($MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 40
     [DesktopInputNative]::mouse_event($MOUSEEVENTF_RIGHTUP, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Convert-ToSendKeysTarget([string]$value, $map) {
+    if ($map.ContainsKey($value)) { return $map[$value] }
+    return $value
+}
+
+function Find-WindowTarget([string]$query) {
+    $q = $query.Trim().ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($q)) { return $null }
+
+    $procs = Get-Process | Where-Object {
+        $_.MainWindowHandle -ne 0 -and (
+            ($_.MainWindowTitle -and $_.MainWindowTitle.ToLowerInvariant().Contains($q)) -or
+            $_.ProcessName.ToLowerInvariant().Contains($q)
+        )
+    } | Sort-Object StartTime
+
+    if ($procs -and $procs.Count -gt 0) {
+        return $procs[-1]
+    }
+    return $null
 }
 
 switch ($Action) {
@@ -59,6 +92,25 @@ switch ($Action) {
             Invoke-LeftClick
             Write-Output "Mouse left click sent"
         }
+    }
+    "mouse-drag" {
+        $x1 = [int][math]::Round([double]$Arg1)
+        $y1 = [int][math]::Round([double]$Arg2)
+        $x2 = [int][math]::Round([double]$Arg3)
+        $y2 = [int][math]::Round([double]$Arg4)
+        [DesktopInputNative]::SetCursorPos($x1, $y1) | Out-Null
+        Start-Sleep -Milliseconds 60
+        Invoke-LeftDown
+        Start-Sleep -Milliseconds 80
+        [DesktopInputNative]::SetCursorPos($x2, $y2) | Out-Null
+        Start-Sleep -Milliseconds 80
+        Invoke-LeftUp
+        Write-Output "Mouse dragged from ($x1, $y1) to ($x2, $y2)"
+    }
+    "mouse-scroll" {
+        $delta = [int][math]::Round([double]$Arg1)
+        [DesktopInputNative]::mouse_event($MOUSEEVENTF_WHEEL, 0, 0, [uint32]$delta, [UIntPtr]::Zero)
+        Write-Output "Mouse wheel scrolled by $delta"
     }
     "type-text" {
         [System.Windows.Forms.SendKeys]::SendWait($Arg1)
@@ -106,11 +158,7 @@ switch ($Action) {
         $parts = $raw -split "\+"
         if ($parts.Count -eq 1) {
             $single = $parts[0]
-            if ($map.ContainsKey($single)) {
-                [System.Windows.Forms.SendKeys]::SendWait($map[$single])
-            } else {
-                [System.Windows.Forms.SendKeys]::SendWait($single)
-            }
+            [System.Windows.Forms.SendKeys]::SendWait((Convert-ToSendKeysTarget $single $map))
             Write-Output "Pressed hotkey: $raw"
             break
         }
@@ -124,9 +172,34 @@ switch ($Action) {
             }
         }
 
-        $target = if ($map.ContainsKey($last)) { $map[$last] } else { $last }
+        $target = Convert-ToSendKeysTarget $last $map
         [System.Windows.Forms.SendKeys]::SendWait("$modPrefix$target")
         Write-Output "Pressed hotkey: $raw"
+    }
+    "open-app" {
+        $target = $Arg1.Trim()
+        $proc = Start-Process -FilePath $target -PassThru
+        Write-Output "Opened app: $target (PID=$($proc.Id))"
+    }
+    "open-url" {
+        $url = $Arg1.Trim()
+        Start-Process $url | Out-Null
+        Write-Output "Opened URL: $url"
+    }
+    "run-command" {
+        $command = $Arg1
+        $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $command -PassThru -WindowStyle Normal
+        Write-Output "Started command: $command (PID=$($proc.Id))"
+    }
+    "focus-window" {
+        $query = $Arg1.Trim()
+        $targetProc = Find-WindowTarget $query
+        if ($null -eq $targetProc) {
+            Write-Error "Could not find a window matching: $query"
+            exit 1
+        }
+        [Microsoft.VisualBasic.Interaction]::AppActivate($targetProc.Id) | Out-Null
+        Write-Output "Focused window: $($targetProc.ProcessName) | $($targetProc.MainWindowTitle)"
     }
     default {
         Write-Error "Unsupported action: $Action"
