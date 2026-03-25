@@ -1,0 +1,11 @@
+{
+  "id": "desktop-input-control",
+  "name": "Desktop Input Control",
+  "description": "Local Windows desktop input control tools for mouse and keyboard automation.",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
