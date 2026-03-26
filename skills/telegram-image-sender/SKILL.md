@@ -1,6 +1,6 @@
 ---
 name: telegram-image-sender
-description: Capture Windows desktop screenshots and return a Telegram-sendable image path. Use when the user asks to screenshot the current screen, send the current desktop in Telegram, or save a screenshot PNG for follow-up sharing.
+description: Capture Windows desktop screenshots and return a Telegram-sendable image path. Supports direct PowerShell capture and system-level realtime screenshots via Win+PrtScn.
 ---
 
 # telegram-image-sender
@@ -14,10 +14,12 @@ Use when the user says things like:
 - 发我电脑屏幕
 - 截图发 Telegram
 - 保存一张屏幕截图
+- 实时截一下桌面
 
 ## What this skill is good for
 - Capture the current primary screen as PNG
 - Optionally capture the full virtual desktop across monitors
+- Capture a system-level realtime screenshot using `Win + PrtScn`
 - Save screenshots into a predictable output directory
 - Return either:
   - a plain file path, or
@@ -27,39 +29,31 @@ Use when the user says things like:
 - Script: `{baseDir}/scripts/capture-screen.ps1`
 - Default output directory: `{baseDir}/output/`
 
-## Default workflow
+## Default workflows
 
-### 1) Capture and directly prepare a Telegram-sendable result
+### 1) Direct PowerShell capture and immediate Telegram send
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -EmitMedia
 ```
 
-This prints:
-
-```text
-MEDIA:C:\path\to\telegram-screenshot_20260325_202500.png
-```
-
-Use that line directly in the assistant reply when the runtime supports outbound media.
-
-### 2) Capture and return only the PNG path
-
-```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1
-```
-
-### 3) Capture to a custom path
-
-```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -OutputPath "C:\path\to\shot.png"
-```
-
-### 4) Capture all monitors as one virtual desktop image
+### 2) Full virtual desktop capture
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -EmitMedia -UseVirtualScreen
 ```
+
+### 3) System realtime screenshot via Win + PrtScn
+
+```powershell
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -EmitMedia -UseSystemScreenshot
+```
+
+This mode:
+- sends the Windows system screenshot hotkey
+- reads the latest file from `Pictures\Screenshots`
+- copies it into the skill output folder
+- returns `MEDIA:<absolute-path>`
 
 ## Output conventions
 - Default filename pattern:
@@ -70,11 +64,12 @@ powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-screen.ps1 -E
   - `MEDIA:<absolute-path>`
 
 ## Recommended response behavior
-- If the user asked to **see the screenshot in Telegram now**, run with `-EmitMedia` and send the returned `MEDIA:` line.
-- If the user asked to **save** a screenshot, return the file path.
-- If direct media sending is unavailable in the current runtime, keep the PNG and offer fallback delivery.
+- If the user wants a quick local screenshot, use the default direct capture path.
+- If the user specifically wants a **realtime desktop screenshot**, prefer `-UseSystemScreenshot`.
+- If the user wants all monitors, use `-UseVirtualScreen`.
 
 ## Notes
 - Windows only
-- Uses PowerShell plus `System.Windows.Forms` and `System.Drawing`
-- The direct Telegram path has been verified in this workspace via OpenClaw `MEDIA:<path>` replies
+- Direct capture uses `System.Windows.Forms` + `System.Drawing`
+- System realtime mode uses the Windows `Win + PrtScn` screenshot flow
+- The Telegram return path has been validated in this workspace
