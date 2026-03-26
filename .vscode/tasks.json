@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Gemini Bridge: Quick Test",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\skills\\gemini-bridge\\scripts\\run-gemini.ps1",
+        "-Prompt",
+        "Reply with exactly GEMINI_VSCODE_OK",
+        "-Json"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Gemini Bridge: Repo Analyze",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\skills\\gemini-bridge\\scripts\\run-gemini-task.ps1",
+        "-Task",
+        "repo-analyze",
+        "-Workdir",
+        "${workspaceFolder}",
+        "-Json"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Gemini Bridge: Summarize Selection",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\skills\\gemini-bridge\\scripts\\run-gemini-task.ps1",
+        "-Task",
+        "summarize-text",
+        "-InputText",
+        "Replace this with the text to summarize",
+        "-Json"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
