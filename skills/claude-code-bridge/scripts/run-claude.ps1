@@ -3,6 +3,10 @@ param(
     [string]$Workdir = "",
     [string]$Model = "",
     [string]$OutputFile = "",
+    [string]$SystemPrompt = "",
+    [string]$AppendSystemPrompt = "",
+    [string]$PermissionMode = "",
+    [string[]]$AllowedTools = @(),
     [switch]$Json
 )
 
@@ -15,8 +19,21 @@ if ([string]::IsNullOrWhiteSpace($Workdir)) {
 $claudeCmd = (Get-Command claude -ErrorAction Stop).Source
 
 $args = @('-p', $Prompt)
+
 if (-not [string]::IsNullOrWhiteSpace($Model)) {
     $args += @('--model', $Model)
+}
+if (-not [string]::IsNullOrWhiteSpace($SystemPrompt)) {
+    $args += @('--system-prompt', $SystemPrompt)
+}
+if (-not [string]::IsNullOrWhiteSpace($AppendSystemPrompt)) {
+    $args += @('--append-system-prompt', $AppendSystemPrompt)
+}
+if (-not [string]::IsNullOrWhiteSpace($PermissionMode)) {
+    $args += @('--permission-mode', $PermissionMode)
+}
+if ($AllowedTools.Count -gt 0) {
+    $args += @('--allowedTools', ($AllowedTools -join ','))
 }
 
 Push-Location $Workdir
@@ -28,6 +45,7 @@ try {
 }
 
 $text = ($output | Out-String).Trim()
+$ok = ($exitCode -eq 0)
 
 if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
     $parent = Split-Path -Parent $OutputFile
@@ -39,15 +57,17 @@ if (-not [string]::IsNullOrWhiteSpace($OutputFile)) {
 
 if ($Json) {
     [pscustomobject]@{
-        ok = ($exitCode -eq 0)
+        ok = $ok
         exitCode = $exitCode
         workdir = $Workdir
         model = $Model
+        permissionMode = $PermissionMode
+        allowedTools = $AllowedTools
         outputFile = $OutputFile
         text = $text
-    } | ConvertTo-Json -Depth 4
+    } | ConvertTo-Json -Depth 6
 } else {
-    if ($exitCode -ne 0) {
+    if (-not $ok) {
         Write-Error "Claude command failed with exit code $exitCode`n$text"
         exit $exitCode
     }

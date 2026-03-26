@@ -1,59 +1,78 @@
 ---
 name: claude-code-bridge
-description: Use the local Claude Code CLI from OpenClaw workflows. Trigger when the user asks to run Claude Code, have Claude Code analyze/code in a workspace, draft files via Claude, or build a skill/tool through Claude Code on this Windows machine.
+description: Use the local Claude Code CLI as a reusable OpenClaw engineering agent on this Windows machine. Trigger when the user wants Claude Code to analyze a repo, create/review an OpenClaw skill, draft a file, or perform structured coding assistance through local automation.
 ---
 
 # claude-code-bridge
 
-Use this skill when the user explicitly wants **Claude Code** to do coding or analysis work on the local machine.
+Use this skill when the user explicitly wants **Claude Code** to do engineering work on the local machine through repeatable workflows.
 
 ## What this skill does
-- Calls the locally installed `claude` CLI in non-interactive mode
-- Runs it against the current workspace or a chosen workdir
-- Returns plain text output or writes the result into a file
+- Calls the local `claude` CLI in non-interactive mode
+- Supports direct prompts through a base runner
+- Supports task-style engineering workflows through a task runner
+- Works against the current workspace or a chosen workdir
+- Can return plain text, JSON, or save output to files
 
 ## Preconditions
-Before using this skill, verify:
+Verify Claude Code CLI is available:
 
 ```powershell
 claude --version
 ```
 
-If that fails, stop and report that Claude Code CLI is not installed or not on PATH.
+If this fails, stop and report that Claude Code CLI is unavailable.
 
-## Primary workflow
+## Scripts
+- Base runner: `{baseDir}/scripts/run-claude.ps1`
+- Task runner: `{baseDir}/scripts/run-claude-task.ps1`
 
-### 1) Quick one-shot Claude Code call
+## Primary workflows
 
-```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude.ps1 -Prompt "Summarize the current repo status and suggest next steps." 
-```
-
-### 2) Run Claude Code in a specific workspace
+### 1) Direct engineering prompt
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude.ps1 -Workdir "C:\path\to\repo" -Prompt "Create a minimal OpenClaw skill for ..."
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude.ps1 -Workdir "C:\path\to\repo" -Prompt "Summarize the current repo status and suggest next steps."
 ```
 
-### 3) Save Claude output to a file
+### 2) Analyze a repo or folder
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude.ps1 -Workdir "C:\path\to\repo" -Prompt "Draft a SKILL.md for ..." -OutputFile "C:\path\to\draft.txt"
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude-task.ps1 -Task repo-analyze -Workdir "C:\path\to\repo"
 ```
 
-### 4) Machine-readable result
+### 3) Draft a new OpenClaw skill
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude.ps1 -Prompt "Reply with exactly CLAUDE_OK" -Json
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude-task.ps1 -Task skill-create -Workdir "C:\path\to\repo" -SkillName "my-skill" -SkillPurpose "Describe what the skill should do"
 ```
+
+### 4) Review an existing OpenClaw skill
+
+```powershell
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude-task.ps1 -Task skill-review -Workdir "C:\path\to\repo" -TargetPath "C:\path\to\repo\skills\some-skill"
+```
+
+### 5) Draft a project file
+
+```powershell
+powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude-task.ps1 -Task file-draft -Workdir "C:\path\to\repo" -DraftFile "SKILL.md"
+```
+
+## Supported task templates
+- `repo-analyze` — inspect a project and return structure, risks, and next steps
+- `skill-create` — produce a practical OpenClaw skill draft
+- `skill-review` — review an existing skill for structure and quality issues
+- `file-draft` — draft the contents of a named file for the current project
 
 ## Recommended usage rules
-- Prefer short, explicit prompts with concrete file targets and acceptance criteria.
-- Use Claude Code for substantial coding or codebase analysis tasks, not for trivial echo-like work.
-- If the user asks for an interactive Claude terminal session, explain that this skill uses the **non-interactive CLI path** for reliable automation.
-- If administrator elevation is specifically required for a separate command, obtain that through the normal shell flow first; this skill itself does not auto-elevate.
+- Prefer the task runner when the user request matches an existing engineering workflow.
+- Prefer the base runner when the user needs a one-off coding or analysis prompt.
+- Keep prompts explicit about the target directory, files, and acceptance criteria.
+- Use non-interactive Claude CLI automation for reliability; do not promise an interactive Claude terminal unless the user specifically insists on that UI.
+- If elevation is needed for a separate system command, handle that in the normal shell flow first.
 
 ## Notes
 - This skill depends on the local `claude` CLI being installed and authenticated.
-- This skill is for local Windows automation in this workspace.
-- The script is intentionally minimal and deterministic: it wraps `claude -p ...` for reliable OpenClaw use.
+- This is a local engineering-agent skill, not an ACP-native Claude harness.
+- Current design goal: reliable structured local execution first, more advanced multi-step workflows later.
