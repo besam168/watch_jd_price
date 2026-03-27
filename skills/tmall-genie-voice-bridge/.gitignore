@@ -1,0 +1,4 @@
+config.json
+tmp_audio/
+__pycache__/
+*.pyc

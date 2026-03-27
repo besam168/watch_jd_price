@@ -48,10 +48,11 @@ description: 让 OpenClaw 通过“天猫精灵语音桥”方式接入家庭语
 - `scripts/backends/base.py`：后端基类
 - `scripts/backends/mock_tmall_genie.py`：模拟后端
 - `scripts/backends/local_http_player.py`：通用 HTTP 播放后端
+- `.gitignore`：忽略本地配置、缓存和测试音频
 
-## 推荐工作流
+## 快速上手
 
-### 1) 先复制配置
+### 1) 复制配置
 
 把：
 
@@ -73,19 +74,31 @@ description: 让 OpenClaw 通过“天猫精灵语音桥”方式接入家庭语
 - `requests`
 - `edge-tts`
 
-可选安装：
+安装命令：
 
 ```bash
 pip install flask requests edge-tts
 ```
 
-### 3) 先跑 mock 模式
+### 3) 先直接测 speak.py
+
+```bash
+python skills/tmall-genie-voice-bridge/scripts/speak.py "你好，我是沈万三。" --config skills/tmall-genie-voice-bridge/config.json
+```
+
+如果当前后端还是 `mock_tmall_genie`，预期结果是：
+
+- 生成一个 mp3 文件
+- 返回 JSON 结果
+- `backend_result.note` 明确说明这是模拟播放，不是真正下发到天猫精灵
+
+### 4) 再跑 bridge server
 
 ```bash
 python skills/tmall-genie-voice-bridge/scripts/bridge_server.py --config skills/tmall-genie-voice-bridge/config.json
 ```
 
-然后发请求：
+### 5) 用 HTTP 触发播报
 
 ```bash
 curl -X POST http://127.0.0.1:57881/speak \
@@ -93,7 +106,18 @@ curl -X POST http://127.0.0.1:57881/speak \
   -d '{"text":"你好，我是沈万三。"}'
 ```
 
-### 4) 再切换真实后端
+## 推荐工作流
+
+### 1) 先跑 mock 模式
+
+先确认：
+
+- 配置能读
+- TTS 能生成文件
+- JSON 返回正常
+- bridge server 能接收 `/speak`
+
+### 2) 再切换真实后端
 
 把 `backend.type` 从：
 
