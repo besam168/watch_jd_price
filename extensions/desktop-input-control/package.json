@@ -1,5 +1,8 @@
 {
   "name": "desktop-input-control",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41"
+  }
 }

@@ -2,8 +2,11 @@ import { Type } from "@sinclair/typebox";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function runPs(scriptPath: string, args: string[]) {
   const result = await execFileAsync("powershell", [
@@ -18,6 +21,8 @@ async function runPs(scriptPath: string, args: string[]) {
 
 export default function (api) {
   const scriptPath = path.join(__dirname, "scripts", "desktop-input.ps1");
+  const captureScriptPath = path.join(__dirname, "scripts", "screen-capture-compat.ps1");
+  const ocrScriptPath = path.join(__dirname, "scripts", "screen-ocr.py");
 
   api.registerTool({
     name: "desktop_mouse_move",
@@ -118,6 +123,43 @@ export default function (api) {
     parameters: Type.Object({ title: Type.String() }),
     async execute(_id, params) {
       const text = await runPs(scriptPath, ["focus-window", params.title]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_screen_capture",
+    description: "Capture the current primary screen to a PNG file and return the saved image path.",
+    parameters: Type.Object({
+      path: Type.Optional(Type.String()),
+    }),
+    async execute(_id, params) {
+      const outputPath = params.path || "";
+      const result = await execFileAsync("powershell", [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        captureScriptPath,
+        outputPath,
+      ]);
+      const text = (result.stdout || "").trim() || (result.stderr || "").trim() || "OK";
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_screen_ocr",
+    description: "Run OCR on a screen image and return recognized text with bounding boxes as JSON.",
+    parameters: Type.Object({
+      imagePath: Type.String(),
+      lang: Type.Optional(Type.String()),
+    }),
+    async execute(_id, params) {
+      const lang = params.lang || "eng";
+      const result = await execFileAsync("python", [ocrScriptPath, params.imagePath, lang], {
+        env: { ...process.env, PYTHONIOENCODING: "utf-8" },
+      });
+      const text = (result.stdout || "").trim() || (result.stderr || "").trim() || "OK";
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });

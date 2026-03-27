@@ -8,6 +8,7 @@ param(
 )
 
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName Microsoft.VisualBasic
 
 $signature = @"
@@ -71,6 +72,28 @@ function Find-WindowTarget([string]$query) {
     return $null
 }
 
+function Get-ScreenshotPath([string]$requestedPath) {
+    if (-not [string]::IsNullOrWhiteSpace($requestedPath)) {
+        return $requestedPath
+    }
+
+    $tempDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'temp'
+    if (!(Test-Path $tempDir)) {
+        New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    }
+    return (Join-Path $tempDir ("screen-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".png"))
+}
+
+function Save-ScreenCapture([string]$targetPath) {
+    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bitmap.Size)
+    $bitmap.Save($targetPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    $graphics.Dispose()
+    $bitmap.Dispose()
+}
+
 switch ($Action) {
     "mouse-move" {
         $x = [int][math]::Round([double]$Arg1)
@@ -108,8 +131,9 @@ switch ($Action) {
         Write-Output "Mouse dragged from ($x1, $y1) to ($x2, $y2)"
     }
     "mouse-scroll" {
-        $delta = [int][math]::Round([double]$Arg1)
-        [DesktopInputNative]::mouse_event($MOUSEEVENTF_WHEEL, 0, 0, [uint32]$delta, [UIntPtr]::Zero)
+        $delta = if ($Arg1 -eq "down") { -240 } elseif ($Arg1 -eq "up") { 240 } else { [int][math]::Round([double]$Arg1) }
+        $wheelData = [BitConverter]::ToUInt32([BitConverter]::GetBytes([int]$delta), 0)
+        [DesktopInputNative]::mouse_event($MOUSEEVENTF_WHEEL, 0, 0, $wheelData, [UIntPtr]::Zero)
         Write-Output "Mouse wheel scrolled by $delta"
     }
     "type-text" {
@@ -200,6 +224,15 @@ switch ($Action) {
         }
         [Microsoft.VisualBasic.Interaction]::AppActivate($targetProc.Id) | Out-Null
         Write-Output "Focused window: $($targetProc.ProcessName) | $($targetProc.MainWindowTitle)"
+    }
+    "screen-capture" {
+        $targetPath = Get-ScreenshotPath $Arg1
+        $targetDir = Split-Path $targetPath -Parent
+        if ($targetDir -and !(Test-Path $targetDir)) {
+            New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+        }
+        Save-ScreenCapture $targetPath
+        Write-Output $targetPath
     }
     default {
         Write-Error "Unsupported action: $Action"
