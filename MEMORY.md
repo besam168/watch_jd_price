@@ -135,6 +135,43 @@ _重要信息都记录在这里，这是我的长期记忆！_
 
 ## 重要事件记录
 
+### 2026年3月28日
+- ✅ GitHub 上传路线已正式打通，后续这台机器**优先走 SSH，不走 HTTPS**：
+  - HTTPS 实测先后遇到 `fatal: User cancelled dialog.` 与 `Recv failure: Connection was reset`
+  - 改走 SSH 后，通过本机 `ed25519` key + GitHub `SSH and GPG keys` 成功完成 push
+- ✅ `besam168` 账号下已成功建立并上传 4 个主成果仓库：
+  1. `https://github.com/besam168/desktop-input-control`
+  2. `https://github.com/besam168/gemini-bridge`
+  3. `https://github.com/besam168/claude-code-bridge`
+  4. `https://github.com/besam168/telegram-image-sender`
+- ✅ 当前从总工作区拆分 skill/插件上传 GitHub 的稳定方法已确认：
+  - 独立插件仓库可直接 push
+  - 工作区内子目录型 skill 优先使用 `git subtree split --prefix=<path>` 后再推到各自仓库
+
+### 2026年3月26日
+- ✅ `telegram-image-sender` 第二版链路打通：已验证本地 PowerShell 截图脚本可生成 PNG，并通过 `MEDIA:<absolute-path>` 直接把截图发回 Telegram；以后用户在 Telegram 里要“截图给我/把屏幕发我”，优先走这条本地截图直发路线。
+- ✅ `desktop-input-control` 取得阶段性成果：桌面控制原型已能做鼠标移动/点击、滚轮、文本输入、窗口聚焦与命令启动；后续桌面自动化技术路线优先 `Python + Playwright`，而不是继续死磕 Node 侧 Playwright。
+- ✅ 本机 `claude` CLI 已确认可用：`claude --version` 返回 `2.1.84 (Claude Code)`；由于 OpenClaw 当前 `ACP runtime backend` 未配置可用，后续优先走 **OpenClaw -> 本机 Claude Code CLI -> 本地 skill** 这条桥接路线。
+- ✅ `claude-code-bridge` 已完成并升级到可复用 V1：
+  - 目录：`C:\Users\besam\.openclaw\workspace\skills\claude-code-bridge\`
+  - 核心脚本：`scripts/run-claude.ps1`、`scripts/run-claude-task.ps1`
+  - 已验证 `BRIDGE_OK`
+  - 已支持任务模板：`repo-analyze`、`skill-create`、`skill-review`、`file-draft`
+- ✅ `gemini-bridge` 已从 0 做成并真实打通：
+  - 目录：`C:\Users\besam\.openclaw\workspace\skills\gemini-bridge\`
+  - 核心脚本：`scripts/run-gemini.ps1`、`scripts/run-gemini-task.ps1`
+  - 已支持原生 Gemini 与 OpenAI 兼容模式
+  - 已加入 HTTP 错误分类、简单重试、JSON 结构化报错
+  - 已接入 `C:\Users\besam\.openclaw\workspace\.vscode\tasks.json`
+- ✅ `gemini-bridge` 的当前稳定默认模型应使用 **`gemini-2.5-flash`**：
+  - 实测 `gemini-2.5-flash` 原生调用成功，返回 `GEMINI_25_FLASH_OK`
+  - `gemini-3.1-pro-preview` 当前测试为 `429 Too Many Requests`，更像模型限流/配额问题，不是桥接脚本故障
+  - 当前账号 `models.list` 可见关键模型包括：`models/gemini-2.5-flash`、`models/gemini-2.5-pro`、`models/gemini-3.1-pro-preview`、`models/gemini-3.1-flash-lite-preview`
+- ✅ VS Code 侧当前最稳的 Gemini 接入方式，不是直接硬改 Cline 内部 secret storage / `state.vscdb`，而是先走 **本地 bridge + VS Code Tasks** 路线；以后如要接回 Cline，再谨慎处理 GUI/provider 层。
+- ✅ 本轮 `gemini-bridge` 收尾已完成 git 提交：
+  - commit: `ed3a465`
+  - message: `Add gemini bridge skill and VS Code tasks`
+
 ### 2026年3月24日
 - ✅ 成功配置每日科技前沿情报报告自动化任务
 - ✅ 创建 daily_tech_report.py 脚本，用于收集科技新闻并发送邮件
