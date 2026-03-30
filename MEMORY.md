@@ -224,14 +224,20 @@ _这里记录一些需要记住的小事情_
 - 科技情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_tech_report.py
 - 综合情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_comprehensive_report.py
 - Windows任务计划程序任务名：沈万三_每日科技报告、沈万三_每日综合情报报告
-- 默认全球综合情报报告的抓取白名单流程固定为 6 个站点：
-  1. Yahoo Finance
-  2. AP News
-  3. CNBC World
-  4. TWSE（辅助校验）
-  5. Reuters（按需补抓）
-  6. BBC（按需补抓）
-- 执行策略：先跑前 4 个高兼容站点，快速生成可用报告；再视需要补抓 Reuters / BBC，避免一开始被 CAPTCHA 与高阻力拖慢整体速度。
+- 默认全球综合情报报告的自动抓取已升级为 4 组白名单流程：
+  1. `news_core`：BBC、Reuters、AP News、Al Jazeera、CNBC World、Yahoo Finance
+  2. `markets_global`：NYSE、TWSE、SSE、JPX、KRX、Investing.com 日本站、Naver Finance、东方财富
+  3. `deep_dive`：Reuters Europe、Reuters China、AP Russia-Ukraine、AP China、Yahoo Finance 商品详情页（GC=F / BZ=F / CL=F）
+  4. `tech_ai_robotics`：The Verge、TechCrunch、IEEE Spectrum、Wired、Ars Technica、MIT Technology Review、VentureBeat AI
+- 默认执行策略已改为：每天 **08:00 / 21:00** 先由 `collect_comprehensive_report.py` 做真实重抓，再于 **08:30 / 21:30** 由 `send_collected_comprehensive_report.py` 发送邮件。
+- 这套新版定时任务在 Windows 任务计划程序中的固定任务名为：
+  - `SWS_Report_Collect_0800`
+  - `SWS_Report_Send_0830`
+  - `SWS_Report_Collect_2100`
+  - `SWS_Report_Send_2130`
+- 报告正文现在默认包含 **AI / 机器人 / 科技前沿** 板块，用来提高科技内容密度。
+- 自动抓取已加入容错：单组失败不中断整轮报告；运行日志写入 `logs/collect_comprehensive_report.log`，状态写入 `reports/scheduled/latest_collect_status.json`。
+- 执行策略：优先走新版 4 组抓取与正式详细版结构；若某板块仍拿不到足够扎实的 24–48 小时更新，继续直接写“今日无重大更新”，不许用旧闻补洞。
 # MEMORY.md - 沈万三的长期记忆
 
 _重要信息都记录在这里，这是我的长期记忆！_
