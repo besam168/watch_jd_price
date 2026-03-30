@@ -228,6 +228,44 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
     }
 
 
+def collect_tech_snapshot() -> list[str]:
+    sources = [
+        ("The Verge", read_optional(FIRECRAWL_DIR / "theverge.com.md")),
+        ("TechCrunch", read_optional(FIRECRAWL_DIR / "techcrunch.com.md")),
+        ("IEEE Spectrum", read_optional(FIRECRAWL_DIR / "spectrum.ieee.org.md")),
+        ("Wired", read_optional(FIRECRAWL_DIR / "wired.com.md")),
+        ("Ars Technica", read_optional(FIRECRAWL_DIR / "arstechnica.com.md")),
+        ("MIT Technology Review", read_optional(FIRECRAWL_DIR / "technologyreview.com.md")),
+        ("VentureBeat AI", read_optional(FIRECRAWL_DIR / "venturebeat.com-category-ai.md")),
+    ]
+
+    rules = [
+        (("openai", "gpt"), "AI大模型仍是科技主线，OpenAI相关进展继续牵引行业预期。"),
+        (("anthropic",), "Anthropic 动向仍值得跟踪，模型竞争与企业级应用落地继续推进。"),
+        (("google", "gemini"), "Google Gemini 相关进展显示大模型竞争仍在加速，云与终端协同值得关注。"),
+        (("tesla", "robot"), "机器人与自动化主题继续升温，硬件量产与真实场景落地是关键观察点。"),
+        (("nvidia",), "算力与AI基础设施仍是产业链核心主线，NVIDIA 相关动态继续影响资本开支预期。"),
+        (("chip",), "半导体与算力芯片仍是科技投资主轴，供给约束和需求扩张并存。"),
+        (("robot",), "机器人赛道热度延续，市场更关注从演示走向商用部署的兑现速度。"),
+        (("ai",), "AI 应用层与模型层仍持续放量，重点看真实付费场景和企业采用节奏。"),
+    ]
+
+    lines: list[str] = []
+    seen: set[str] = set()
+    for source_name, text in sources:
+        raw = text.lower()
+        if not raw:
+            continue
+        for keywords, zh_line in rules:
+            if all(k in raw for k in keywords) and zh_line not in seen:
+                lines.append(f"{source_name}：{zh_line}")
+                seen.add(zh_line)
+                break
+        if len(lines) >= 5:
+            break
+    return lines or ["今日无重大更新"]
+
+
 def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]:
     raw = f"{title} {summary}".lower()
 
@@ -284,6 +322,7 @@ def build_report() -> tuple[str, str, str]:
     market = collect_market_snapshot()
     commodities = collect_commodity_snapshot()
     geo = collect_geopolitical_snapshot()
+    tech = collect_tech_snapshot()
 
     subject = f"全球综合情报报告 - {title_date}"
 
@@ -366,20 +405,28 @@ def build_report() -> tuple[str, str, str]:
         "结论：若拿不到足够扎实的24小时内官方新增口径，就不拿旧闻补洞。",
         "",
         "---",
-        "五、重要头条补充",
+        "五、AI / 机器人 / 科技前沿",
+        "【科技主线】",
+    ])
+    lines.extend([f"- {x}" for x in tech] or ["- 今日无重大更新"])
+    lines.extend([
+        "结论：科技板块可以作为独立观察线，重点盯大模型、机器人、芯片与企业级AI落地。",
+        "",
+        "---",
+        "六、重要头条补充",
     ])
     lines.extend(rss_headlines_block(rss_items))
     lines.extend([
         "",
         "---",
-        "六、未来24-48小时风险预警",
+        "七、未来24-48小时风险预警",
         "- 若海湾能源、电力、淡化设施继续受袭，油价与全球运价可能继续上冲。",
         "- 若也门方向对航运与以色列本土袭扰升级，市场避险情绪将继续升温。",
         "- 若美股继续承压，S&P 500 可能进一步确认回撤区间。",
         "- 高油价与高金价并行，可能重新抬升通胀与利率担忧。",
         "",
         "---",
-        "七、投资建议",
+        "八、投资建议",
         "- 当前更像防守型 + 事件驱动型市场，不是舒服做多的环境。",
         "- 美股整体偏弱；能源链和黄金仍是主线，但波动极高，不能把新闻冲高价当成静态报价。",
         "- 若没有明确缓和信号，全球资产配置宜偏防守，控制仓位与节奏。",

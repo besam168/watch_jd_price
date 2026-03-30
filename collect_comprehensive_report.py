@@ -49,6 +49,18 @@ SCRAPE_GROUPS = [
             "https://finance.yahoo.com/quote/CL=F/",
         ],
     },
+    {
+        "name": "tech_ai_robotics",
+        "urls": [
+            "https://www.theverge.com/",
+            "https://techcrunch.com/",
+            "https://spectrum.ieee.org/",
+            "https://www.wired.com/",
+            "https://arstechnica.com/",
+            "https://www.technologyreview.com/",
+            "https://venturebeat.com/category/ai/",
+        ],
+    },
 ]
 
 FIRECRAWL_BIN = shutil.which("firecrawl") or "C:\\Users\\besam\\AppData\\Roaming\\npm\\firecrawl.cmd"
