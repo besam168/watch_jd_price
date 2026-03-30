@@ -228,6 +228,30 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
     }
 
 
+def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]:
+    raw = f"{title} {summary}".lower()
+
+    rules = [
+        (("kharg island", "iran"), "美国关注伊朗哈尔格岛能源枢纽风险", "若伊朗关键原油出口设施受威胁，全球油价与地缘风险溢价仍可能继续上行。"),
+        (("oil tanker", "cuba"), "俄油轮抵达古巴，能源与制裁博弈升温", "俄美在能源运输与地区影响力上的互动仍会扰动市场对能源供应和制裁执行的预期。"),
+        (("oil prices rise", "brent"), "油价继续上行，布伦特月度涨势扩大", "中东局势持续推升风险溢价，原油价格仍处高波动区间。"),
+        (("take the oil in iran",), "伊朗能源设施风险升温，市场聚焦原油供应冲击", "若能源基础设施受袭扩大，原油与航运价格波动可能继续放大。"),
+        (("iran", "water", "power"), "中东冲突开始冲击水电等民生基础设施", "冲突外溢至民生与工业设施，说明局势对经济层面的冲击正在加深。"),
+        (("houthi", "missiles"), "也门方向袭扰升级，红海与中东航运风险再抬头", "若航运威胁持续，全球运费、保险与能源运输成本都可能继续承压。"),
+        (("russia", "ukraine"), "俄乌相关局势仍在发酵", "欧洲安全与外交层面的外溢风险仍在，但若缺少更扎实新增口径，不展开过度演绎。"),
+        (("china", "trade"), "中美经贸摩擦仍有新动向", "若涉及调查、限制或官方表态升级，市场会重新评估供应链与风险偏好。"),
+    ]
+
+    for keywords, zh_title, zh_summary in rules:
+        if all(k in raw for k in keywords):
+            return zh_title, zh_summary
+
+    if re.search(r"[A-Za-z]", title):
+        return None, None
+
+    return title, summary or "今日无额外摘要。"
+
+
 def rss_headlines_block(items: Iterable[dict[str, str]]) -> list[str]:
     lines: list[str] = []
     for item in items:
@@ -240,12 +264,15 @@ def rss_headlines_block(items: Iterable[dict[str, str]]) -> list[str]:
             continue
         if title.count("[") > 3 or len(title) > 220:
             continue
-        if not summary:
-            summary = "今日无额外摘要。"
-        if len(summary) > 90:
-            summary = summary[:87] + "..."
-        lines.append(f"- {title}（来源：{source} | 发布时间：{item.get('pub_date') or '未知'}）")
-        lines.append(f"  简述：{summary}")
+        zh_title, zh_summary = localize_headline(title, summary)
+        if not zh_title:
+            continue
+        if not zh_summary:
+            zh_summary = "今日无额外摘要。"
+        if len(zh_summary) > 90:
+            zh_summary = zh_summary[:87] + "..."
+        lines.append(f"- {zh_title}（来源：{source} | 发布时间：{item.get('pub_date') or '未知'}）")
+        lines.append(f"  简述：{zh_summary}")
     return lines or ["- 今日无重大更新"]
 
 
