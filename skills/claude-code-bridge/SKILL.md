@@ -76,3 +76,10 @@ powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/run-claude-task.ps1 -
 - This skill depends on the local `claude` CLI being installed and authenticated.
 - This is a local engineering-agent skill, not an ACP-native Claude harness.
 - Current design goal: reliable structured local execution first, more advanced multi-step workflows later.
+- On this machine, Claude Code has been verified to work against a third-party Anthropic-compatible route via `C:\Users\besam\.claude\settings.json`.
+- Current known-good route:
+  - Base URL: `https://www.jnm.lol/`
+  - Model: `gpt-5.3-codex`
+  - Recommended config style: set all of `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_MODEL`, and `ANTHROPIC_REASONING_MODEL` to the same target model when using this provider.
+- Important: for Claude Code, use the provider root URL (for example `https://www.jnm.lol/`), not the `/v1` suffix used by direct curl examples. Claude Code appends Anthropic-style paths itself; using `/v1` here can cause `405 Method Not Allowed`.
+- Validation pattern: after changing route config, start a fresh Claude process and run a minimal print-mode check such as `claude -p 'Reply with exactly: CLAUDE_ROUTE_OK'`.

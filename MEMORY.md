@@ -636,3 +636,12 @@ _Last updated: 2026年3月28日_
   - 最小真测命令：`codex exec "Reply with exactly: CODEX_ROUTE_OK"`
   - 最小真测结果：成功返回 `CODEX_ROUTE_OK`
 - ✅ 结论：当前本机 Codex CLI 走 `https://www.jnm.lol/v1` + `gpt-5.3-codex` 的新路由已真实可用，后续如再切换 Key / base_url，优先沿用“改配置 -> 最小真测 -> 再投入正式任务”的流程。
+- ✅ 今晚还已把本机 `Claude Code` 默认模型路由切到同一套 OpenAI 兼容供应方，并完成真实验收：
+  - 配置文件：`C:\Users\besam\.claude\settings.json`
+  - 正确基地址：`https://www.jnm.lol/`（注意：这里是根地址，不是 `/v1`；Claude Code 会自行拼接 Anthropic 风格路径）
+  - 默认模型族：`gpt-5.3-codex`
+  - 已同时写入：`ANTHROPIC_DEFAULT_HAIKU_MODEL`、`ANTHROPIC_DEFAULT_OPUS_MODEL`、`ANTHROPIC_DEFAULT_SONNET_MODEL`、`ANTHROPIC_MODEL`、`ANTHROPIC_REASONING_MODEL`
+  - 默认权限：`bypassPermissions`
+  - 全新进程最小真测命令：`claude -p '只输出：CLAUDE_ROUTE_OK'`
+  - 最小真测结果：成功返回 `CLAUDE_ROUTE_OK`
+- ✅ 结论：以后若要给 Claude Code 接第三方兼容模型，优先采用“`.claude/settings.json` 全量模型映射 + 根地址 base_url + 全新进程真测”的方法，不要只改单个环境变量，更不要把 Claude Code 的 base_url 误写成 `/v1` 结尾。
