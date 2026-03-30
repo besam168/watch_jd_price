@@ -481,6 +481,8 @@ _这里记录一些需要记住的小事情_
   6. 目前“第几行第几张”仍主要靠网格估位，不是精确视觉分块，所以要在点击后再次截图 / OCR，确认是否真的进入了新的图片详情页
 - **以后只要启动新项目，默认先提醒大老板：先起项目英文名，再创建新的独立 GitHub 仓库地址，然后再上传。**
 - **以后这台机器上传 GitHub，默认优先使用 SSH remote，不走 HTTPS。** 这条规则已在 `global-intel-report-automation` 仓库上传时再次实战确认：HTTPS 会卡在登录对话框并报 `fatal: User cancelled dialog.`，切换到 `git@github.com:...` 后可正常 push。
+- 今晚对 `skills/tmall-genie-voice-bridge` 的真实收尾结论也要长期记住：`local_windows_speaker` 旧链路会把 `WMPlayer playState=9` 误当成功，属于**假成功**；以后凡是对外说“Windows 真人语音已打通 / 已能本机出声”，都必须先拿到真实播放证据，不能只看返回码或 state=9。
+- 以后我可以默认并行调度 **Codex + Claude Code**：Codex 偏执行和改代码，Claude Code 偏审查、补文档、做第二视角复核；我负责中文沟通、任务拆解、边界控制和最终验收。
 
 ---
 
