@@ -480,6 +480,7 @@ _这里记录一些需要记住的小事情_
   5. 更稳的做法是用独立内联 `Add-Type` + `SetCursorPos` + `mouse_event` 直接发鼠标点击
   6. 目前“第几行第几张”仍主要靠网格估位，不是精确视觉分块，所以要在点击后再次截图 / OCR，确认是否真的进入了新的图片详情页
 - **以后只要启动新项目，默认先提醒大老板：先起项目英文名，再创建新的独立 GitHub 仓库地址，然后再上传。**
+- **以后这台机器上传 GitHub，默认优先使用 SSH remote，不走 HTTPS。** 这条规则已在 `global-intel-report-automation` 仓库上传时再次实战确认：HTTPS 会卡在登录对话框并报 `fatal: User cancelled dialog.`，切换到 `git@github.com:...` 后可正常 push。
 
 ---
 
