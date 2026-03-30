@@ -578,3 +578,54 @@ models:
 ---
 
 _Last updated: 2026年3月28日_
+
+### 2026年3月28日（夜间补记）
+- ✅ 今晚已把 `Codex CLI` 正式接入第三方 OpenAI 兼容模型并跑通，配置路线已确认可用：
+  - `C:\Users\besam\.codex\config.toml`
+  - `C:\Users\besam\.codex\auth.json`
+  - 模型：`gpt-5.3-codex`
+  - 接口：`http://92scw.cn/v1`
+- ✅ 已做最小真实验收：`codex exec` 成功返回固定文本 `CODEX_ROUTE_OK`，说明 `Codex CLI + gpt-5.3-codex` 已真实可用。
+- ✅ 大老板今晚进一步明确新的长期协作方式：以后我默认按**项目经理 / 技术总控 / 最终验收**模式推进，允许我并行调度本地 coding agent；对大老板汇报中文，对新 coding agent 派工优先英文。
+- ✅ 新接入的 Codex 已拿 `tmall-genie-voice-bridge` 做了第一轮真实工程压力测试，结论不是摆设：
+  - 能读项目、改文件、跑校验；
+  - 能自己踩出并修补低风险 bug；
+  - 值得继续作为执行层使用，但需要我严格控任务边界，避免改动过宽。
+- ✅ `tmall-genie-voice-bridge` 今晚的真实进展已收敛为：
+  - mock 链路通过；
+  - `bridge_server` 本地 `/health` / `/speak` / `/audio` 链路通过；
+  - `local_windows_speaker` 的相对路径解析 bug 已找到并修补；
+  - 但**真人语音本机出声仍未打通**：使用 `edge-tts` 做真人声测试时返回 `No audio was received. Please verify that your parameters are correct.`
+- ✅ 因此以后对这个项目的对外表述必须继续保持克制：
+  - 可以说：mock 链路通、本机播放流程有进展；
+  - 不能说：电脑真人语音已确认出声；
+  - 更不能说：真实天猫精灵音箱已经成功出声。
+- ✅ 明确后续技术顺序：
+  1. 先查清 `edge-tts` / 真人语音失败原因；
+  2. 先把本机真人语音出声做实；
+  3. 再推进真实天猫精灵 / HTTP 播放桥接，不跳步。
+
+### 2026年3月30日
+- ✅ 今天在 QQ 私聊实战中，进一步验证了**驱动执行层 AI（尤其 Codex CLI）时的长期方法论**：
+  - 我默认扮演**项目经理 / 技术总控 / 最终验收**；
+  - 对大老板汇报继续使用中文；
+  - 对 Codex 这类执行层 AI，**派工、约束、验收标准优先使用英文**，执行效率和稳定性更高。
+- ✅ Windows + PowerShell 环境下调度 Codex CLI 的几个高频坑已经踩实：
+  1. 不要迷信复杂 shell 拼接，长 prompt + 重定向很容易翻车；
+  2. 长 prompt 可能在 shell / 子进程链路中被拆参，导致 Codex 报 `unexpected argument`；
+  3. 后台脚本环境可能继承不到 `codex` 的 PATH，必要时直接用可执行文件绝对路径。
+- ✅ 当前更稳的实际调度策略已经明确：
+  1. 先做 Codex CLI 最小真测，确认本体可用；
+  2. 尽量在**临时副本目录**中执行，避免污染原项目；
+  3. 若已进入 Codex 交互界面，优先**直接向现成会话粘贴英文任务**，不要继续折腾外层复杂参数；
+  4. 项目经理负责控边界、控口径、控验收，避免执行层 AI 夸大“已完成/已验证”的能力。
+- ✅ 这套方法以后默认用于我调度 Codex / 同类 coding agent 的长期协作流程。
+- ✅ 今天已按大老板新提供的配置，重新完成一轮 Codex CLI 路由切换并验收通过：
+  - 配置文件：`C:\Users\besam\.codex\config.toml`
+  - 认证文件：`C:\Users\besam\.codex\auth.json`
+  - 新接口地址：`https://www.jnm.lol/v1`
+  - 当前模型：`gpt-5.3-codex`
+  - 新 API Key：已更新到 `auth.json`（长期记忆中不明文重复展开）
+  - 最小真测命令：`codex exec "Reply with exactly: CODEX_ROUTE_OK"`
+  - 最小真测结果：成功返回 `CODEX_ROUTE_OK`
+- ✅ 结论：当前本机 Codex CLI 走 `https://www.jnm.lol/v1` + `gpt-5.3-codex` 的新路由已真实可用，后续如再切换 Key / base_url，优先沿用“改配置 -> 最小真测 -> 再投入正式任务”的流程。
