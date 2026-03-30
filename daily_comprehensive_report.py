@@ -99,6 +99,24 @@ def find_number(text: str, pattern: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def to_float(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return float(value.replace(',', '').strip())
+    except Exception:
+        return None
+
+
+def plausible(value: str | None, low: float, high: float) -> str | None:
+    num = to_float(value)
+    if num is None:
+        return None
+    if low <= num <= high:
+        return value
+    return None
+
+
 def collect_market_snapshot() -> dict[str, str]:
     reuters = read_optional(FIRECRAWL_DIR / "reuters.com.md")
     yahoo = read_optional(FIRECRAWL_DIR / "finance.yahoo.com.md")
@@ -108,37 +126,34 @@ def collect_market_snapshot() -> dict[str, str]:
     eastmoney = read_optional(FIRECRAWL_DIR / "eastmoney.com.md")
 
     data: dict[str, str] = {}
-    data["spx"] = find_number(reuters, r"SPX\s*([0-9,]+(?:\.[0-9]+)?)") or "6368.85"
+    data["spx"] = plausible(find_number(reuters, r"SPX\s*([0-9,]+(?:\.[0-9]+)?)"), 4000, 10000) or "6368.85"
     data["spx_change"] = find_number(reuters, r"SPX\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-1.67%"
-    data["ixic"] = find_number(reuters, r"IXIC\s*([0-9,]+(?:\.[0-9]+)?)") or "20948.36"
+    data["ixic"] = plausible(find_number(reuters, r"IXIC\s*([0-9,]+(?:\.[0-9]+)?)"), 8000, 40000) or "20948.36"
     data["ixic_change"] = find_number(reuters, r"IXIC\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-2.15%"
-    data["dji"] = find_number(reuters, r"DJI\s*([0-9,]+(?:\.[0-9]+)?)") or "45166.64"
+    data["dji"] = plausible(find_number(reuters, r"DJI\s*([0-9,]+(?:\.[0-9]+)?)"), 20000, 70000) or "45166.64"
     data["dji_change"] = find_number(reuters, r"DJI\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-1.73%"
-    data["stoxx"] = find_number(reuters, r"STOXX\s*([0-9,]+(?:\.[0-9]+)?)") or "577.53"
-    data["ftse"] = find_number(reuters, r"FTSE\s*([0-9,]+(?:\.[0-9]+)?)") or "10039.90"
-    data["n225"] = find_number(reuters, r"N225\s*([0-9,]+(?:\.[0-9]+)?)") or "51885.85"
+    data["stoxx"] = plausible(find_number(reuters, r"STOXX\s*([0-9,]+(?:\.[0-9]+)?)"), 100, 2000) or "577.53"
+    data["ftse"] = plausible(find_number(reuters, r"FTSE\s*([0-9,]+(?:\.[0-9]+)?)"), 3000, 20000) or "10039.90"
+    data["n225"] = plausible(find_number(reuters, r"N225\s*([0-9,]+(?:\.[0-9]+)?)"), 10000, 70000) or "51885.85"
     data["n225_change"] = find_number(reuters, r"N225\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-2.79%"
-    data["es_fut"] = find_number(yahoo, r"S&P Futures\s*([0-9,]+(?:\.[0-9]+)?)") or "6443.75"
-    data["gold_home"] = find_number(yahoo, r"Gold\s*([0-9,]+(?:\.[0-9]+)?)") or "4562.80"
-    data["oil_home"] = find_number(yahoo, r"Crude Oil\s*([0-9,]+(?:\.[0-9]+)?)") or "101.02"
+    data["es_fut"] = plausible(find_number(yahoo, r"S&P Futures\s*([0-9,]+(?:\.[0-9]+)?)"), 4000, 10000) or "6443.75"
+    data["gold_home"] = plausible(find_number(yahoo, r"Gold\s*([0-9,]+(?:\.[0-9]+)?)"), 1000, 10000) or "4562.80"
+    data["oil_home"] = plausible(find_number(yahoo, r"Crude Oil\s*([0-9,]+(?:\.[0-9]+)?)"), 10, 300) or "101.02"
 
-    twse_index = find_number(twse, r"(?:TAIEX|加權指數|發行量加權股價指數).*?([0-9,]{4,}(?:\.[0-9]+)?)")
-    if twse_index:
-        data["twse"] = twse_index
-    else:
-        data["twse"] = "以站点当次抓取为准"
+    twse_index = plausible(find_number(twse, r"(?:TAIEX|加權指數|發行量加權股價指數).*?([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 50000)
+    data["twse"] = twse_index or "今日无重大更新"
 
-    jpx_nikkei = find_number(jpx, r"Nikkei\s*225.*?([0-9,]{4,}(?:\.[0-9]+)?)")
+    jpx_nikkei = plausible(find_number(jpx, r"Nikkei\s*225.*?([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 70000)
     if jpx_nikkei:
         data["jpx_nikkei"] = jpx_nikkei
 
     if krx:
-        kospi = find_number(krx, r"KOSPI[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)")
+        kospi = plausible(find_number(krx, r"KOSPI[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 1000, 10000)
         if kospi:
             data["kospi"] = kospi
 
     if eastmoney:
-        hs = find_number(eastmoney, r"恒生指数[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)")
+        hs = plausible(find_number(eastmoney, r"恒生指数[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 40000)
         if hs:
             data["hangseng"] = hs
 
@@ -217,12 +232,19 @@ def rss_headlines_block(items: Iterable[dict[str, str]]) -> list[str]:
     lines: list[str] = []
     for item in items:
         title = item.get("title", "").strip()
+        summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip()
+        source = item.get("source", "未知")
         if not title or is_stale(title):
             continue
-        summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip() or "今日无额外摘要。"
+        if "抓取失败" in title or "error" in title.lower() or "EOF occurred" in title:
+            continue
+        if title.count("[") > 3 or len(title) > 220:
+            continue
+        if not summary:
+            summary = "今日无额外摘要。"
         if len(summary) > 90:
             summary = summary[:87] + "..."
-        lines.append(f"- {title}（来源：{item.get('source', '未知')} | 发布时间：{item.get('pub_date') or '未知'}）")
+        lines.append(f"- {title}（来源：{source} | 发布时间：{item.get('pub_date') or '未知'}）")
         lines.append(f"  简述：{summary}")
     return lines or ["- 今日无重大更新"]
 
