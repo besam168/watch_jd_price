@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -22,10 +21,13 @@ APP_CONFIG_PATH: Path | None = None
 
 @app.get("/health")
 def health() -> Any:
+    backend_type = None
+    if APP_CONFIG:
+        backend_type = (APP_CONFIG.get("backend") or {}).get("type")
     return jsonify({
         "ok": True,
         "service": "tmall-genie-voice-bridge",
-        "backend": ((APP_CONFIG.get("backend") or {}).get("type") if APP_CONFIG else None),
+        "backend": backend_type,
     })
 
 
@@ -34,26 +36,37 @@ def speak_route() -> Any:
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", "")).strip()
     if not text:
-        return jsonify({"ok": False, "error": "缺少 text"}), 400
+        return jsonify({"ok": False, "error": "Missing required field: text"}), 400
 
-    result = speak(text=text, config=APP_CONFIG, config_path=APP_CONFIG_PATH)
+    try:
+        result = speak(text=text, config=APP_CONFIG, config_path=APP_CONFIG_PATH)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify(result)
 
 
 @app.get("/audio/<path:filename>")
 def audio_file(filename: str) -> Any:
+    if not APP_CONFIG_PATH:
+        return jsonify({"ok": False, "error": "Server config is not loaded"}), 500
+
     tts = APP_CONFIG.get("tts") or {}
     output_dir = Path(tts.get("output_dir", "./tmp_audio"))
     if not output_dir.is_absolute():
         output_dir = (APP_CONFIG_PATH.parent / output_dir).resolve()
+
     return send_from_directory(output_dir, filename)
 
 
 def main() -> None:
     global APP_CONFIG, APP_CONFIG_PATH
 
-    parser = argparse.ArgumentParser(description="天猫精灵语音桥本地 HTTP 服务")
-    parser.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config.json"), help="配置文件路径")
+    parser = argparse.ArgumentParser(description="Run local HTTP bridge for tmall-genie-voice-bridge.")
+    parser.add_argument(
+        "--config",
+        default=str(Path(__file__).resolve().parents[1] / "config.json"),
+        help="Path to config JSON file",
+    )
     args = parser.parse_args()
 
     APP_CONFIG_PATH = Path(args.config).resolve()

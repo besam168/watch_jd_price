@@ -45,6 +45,7 @@ description: 让 OpenClaw 通过“天猫精灵语音桥”方式接入家庭语
 - `scripts/bridge_server.py`：本地 HTTP bridge server
 - `scripts/speak.py`：文本转语音并调用后端
 - `scripts/listen_once.py`：Windows 一次性语音输入 / wav 转写入口
+- `demo-wav-roundtrip.ps1`：无麦克风时最快的 wav -> 转写 -> 回灌播报演示入口
 - `scripts/check-microphone.ps1`：Windows 录音设备 / 默认输入 / 识别器预检脚本
 - `scripts/providers/tts_edge.py`：Edge TTS provider
 - `scripts/backends/base.py`：后端基类
@@ -114,9 +115,9 @@ skills\tmall-genie-voice-bridge\speak-local.bat "你好，我是本地播报"
 - 也可通过环境变量 `TMALL_GENIE_VOICE_BRIDGE_CONFIG` 指定配置路径
 - 脚本已显式设置 UTF-8 控制台/Python 编码，减少中文参数和 JSON 输出乱码
 
-### 4.4) 最小 demo：text in -> spoken reply out
+### 4.4) 最快 text -> speak demo
 
-本地直连模式（不依赖 HTTP）：
+本地直连模式（最快，不依赖 HTTP）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/demo-text-roundtrip.ps1 -Text "收到，大老板" -Mode local
@@ -125,6 +126,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bri
 桥接模式（要求 bridge server 已启动）：
 
 ```powershell
+python skills/tmall-genie-voice-bridge/scripts/bridge_server.py --config skills/tmall-genie-voice-bridge/config.local-speaker.json
 powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/demo-text-roundtrip.ps1 -Text "收到，大老板" -Mode bridge
 ```
 
@@ -133,7 +135,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bri
 - `local`：直接调用 `speak-local.ps1`
 - `bridge`：向 `POST /speak` 发送 UTF-8 JSON，避开 PowerShell/curl 引号转义坑
 
-### 4.5) 本机语音输入 MVP（新增）
+### 4.5) 最快 wav -> transcribe -> echo-speak demo
+
+无物理麦克风时，优先直接跑 wav 回路：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/demo-wav-roundtrip.ps1
+```
+
+指定自己的 wav：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/demo-wav-roundtrip.ps1 -Wav skills/tmall-genie-voice-bridge/tmp_audio/listen-once-test.wav
+```
+
+这个脚本本质上等价于：
+
+```bash
+python skills/tmall-genie-voice-bridge/scripts/listen_once.py --wav skills/tmall-genie-voice-bridge/tmp_audio/listen-once-test.wav --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json
+```
+
+注意：
+
+- 当前无麦克风时，这条是最稳的闭环演示路径。
+- `listen-once-test.wav` 在本机可跑通完整链路，但识别文本可能受样本质量影响，不保证每次都识别成预期中文。
+- 若只想验证转写，不回灌播报，去掉 `--echo-speak` 即可。
+
+### 4.6) 本机语音输入 MVP（新增）
 
 优先走 Windows 内置 `System.Speech`，不额外依赖云识别服务。
 
@@ -240,10 +268,17 @@ python skills/tmall-genie-voice-bridge/scripts/bridge_server.py --config skills/
 
 ### 6) 用 HTTP 触发播报
 
-```bash
-curl -X POST http://127.0.0.1:57881/speak \
-  -H "Content-Type: application/json" \
-  -d '{"text":"你好，我是沈万三。"}'
+PowerShell 里优先这样调，少踩引号坑：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/demo-text-roundtrip.ps1 -Text "你好，我是沈万三。" -Mode bridge
+```
+
+如果一定要直接发 HTTP：
+
+```powershell
+$body = @{ text = '你好，我是沈万三。' } | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri 'http://127.0.0.1:57881/speak' -Method Post -ContentType 'application/json; charset=utf-8' -Body $body | ConvertTo-Json -Depth 8
 ```
 
 ## 推荐工作流

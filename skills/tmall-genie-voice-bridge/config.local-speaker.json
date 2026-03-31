@@ -1,0 +1,21 @@
+{
+  "host": "127.0.0.1",
+  "port": 57881,
+  "tts": {
+    "provider": "mock",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "rate": "+0%",
+    "output_dir": "./tmp_audio",
+    "output_ext": ""
+  },
+  "backend": {
+    "type": "local_windows_speaker",
+    "options": {
+      "device_name": "Windows-Local-Speaker"
+    }
+  },
+  "local_windows_speaker": {
+    "player_script": "./scripts/play-local-audio.ps1",
+    "timeout_seconds": 20
+  }
+}

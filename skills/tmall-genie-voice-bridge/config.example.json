@@ -2,10 +2,11 @@
   "host": "127.0.0.1",
   "port": 57881,
   "tts": {
-    "provider": "edge",
+    "provider": "mock",
     "voice": "zh-CN-XiaoxiaoNeural",
     "rate": "+0%",
-    "output_dir": "./tmp_audio"
+    "output_dir": "./tmp_audio",
+    "output_ext": ""
   },
   "backend": {
     "type": "mock_tmall_genie",
@@ -28,5 +29,9 @@
       "media_content_type": "music"
     },
     "audio_base_url": "http://127.0.0.1:57881/audio"
+  },
+  "local_windows_speaker": {
+    "player_script": "./scripts/play-local-audio.ps1",
+    "timeout_seconds": 20
   }
 }
