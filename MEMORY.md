@@ -258,6 +258,12 @@ _这里记录一些需要记住的小事情_
 - **以后这台机器上传 GitHub，默认优先使用 SSH remote，不走 HTTPS。** 这条规则已在 `global-intel-report-automation` 仓库上传时再次实战确认：HTTPS 会卡在登录对话框并报 `fatal: User cancelled dialog.`，切换到 `git@github.com:...` 后可正常 push。
 - 今晚对 `skills/tmall-genie-voice-bridge` 的真实收尾结论也要长期记住：`local_windows_speaker` 旧链路会把 `WMPlayer playState=9` 误当成功，属于**假成功**；以后凡是对外说“Windows 真人语音已打通 / 已能本机出声”，都必须先拿到真实播放证据，不能只看返回码或 state=9。
 - 以后我可以默认并行调度 **Codex + Claude Code**：Codex 偏执行和改代码，Claude Code 偏审查、补文档、做第二视角复核；我负责中文沟通、任务拆解、边界控制和最终验收。
+- 2026-03-31 对 `skills/tmall-genie-voice-bridge` 的 90 分钟强攻已确认新的长期结论：
+  1. 项目已从“会说的半成品骨架”推进到**可演示 MVP**阶段；
+  2. 当前最稳闭环不是现场麦克风，而是：`text -> local speak`、`text -> bridge /speak`、`wav -> transcribe -> echo-speak`；
+  3. 本机 `local_windows_speaker` 的 WAV 播放应默认走 `SoundPlayer.PlaySync()`，不能再把 `WMPlayer playState=9` 当真人发声成功；
+  4. 已新增并打通的关键入口包括：`speak-local.ps1`、`demo-text-roundtrip.ps1`、`scripts/listen_once.py`、`demo-wav-roundtrip.ps1`、`scripts/check-microphone.ps1`；
+  5. 当前机器没有物理麦克风，因此**不能对外宣称“本机麦克风实测已打通”**；下午接上麦后，按 `check-microphone.ps1 -> listen_once.py --timeout-seconds 6 -> --echo-speak` 这条顺序继续验收。
 
 ---
 
