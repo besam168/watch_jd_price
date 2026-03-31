@@ -238,6 +238,7 @@ _这里记录一些需要记住的小事情_
   - `SWS_Report_Collect_2100`
   - `SWS_Report_Send_2130`
 - 报告正文现在默认包含 **AI / 机器人 / 科技前沿** 板块，用来提高科技内容密度。
+- 科技板块默认来源固定扩展为：The Verge、TechCrunch、IEEE Spectrum、Wired、Ars Technica、MIT Technology Review、VentureBeat AI、Singularity Hub、AI News、Engadget。
 - 自动抓取已加入容错：单组失败不中断整轮报告；运行日志写入 `logs/collect_comprehensive_report.log`，状态写入 `reports/scheduled/latest_collect_status.json`。
 - 执行策略：优先走新版 4 组抓取与正式详细版结构；若某板块仍拿不到足够扎实的 24–48 小时更新，继续直接写“今日无重大更新”，不许用旧闻补洞。
 - 抓取白名单流程固定为 6 个站点：

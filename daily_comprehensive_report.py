@@ -263,6 +263,9 @@ def collect_tech_snapshot() -> list[str]:
         ("Ars Technica", read_optional(FIRECRAWL_DIR / "arstechnica.com.md")),
         ("MIT Technology Review", read_optional(FIRECRAWL_DIR / "technologyreview.com.md")),
         ("VentureBeat AI", read_optional(FIRECRAWL_DIR / "venturebeat.com-category-ai.md")),
+        ("Singularity Hub", read_optional(FIRECRAWL_DIR / "singularityhub.com.md")),
+        ("AI News", read_optional(FIRECRAWL_DIR / "artificialintelligence-news.com.md")),
+        ("Engadget", read_optional(FIRECRAWL_DIR / "engadget.com.md")),
     ]
 
     rules = [

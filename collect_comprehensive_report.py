@@ -59,6 +59,9 @@ SCRAPE_GROUPS = [
             "https://arstechnica.com/",
             "https://www.technologyreview.com/",
             "https://venturebeat.com/category/ai/",
+            "https://singularityhub.com/",
+            "https://www.artificialintelligence-news.com/",
+            "https://www.engadget.com/",
         ],
     },
 ]
