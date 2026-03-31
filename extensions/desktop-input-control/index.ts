@@ -8,6 +8,22 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const preprocessSchema = Type.Union([
+  Type.Literal("raw"),
+  Type.Literal("gray"),
+  Type.Literal("binary"),
+  Type.Literal("upscale2x"),
+  Type.Literal("gray_upscale2x"),
+  Type.Literal("high_contrast"),
+]);
+const queryModeSchema = Type.Union([Type.Literal("contains"), Type.Literal("exact")]);
+const groupBySchema = Type.Union([
+  Type.Literal("auto"),
+  Type.Literal("word"),
+  Type.Literal("line"),
+  Type.Literal("phrase"),
+]);
+
 async function runPs(scriptPath: string, args: string[]) {
   const result = await execFileAsync("powershell", [
     "-ExecutionPolicy",
@@ -36,6 +52,9 @@ async function runOcr(ocrScriptPath: string, params: {
   height?: number;
   query?: string;
   queryMode?: string;
+  groupBy?: string;
+  topN?: number;
+  debugOverlay?: string;
 }) {
   const args = [
     ocrScriptPath,
@@ -48,6 +67,9 @@ async function runOcr(ocrScriptPath: string, params: {
     ...maybeArg("--height", params.height),
     ...maybeArg("--query", params.query),
     ...maybeArg("--query-mode", params.queryMode || "contains"),
+    ...maybeArg("--group-by", params.groupBy || "auto"),
+    ...maybeArg("--top-n", params.topN ?? 1),
+    ...maybeArg("--debug-overlay", params.debugOverlay),
   ];
   const result = await execFileAsync("python", args, {
     env: { ...process.env, PYTHONIOENCODING: "utf-8" },
@@ -76,16 +98,41 @@ function buildCaptureArgs(params: {
   return args;
 }
 
-function pickBestMatch(ocrResult: any) {
-  const items = Array.isArray(ocrResult?.items) ? ocrResult.items : [];
-  if (items.length === 0) {
-    return null;
-  }
+function sortItemsByConfidence(items: any[]) {
   return [...items].sort((a, b) => {
     const confA = typeof a?.confidence === "number" ? a.confidence : -1;
     const confB = typeof b?.confidence === "number" ? b.confidence : -1;
     return confB - confA;
-  })[0];
+  });
+}
+
+function pickTopMatches(ocrResult: any, topN = 1) {
+  const items = Array.isArray(ocrResult?.matches) && ocrResult.matches.length > 0
+    ? ocrResult.matches
+    : (Array.isArray(ocrResult?.items) ? ocrResult.items : []);
+  return sortItemsByConfidence(items).slice(0, Math.max(1, topN));
+}
+
+function pickBestMatch(ocrResult: any) {
+  return pickTopMatches(ocrResult, 1)[0] || null;
+}
+
+function baseFindTextParams() {
+  return {
+    query: Type.String(),
+    queryMode: Type.Optional(Type.Union([Type.Literal("contains"), Type.Literal("exact")], { default: "contains" })),
+    lang: Type.Optional(Type.String()),
+    preprocess: Type.Optional(preprocessSchema),
+    groupBy: Type.Optional(groupBySchema),
+    topN: Type.Optional(Type.Number()),
+    debugOverlayPath: Type.Optional(Type.String()),
+    virtualScreen: Type.Optional(Type.Boolean()),
+    x: Type.Optional(Type.Number()),
+    y: Type.Optional(Type.Number()),
+    width: Type.Optional(Type.Number()),
+    height: Type.Optional(Type.Number()),
+    path: Type.Optional(Type.String()),
+  };
 }
 
 export default function (api) {
@@ -226,49 +273,30 @@ export default function (api) {
     parameters: Type.Object({
       imagePath: Type.String(),
       lang: Type.Optional(Type.String()),
-      preprocess: Type.Optional(Type.Union([
-        Type.Literal("raw"),
-        Type.Literal("gray"),
-        Type.Literal("binary"),
-        Type.Literal("upscale2x"),
-        Type.Literal("gray_upscale2x"),
-        Type.Literal("high_contrast"),
-      ])),
+      preprocess: Type.Optional(preprocessSchema),
       x: Type.Optional(Type.Number()),
       y: Type.Optional(Type.Number()),
       width: Type.Optional(Type.Number()),
       height: Type.Optional(Type.Number()),
       query: Type.Optional(Type.String()),
-      queryMode: Type.Optional(Type.Union([Type.Literal("contains"), Type.Literal("exact")]))
+      queryMode: Type.Optional(queryModeSchema),
+      groupBy: Type.Optional(groupBySchema),
+      topN: Type.Optional(Type.Number()),
+      debugOverlayPath: Type.Optional(Type.String()),
     }),
     async execute(_id, params) {
-      const ocr = await runOcr(ocrScriptPath, params);
+      const ocr = await runOcr(ocrScriptPath, {
+        ...params,
+        debugOverlay: params.debugOverlayPath,
+      });
       return { content: [{ type: "text", text: JSON.stringify(ocr) }] };
     },
   }, { optional: true });
 
   api.registerTool({
     name: "desktop_find_text_on_screen",
-    description: "Capture the screen, run OCR, and return the best matching text item with click coordinates.",
-    parameters: Type.Object({
-      query: Type.String(),
-      queryMode: Type.Optional(Type.Union([Type.Literal("contains"), Type.Literal("exact")], { default: "contains" })),
-      lang: Type.Optional(Type.String()),
-      preprocess: Type.Optional(Type.Union([
-        Type.Literal("raw"),
-        Type.Literal("gray"),
-        Type.Literal("binary"),
-        Type.Literal("upscale2x"),
-        Type.Literal("gray_upscale2x"),
-        Type.Literal("high_contrast"),
-      ])),
-      virtualScreen: Type.Optional(Type.Boolean()),
-      x: Type.Optional(Type.Number()),
-      y: Type.Optional(Type.Number()),
-      width: Type.Optional(Type.Number()),
-      height: Type.Optional(Type.Number()),
-      path: Type.Optional(Type.String()),
-    }),
+    description: "Capture the screen, run OCR, and return the best match plus optional top-N matches and engine info.",
+    parameters: Type.Object(baseFindTextParams()),
     async execute(_id, params) {
       const captureResult = await execFileAsync("powershell", [
         "-ExecutionPolicy",
@@ -284,16 +312,24 @@ export default function (api) {
         preprocess: params.preprocess,
         query: params.query,
         queryMode: params.queryMode,
+        groupBy: params.groupBy,
+        topN: params.topN,
+        debugOverlay: params.debugOverlayPath,
       });
-      const match = pickBestMatch(ocr);
+      const matches = pickTopMatches(ocr, params.topN ?? 1);
+      const match = matches[0] || null;
       const result = {
         ok: Boolean(match),
         query: params.query,
         queryMode: params.queryMode || "contains",
         imagePath,
         match,
+        matches,
+        topN: params.topN ?? 1,
         count: ocr?.count || 0,
         items: ocr?.items || [],
+        debugOverlay: ocr?.debugOverlay || null,
+        engine: ocr?.engine || null,
         ocr,
       };
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
@@ -302,26 +338,11 @@ export default function (api) {
 
   api.registerTool({
     name: "desktop_click_text_on_screen",
-    description: "Find matching text on screen using OCR and click its center point.",
+    description: "Find matching text on screen using OCR and click its center point. Supports dry-run mode.",
     parameters: Type.Object({
-      query: Type.String(),
-      queryMode: Type.Optional(Type.Union([Type.Literal("contains"), Type.Literal("exact")], { default: "contains" })),
-      lang: Type.Optional(Type.String()),
-      preprocess: Type.Optional(Type.Union([
-        Type.Literal("raw"),
-        Type.Literal("gray"),
-        Type.Literal("binary"),
-        Type.Literal("upscale2x"),
-        Type.Literal("gray_upscale2x"),
-        Type.Literal("high_contrast"),
-      ])),
-      virtualScreen: Type.Optional(Type.Boolean()),
-      x: Type.Optional(Type.Number()),
-      y: Type.Optional(Type.Number()),
-      width: Type.Optional(Type.Number()),
-      height: Type.Optional(Type.Number()),
+      ...baseFindTextParams(),
       button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("double")], { default: "left" })),
-      path: Type.Optional(Type.String()),
+      dryRun: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, params) {
       const captureResult = await execFileAsync("powershell", [
@@ -338,8 +359,12 @@ export default function (api) {
         preprocess: params.preprocess,
         query: params.query,
         queryMode: params.queryMode,
+        groupBy: params.groupBy,
+        topN: params.topN,
+        debugOverlay: params.debugOverlayPath,
       });
-      const match = pickBestMatch(ocr);
+      const matches = pickTopMatches(ocr, params.topN ?? 1);
+      const match = matches[0] || null;
       if (!match) {
         return {
           content: [{
@@ -350,8 +375,12 @@ export default function (api) {
               queryMode: params.queryMode || "contains",
               imagePath,
               error: "text not found",
+              topN: params.topN ?? 1,
               count: ocr?.count || 0,
               items: ocr?.items || [],
+              matches,
+              debugOverlay: ocr?.debugOverlay || null,
+              engine: ocr?.engine || null,
               ocr,
             }),
           }],
@@ -360,25 +389,37 @@ export default function (api) {
 
       const clickX = Math.round(match.centerX);
       const clickY = Math.round(match.centerY);
-      await runPs(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
-      const clickText = await runPs(scriptPath, ["mouse-click", params.button || "left"]);
+      const button = params.button || "left";
+      const dryRun = Boolean(params.dryRun);
+      let clickText = "DRY_RUN";
+      if (!dryRun) {
+        await runPs(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
+        clickText = await runPs(scriptPath, ["mouse-click", button]);
+      }
+
       return {
         content: [{
           type: "text",
           text: JSON.stringify({
             ok: true,
+            dryRun,
             query: params.query,
             queryMode: params.queryMode || "contains",
             imagePath,
             click: {
               x: clickX,
               y: clickY,
-              button: params.button || "left",
+              button,
+              executed: !dryRun,
               result: clickText,
             },
             match,
+            matches,
+            topN: params.topN ?? 1,
             count: ocr?.count || 0,
             items: ocr?.items || [],
+            debugOverlay: ocr?.debugOverlay || null,
+            engine: ocr?.engine || null,
             ocr,
           }),
         }],
