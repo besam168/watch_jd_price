@@ -97,6 +97,7 @@ LOG_DIR = os.path.join(ROOT_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "desktop-actions.jsonl")
 SAFE_CONFIG_PATH = os.path.join(ROOT_DIR, "safe-config.json")
 ARTIFACTS_DIR = os.path.join(ROOT_DIR, "artifacts")
+LOCK_PATH = os.path.join(ROOT_DIR, "window-lock.json")
 
 
 def load_safe_config():
@@ -209,6 +210,26 @@ def create_artifact_prefix(name: str):
     return os.path.join(ARTIFACTS_DIR, f"{stamp}-{safe}")
 
 
+def read_window_lock():
+    if not os.path.exists(LOCK_PATH):
+        return None
+    try:
+        with open(LOCK_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def write_window_lock(data: dict | None):
+    if not data:
+        if os.path.exists(LOCK_PATH):
+            os.remove(LOCK_PATH)
+        return
+    with open(LOCK_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
 def enforce_window_guard(config: dict, action: str):
     title = get_foreground_window_title(silent=True)
     normalized = normalize_title(title)
@@ -217,6 +238,17 @@ def enforce_window_guard(config: dict, action: str):
     for item in blocked:
         if item and item in normalized:
             raise PermissionError(f"Action blocked on foreground window: {title}")
+
+    lock = read_window_lock()
+    if lock:
+        lock_title = normalize_title(str(lock.get("title") or ""))
+        lock_pid = int(lock.get("pid") or 0)
+        current = find_best_window(title, 0)
+        current_pid = int(current.get("pid") or 0) if current else 0
+        title_ok = lock_title and lock_title in normalized
+        pid_ok = lock_pid and current_pid == lock_pid
+        if not (title_ok or pid_ok):
+            raise PermissionError(f"Foreground window violates active lock for action {action}: {title}")
 
     if config.get("requireWindowMatchForInput"):
         allowed = [normalize_title(x) for x in config.get("allowedWindowTitles", []) if normalize_title(x)]
@@ -394,6 +426,25 @@ def main(argv):
         return 0
     if action == "list-windows":
         emit(json.dumps(list_windows(arg1 or ""), ensure_ascii=False))
+        return 0
+    if action == "get-window-lock":
+        emit(json.dumps(read_window_lock(), ensure_ascii=False))
+        return 0
+    if action == "set-window-lock":
+        pid = int(arg2 or "0") if str(arg2 or "0").strip() else 0
+        title = (arg1 or "").strip()
+        if not title and not pid:
+            raise ValueError("title or pid is required")
+        match = find_best_window(title, pid)
+        if not match:
+            raise RuntimeError(f"Could not find a window matching: {title or pid}")
+        lock = {"title": match.get("title"), "pid": match.get("pid"), "hwnd": match.get("hwnd")}
+        write_window_lock(lock)
+        emit(json.dumps(lock, ensure_ascii=False))
+        return 0
+    if action == "clear-window-lock":
+        write_window_lock(None)
+        emit("Window lock cleared")
         return 0
     if action == "get-recent-actions":
         limit = max(1, int(arg1 or "20"))

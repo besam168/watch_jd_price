@@ -33,6 +33,9 @@
 - 窗口聚焦 `desktop_focus_window`
 - 窗口列表读取 `desktop_list_windows`
 - 当前前台窗口读取 `desktop_get_foreground_window`
+- 当前窗口锁读取 `desktop_get_window_lock`
+- 设置窗口锁 `desktop_set_window_lock`
+- 清除窗口锁 `desktop_clear_window_lock`
 - 最近动作日志读取 `desktop_get_recent_actions`
 
 ### 屏幕感知
@@ -55,8 +58,11 @@
 新增：
 - `desktop_list_windows`
 - `desktop_focus_window` 支持 `title` 或 `pid`
+- `desktop_get_window_lock`
+- `desktop_set_window_lock`
+- `desktop_clear_window_lock`
 
-这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”。
+这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。
 
 ### 2) 重试机制
 `desktop_click_text_on_screen` 现在支持：
@@ -131,12 +137,16 @@
 ```powershell
 python scripts/desktop-input.py get-foreground-window
 python scripts/desktop-input.py list-windows chrome
+python scripts/desktop-input.py set-window-lock chrome 0
+python scripts/desktop-input.py get-window-lock
 python scripts/desktop-input.py mouse-move 200 200
 python scripts/desktop-input.py mouse-move-relative 50 20
 python scripts/desktop-input.py mouse-click left
+python scripts/desktop-input.py clear-window-lock
 python scripts/desktop-input.py get-recent-actions 10
 powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1
 python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 设置 --top-n 3
+powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 ```
 
 ### OpenClaw 调用建议

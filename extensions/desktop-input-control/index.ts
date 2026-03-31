@@ -294,6 +294,36 @@ export default function (api) {
   }, { optional: true });
 
   api.registerTool({
+    name: "desktop_get_window_lock",
+    description: "Get the currently active window lock, if any.",
+    parameters: Type.Object({}),
+    async execute() {
+      const text = await runPy(scriptPath, ["get-window-lock"]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_set_window_lock",
+    description: "Lock future desktop input actions to a target window by title or PID.",
+    parameters: Type.Object({ title: Type.Optional(Type.String()), pid: Type.Optional(Type.Number()) }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["set-window-lock", params.title || "", String(params.pid ?? 0)]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_clear_window_lock",
+    description: "Clear the active window lock.",
+    parameters: Type.Object({}),
+    async execute() {
+      const text = await runPy(scriptPath, ["clear-window-lock"]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
     name: "desktop_get_recent_actions",
     description: "Read recent desktop action logs for observability and debugging.",
     parameters: Type.Object({ limit: Type.Optional(Type.Number()) }),

@@ -1,0 +1,16 @@
+node_modules/
+logs/
+artifacts/
+*.png
+!openclaw.plugin.json
+!README.md
+!HOWTO.md
+!safe-config.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!index.ts
+!scripts/*.py
+!scripts/*.ps1
+!scripts/*.md
+!src/**
