@@ -1,38 +1,31 @@
 {
   "host": "127.0.0.1",
-  "port": 57881,
+  "port": 57891,
   "tts": {
     "provider": "mock",
     "voice": "zh-CN-XiaoxiaoNeural",
     "rate": "+0%",
     "output_dir": "./tmp_audio",
-    "output_ext": ""
+    "output_ext": "wav"
   },
   "backend": {
-    "type": "mock_tmall_genie",
-    "options": {
-      "device_name": "Tmall-Genie",
-      "device_ip": "192.168.2.136"
-    }
+    "type": "local_http_player",
+    "options": {}
   },
   "http_player": {
-    "player_url": "http://127.0.0.1:8123/api/services/media_player/play_media",
+    "player_url": "http://127.0.0.1:57901/play",
     "method": "POST",
     "timeout": 15,
     "headers": {
-      "Authorization": "Bearer REPLACE_ME",
       "Content-Type": "application/json"
     },
     "body_template": {
       "entity_id": "media_player.tmall_genie",
       "media_content_id": "{{audio_url}}",
-      "media_content_type": "music"
+      "media_content_type": "music",
+      "spoken_text": "{{text}}"
     },
     "audio_base_url": "auto",
     "public_base_url": ""
-  },
-  "local_windows_speaker": {
-    "player_script": "./scripts/play-local-audio.ps1",
-    "timeout_seconds": 20
   }
 }

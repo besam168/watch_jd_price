@@ -365,6 +365,14 @@ Invoke-RestMethod -Uri 'http://127.0.0.1:57881/callback/text' -Method Post -Cont
 - 局域网中控服务
 - 云技能回调服务
 
+关键注意：
+
+- 如果目标是真实天猫精灵/局域网设备，`media_content_id` 里的音频 URL 不能是 `127.0.0.1`。那只对 bridge 所在机器自己可见，对外部设备不可见。
+- 当前支持两种更稳的写法：
+  - `audio_base_url: "auto"`：bridge 会按当前请求的 `scheme://host[:port]/audio` 自动生成音频 URL。
+  - `public_base_url: "http://你的可达地址:57881"`：bridge 会固定生成 `http://你的可达地址:57881/audio/...`，这对 Home Assistant 反代/NAT/固定域名场景更稳。
+- 真实设备要能播，前提不是“生成了音频文件”，而是“设备能主动访问到这个音频 URL”。
+
 ## 什么时候读其它文件
 
 - 要看接口：读 `scripts/bridge_server.py`

@@ -89,7 +89,12 @@ def speak_route() -> Any:
         return jsonify({"ok": False, "error": "Missing required field: text"}), 400
 
     try:
-        result = speak(text=text, config=APP_CONFIG, config_path=APP_CONFIG_PATH)
+        result = speak(
+            text=text,
+            config=APP_CONFIG,
+            config_path=APP_CONFIG_PATH,
+            audio_base_url_override=_resolve_audio_base_url(),
+        )
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify(result)
@@ -107,7 +112,12 @@ def text_callback_route() -> Any:
         }), 400
 
     try:
-        result = speak(text=text, config=APP_CONFIG, config_path=APP_CONFIG_PATH)
+        result = speak(
+            text=text,
+            config=APP_CONFIG,
+            config_path=APP_CONFIG_PATH,
+            audio_base_url_override=_resolve_audio_base_url(),
+        )
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc), "callback": metadata}), 500
 

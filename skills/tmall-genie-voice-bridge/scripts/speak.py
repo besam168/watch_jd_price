@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -48,7 +49,17 @@ def build_audio_url(config: Dict[str, Any], audio_file: Path) -> str | None:
     audio_base_url = http_player.get("audio_base_url")
     if not audio_base_url:
         return None
-    return audio_base_url.rstrip("/") + "/" + audio_file.name
+    return join_audio_base_url(str(audio_base_url), audio_file.name)
+
+
+def join_audio_base_url(audio_base_url: str, filename: str) -> str:
+    normalized = str(audio_base_url).rstrip("/")
+    if not normalized:
+        raise ValueError("audio_base_url cannot be empty")
+
+    parsed = urlsplit(normalized)
+    path = parsed.path.rstrip("/") + "/" + filename
+    return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
 
 
 def resolve_output_dir(config: Dict[str, Any], config_path: Path) -> Path:
@@ -108,7 +119,13 @@ def build_backend_options(backend_type: str, config: Dict[str, Any], config_path
     return backend_options
 
 
-def speak(*, text: str, config: Dict[str, Any], config_path: Path) -> Dict[str, Any]:
+def speak(
+    *,
+    text: str,
+    config: Dict[str, Any],
+    config_path: Path,
+    audio_base_url_override: str | None = None,
+) -> Dict[str, Any]:
     backend_cfg = config.get("backend") or {}
     backend_type = backend_cfg.get("type", "mock_tmall_genie")
     backend_options = build_backend_options(backend_type, config, config_path)
@@ -121,7 +138,11 @@ def speak(*, text: str, config: Dict[str, Any], config_path: Path) -> Dict[str, 
     output_dir = resolve_output_dir(config, config_path)
     audio_path = synthesize_audio(text=text, config=config, output_dir=output_dir)
 
-    audio_url = build_audio_url(config, audio_path)
+    audio_url = (
+        join_audio_base_url(audio_base_url_override, audio_path.name)
+        if audio_base_url_override
+        else build_audio_url(config, audio_path)
+    )
     backend = backend_cls(backend_options)
     backend_result = backend.play(text=text, audio_path=audio_path, audio_url=audio_url)
 
