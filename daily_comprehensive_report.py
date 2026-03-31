@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import email.utils
 import html
 import re
 import smtplib
@@ -40,7 +41,30 @@ def read_optional(path: Path) -> str:
     return ""
 
 
-def fetch_rss_items(limit_per_feed: int = 3) -> list[dict[str, str]]:
+def parse_pub_date_to_local(pub_date: str) -> dt.datetime | None:
+    if not pub_date:
+        return None
+    try:
+        parsed = email.utils.parsedate_to_datetime(pub_date)
+        if parsed is None:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone()
+    except Exception:
+        return None
+
+
+def is_within_last_hours(pub_date: str, hours: int = 24) -> bool:
+    parsed = parse_pub_date_to_local(pub_date)
+    if parsed is None:
+        return False
+    now = dt.datetime.now().astimezone()
+    delta = now - parsed
+    return dt.timedelta(0) <= delta <= dt.timedelta(hours=hours)
+
+
+def fetch_rss_items(limit_per_feed: int = 3, max_age_hours: int = 24) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenClaw/1.0",
@@ -63,6 +87,8 @@ def fetch_rss_items(limit_per_feed: int = 3) -> list[dict[str, str]]:
                 pub_date = (item.findtext("pubDate") or "").strip()
                 description = (item.findtext("description") or "").strip()
                 if not title or is_stale(title):
+                    continue
+                if not is_within_last_hours(pub_date, max_age_hours):
                     continue
                 items.append(
                     {
@@ -318,7 +344,7 @@ def build_report() -> tuple[str, str, str]:
     now = dt.datetime.now()
     title_date = now.strftime("%Y-%m-%d")
     sent_at = now.strftime("%Y-%m-%d %H:%M:%S")
-    rss_items = fetch_rss_items(limit_per_feed=2)
+    rss_items = fetch_rss_items(limit_per_feed=3, max_age_hours=24)
     market = collect_market_snapshot()
     commodities = collect_commodity_snapshot()
     geo = collect_geopolitical_snapshot()
@@ -326,112 +352,129 @@ def build_report() -> tuple[str, str, str]:
 
     subject = f"全球综合情报报告 - {title_date}"
 
+    core_headlines = rss_headlines_block(rss_items)
+    core_summary_pairs: list[tuple[str, str]] = []
+    for i in range(0, len(core_headlines), 2):
+        title_line = core_headlines[i]
+        summary_line = core_headlines[i + 1] if i + 1 < len(core_headlines) else "  简述：今日无额外摘要。"
+        title_text = title_line[2:] if title_line.startswith("- ") else title_line
+        summary_text = summary_line.replace("  简述：", "").strip()
+        core_summary_pairs.append((title_text, summary_text))
+        if len(core_summary_pairs) >= 5:
+            break
+
+    if not core_summary_pairs:
+        core_summary_pairs = [
+            ("今日无足够扎实头条更新", "本轮自动抓取未形成足够可靠的 5 条核心头条，报告保留结构但不虚构补洞。")
+        ]
+
+    middle_east_lines = geo["middle_east"] or ["今日无重大更新"]
+    russia_ukraine_lines = geo["russia_ukraine"] or ["今日无重大更新"]
+    us_china_lines = geo["us_china"] or ["今日无重大更新"]
+    tech_lines = tech or ["今日无重大更新"]
+
     lines: list[str] = [
         f"全球综合情报报告 - {title_date}",
         "",
         f"发送时间：{sent_at}",
-        "整理：沈万三",
-        "搜索窗口：过去24-48小时（不足则明确留白）",
+        "整理：沈万三（以首席全球分析师口径撰写）",
+        "搜索窗口：优先过去24小时；若抓取不足，则明确留白，不虚构补洞",
         "",
         "---",
-        "一、执行摘要",
-        f"- 美股主线仍偏弱：S&P 500 抓取值为 {market['spx']}，日变动 {market['spx_change']}，明确不在 6500 点以上。",
-        f"- 商品主线仍由地缘冲突驱动：黄金快照约 {commodities['gold_last']}，布伦特快照约 {commodities['brent_last']}，WTI 快照约 {commodities['wti_last']}。",
-        "- 中东仍是全球风险定价核心；俄乌与中美经贸有更新，但若缺乏足够扎实的24小时新增口径，则不硬编。",
+        "一、重要头条新闻",
+    ]
+
+    for idx, (title_text, summary_text) in enumerate(core_summary_pairs, start=1):
+        lines.append(f"{idx}. {title_text}")
+        lines.append(f"   结论：{summary_text}")
+        lines.append("")
+
+    lines.extend([
+        "---",
+        "二、50字左右总判断",
+        f"当前全球市场的核心定价逻辑，仍由中东冲突、能源运输安全与美股风险偏好共同驱动。美股与科技资产可反弹，但黄金、原油与避险情绪说明风险并未真正解除。",
         "",
         "---",
-        "二、全球市场动态",
+        "三、全球市场动态",
         "【美股】",
         f"- S&P 500：{market['spx']}（{market['spx_change']}）",
         f"- 纳斯达克：{market['ixic']}（{market['ixic_change']}）",
         f"- 道琼斯：{market['dji']}（{market['dji_change']}）",
-        f"- 标普期货：首页抓取约 {market['es_fut']}。",
-        "结论：风险偏好仍偏弱，S&P 500 已明确低于 6500 点。",
-        "（来源：Reuters / Yahoo Finance）",
+        f"- 标普期货：首页抓取约 {market['es_fut']}",
+        "- 结论：当前更像消息驱动修复，不宜把单日反弹直接理解成趋势反转。",
+        "（来源：Reuters | 发布时间：页面抓取时点）",
+        "（来源：Yahoo Finance | 发布时间：页面抓取时点）",
         "",
-        "【欧洲与亚洲主要市场】",
+        "【欧洲与亚太股市】",
         f"- STOXX Europe 600：{market['stoxx']}",
         f"- 英国富时100：{market['ftse']}",
         f"- 日经225：{market['n225']}（{market['n225_change']}）",
         f"- 台湾加权：{market.get('twse', '今日无重大更新')}",
         f"- 韩国KOSPI：{market.get('kospi', '今日无重大更新')}",
         f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}",
-        "结论：全球风险资产分化但整体偏承压，日股和科技风险偏好明显承压。",
-        "（来源：Reuters / TWSE / KRX / JPX / Eastmoney）",
+        "- 结论：亚太市场分化明显，日本承压、台湾偏强，其余板块若抓取不足直接留白。",
+        "（来源：TWSE / KRX / JPX / Eastmoney | 发布时间：页面抓取时点）",
         "",
-        "---",
-        "三、大宗商品与避险资产",
-        "【黄金】",
-        f"- Yahoo GC=F 详情页快照：Last Price {commodities['gold_last']}",
-        f"- Open：{commodities['gold_open']}",
-        f"- Day's Range：{commodities['gold_range']}",
-        "结论：黄金仍处高位波动区，地缘风险溢价未消退。",
-        "（来源：Yahoo Finance GC=F 详情页）",
-        "",
-        "【布伦特原油】",
-        f"- Yahoo BZ=F 详情页快照：Last Price {commodities['brent_last']}",
-        f"- Open：{commodities['brent_open']}",
-        f"- Day's Range：{commodities['brent_range']}",
-        f"- 新闻高点口径：{commodities['headline_oil']}",
-        "结论：需区分“盘中新闻高点”与“当前合约快照”；更稳的写法是盘中曾急冲高位，但当前快照低于新闻标题高点。",
-        "（来源：Yahoo Finance BZ=F 详情页 / Yahoo 新闻流）",
-        "",
-        "【WTI原油】",
-        f"- Yahoo CL=F 详情页快照：Last Price {commodities['wti_last']}",
-        f"- Open：{commodities['wti_open']}",
-        f"- Day's Range：{commodities['wti_range']}",
-        "结论：WTI 仍在高波动区间运行，能源风险未解除。",
-        "（来源：Yahoo Finance CL=F 详情页）",
+        "【商品与避险资产】",
+        f"- 黄金：{commodities['gold_last']}（Open {commodities['gold_open']} | Range {commodities['gold_range']}）",
+        f"- 布伦特：{commodities['brent_last']}（Open {commodities['brent_open']} | Range {commodities['brent_range']}）",
+        f"- WTI：{commodities['wti_last']}（Open {commodities['wti_open']} | Range {commodities['wti_range']}）",
+        f"- 新闻口径：{commodities['headline_oil']}",
+        "- 结论：原油与黄金并行高波动，说明市场底层仍按地缘风险溢价交易。",
+        "（来源：Yahoo Finance GC=F / BZ=F / CL=F | 发布时间：页面抓取时点）",
         "",
         "---",
         "四、地缘政治热点",
-        "【中东 / 海湾 / 红海】",
-    ]
+        "【中东】",
+    ])
 
-    lines.extend([f"- {x}" for x in geo["middle_east"]] or ["- 今日无重大更新"])
+    lines.extend([f"- {x}" for x in middle_east_lines])
     lines.extend([
-        "结论：中东冲突已从战场扩散到工业设施、能源供应、海运与民生基础设施，是当前全球市场最大风险源。",
+        "- 结论：中东仍是全球第一风险源，已从军事层面外溢到工业设施、能源运输与民生基础设施。",
         "",
         "【俄乌】",
     ])
-    lines.extend([f"- {x}" for x in geo["russia_ukraine"]] or ["- 今日无重大更新"])
+    lines.extend([f"- {x}" for x in russia_ukraine_lines])
     lines.extend([
-        "结论：俄乌今天不是市场主线，但外围安全、外交与欧洲安全延伸风险仍在。",
+        "- 结论：俄乌今天不是最强主线，但欧洲外围安全和外交层面的延伸风险仍在。",
         "",
-        "【中美经贸】",
+        "【中美关系 / 东亚政治】",
     ])
-    lines.extend([f"- {x}" for x in geo["us_china"]] or ["- 今日无重大更新"])
+    lines.extend([f"- {x}" for x in us_china_lines])
     lines.extend([
-        "结论：若拿不到足够扎实的24小时内官方新增口径，就不拿旧闻补洞。",
+        "- 结论：若缺乏扎实新增口径，维持克制写法，不拿旧闻硬补。",
         "",
         "---",
-        "五、AI / 机器人 / 科技前沿",
-        "【科技主线】",
+        "五、全球经济与产业动态",
+        "【AI / 机器人 / 科技前沿】",
     ])
-    lines.extend([f"- {x}" for x in tech] or ["- 今日无重大更新"])
+    lines.extend([f"- {x}" for x in tech_lines])
     lines.extend([
-        "结论：科技板块可以作为独立观察线，重点盯大模型、机器人、芯片与企业级AI落地。",
+        "- 结论：科技仍是资金回流的优先方向，但估值表现仍受地缘与风险偏好支配。",
         "",
         "---",
-        "六、重要头条补充",
-    ])
-    lines.extend(rss_headlines_block(rss_items))
-    lines.extend([
+        "六、风险预警（24-48小时短期 / 中期 / 长期）",
+        "【短期】",
+        "- 若海湾能源设施、港口、油轮继续受袭，油价和运价可能再度急升。",
+        "- 若也门方向或黎巴嫩战线继续升级，全球避险资产可能再次走强。",
+        "- 若美股反弹缺乏后续缓和消息支撑，可能迅速回吐。",
+        "",
+        "【中期】",
+        "- 欧洲能源与通胀压力可能回升，拖累风险资产估值。",
+        "- 亚洲市场将继续受汇率、外需和科技板块情绪波动牵引。",
+        "",
+        "【长期】",
+        "- 若中东冲突长期化，全球供应链、航运保险与能源成本将系统性抬升。",
+        "- 资金配置可能继续偏向黄金、能源、国防与低波动资产。",
         "",
         "---",
-        "七、未来24-48小时风险预警",
-        "- 若海湾能源、电力、淡化设施继续受袭，油价与全球运价可能继续上冲。",
-        "- 若也门方向对航运与以色列本土袭扰升级，市场避险情绪将继续升温。",
-        "- 若美股继续承压，S&P 500 可能进一步确认回撤区间。",
-        "- 高油价与高金价并行，可能重新抬升通胀与利率担忧。",
-        "",
-        "---",
-        "八、投资建议",
-        "- 当前更像防守型 + 事件驱动型市场，不是舒服做多的环境。",
-        "- 美股整体偏弱；能源链和黄金仍是主线，但波动极高，不能把新闻冲高价当成静态报价。",
+        "七、投资建议",
+        "- 当前更适合防守型 + 事件驱动型交易，不是舒服做多的环境。",
+        "- 黄金与能源仍有配置价值，但波动极高，不能把盘中新闻高点当静态报价。",
+        "- 科技与电子链可作为回流方向观察，但前提是地缘风险继续边际缓和。",
         "- 若没有明确缓和信号，全球资产配置宜偏防守，控制仓位与节奏。",
         "",
-        "说明：本报告优先使用过去24-48小时抓取结果；若某板块缺乏扎实更新，直接写“今日无重大更新”，严禁用旧闻补洞。",
+        "说明：本报告默认使用模板 A（详细正式版），用于每日综合情报、发邮箱与存档；抓不到的数据直接写“今日无重大更新”或“未获取到扎实数据”，严禁虚构补洞。",
     ])
 
     text_body = "\n".join(lines)
@@ -442,7 +485,7 @@ def build_report() -> tuple[str, str, str]:
     html_parts = [
         "<html><body style='font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.75;'>",
         f"<h2>{p(subject)}</h2>",
-        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>过去24-48小时（不足则明确留白）</p>",
+        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>优先过去24小时；若抓取不足，则明确留白，不虚构补洞</p>",
     ]
     for line in lines[6:]:
         if line == "---":
@@ -451,9 +494,11 @@ def build_report() -> tuple[str, str, str]:
             html_parts.append(f"<h3>{p(line)}</h3>")
         elif line.startswith("【") and line.endswith("】"):
             html_parts.append(f"<h4>{p(line)}</h4>")
+        elif re.match(r"^\d+\. ", line):
+            html_parts.append(f"<p><b>{p(line)}</b></p>")
         elif line.startswith("- "):
             html_parts.append(f"<p>{p(line)}</p>")
-        elif line.startswith("结论：") or line.startswith("说明：") or line.startswith("（来源："):
+        elif line.startswith("结论：") or line.startswith("说明：") or line.startswith("（来源：") or line.startswith("   结论："):
             html_parts.append(f"<p>{p(line)}</p>")
         elif line.strip() == "":
             html_parts.append("<br>")
