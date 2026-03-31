@@ -6,6 +6,7 @@ import sys
 import time
 import webbrowser
 from ctypes import wintypes
+from typing import List
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -89,6 +90,101 @@ class INPUT(ctypes.Structure):
 
 class POINT(ctypes.Structure):
     _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(ROOT_DIR, "logs")
+LOG_PATH = os.path.join(LOG_DIR, "desktop-actions.jsonl")
+SAFE_CONFIG_PATH = os.path.join(ROOT_DIR, "safe-config.json")
+
+
+def load_safe_config():
+    defaults = {
+        "allowedWindowTitles": [],
+        "blockedWindowTitles": ["task manager", "注册表编辑器", "registry editor"],
+        "allowCommands": False,
+        "allowOpenApp": True,
+        "allowOpenUrl": True,
+        "allowTyping": True,
+        "allowHotkeys": True,
+        "requireWindowMatchForInput": False,
+    }
+    if not os.path.exists(SAFE_CONFIG_PATH):
+        return defaults
+    try:
+        with open(SAFE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            defaults.update(data)
+    except Exception:
+        pass
+    return defaults
+
+
+def ensure_log_dir():
+    os.makedirs(LOG_DIR, exist_ok=True)
+
+
+def write_action_log(action: str, payload: dict, result: str, ok: bool = True):
+    ensure_log_dir()
+    record = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()),
+        "action": action,
+        "payload": payload,
+        "result": result,
+        "ok": ok,
+        "foregroundWindow": get_foreground_window_title(silent=True),
+    }
+    with open(LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def normalize_title(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+def get_foreground_window_title(silent: bool = False) -> str:
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return ""
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value or ""
+
+
+def enforce_window_guard(config: dict, action: str):
+    title = get_foreground_window_title(silent=True)
+    normalized = normalize_title(title)
+
+    blocked = [normalize_title(x) for x in config.get("blockedWindowTitles", []) if normalize_title(x)]
+    for item in blocked:
+        if item and item in normalized:
+            raise PermissionError(f"Action blocked on foreground window: {title}")
+
+    if config.get("requireWindowMatchForInput"):
+        allowed = [normalize_title(x) for x in config.get("allowedWindowTitles", []) if normalize_title(x)]
+        if allowed and not any(item in normalized for item in allowed):
+            raise PermissionError(f"Foreground window not allowed for action {action}: {title}")
+
+
+def recent_action_log(limit: int = 20):
+    if not os.path.exists(LOG_PATH):
+        return []
+    with open(LOG_PATH, "r", encoding="utf-8") as f:
+        lines = f.readlines()[-max(1, limit):]
+    rows = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rows.append(json.loads(line))
+        except Exception:
+            rows.append({"raw": line})
+    return rows
 
 
 def send_input(*inputs):
@@ -258,25 +354,43 @@ def main(argv):
     action = argv[1]
     args = argv[2:] + [""] * 4
     arg1, arg2, arg3, arg4 = args[:4]
+    config = load_safe_config()
 
+    if action == "get-foreground-window":
+        emit(get_foreground_window_title(silent=True))
+        return 0
+    if action == "get-recent-actions":
+        limit = max(1, int(arg1 or "20"))
+        emit(json.dumps(recent_action_log(limit), ensure_ascii=False))
+        return 0
     if action == "mouse-move":
+        enforce_window_guard(config, action)
         x = round(float(arg1))
         y = round(float(arg2))
         set_cursor_pos(x, y)
-        emit(f"Mouse moved to ({x}, {y})")
+        result = f"Mouse moved to ({x}, {y})"
+        write_action_log(action, {"x": x, "y": y}, result)
+        emit(result)
         return 0
     if action == "mouse-move-relative":
+        enforce_window_guard(config, action)
         dx = round(float(arg1))
         dy = round(float(arg2))
         x, y = get_cursor_pos()
         nx, ny = x + dx, y + dy
         set_cursor_pos(nx, ny)
-        emit(f"Mouse moved relatively by ({dx}, {dy}) to ({nx}, {ny})")
+        result = f"Mouse moved relatively by ({dx}, {dy}) to ({nx}, {ny})"
+        write_action_log(action, {"dx": dx, "dy": dy, "x": nx, "y": ny}, result)
+        emit(result)
         return 0
     if action == "mouse-click":
-        emit(mouse_click(arg1 or "left"))
+        enforce_window_guard(config, action)
+        result = mouse_click(arg1 or "left")
+        write_action_log(action, {"button": arg1 or "left"}, result)
+        emit(result)
         return 0
     if action == "mouse-drag":
+        enforce_window_guard(config, action)
         x1 = round(float(arg1))
         y1 = round(float(arg2))
         x2 = round(float(arg3))
@@ -288,30 +402,59 @@ def main(argv):
         set_cursor_pos(x2, y2)
         time.sleep(0.08)
         user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
-        emit(f"Mouse dragged from ({x1}, {y1}) to ({x2}, {y2})")
+        result = f"Mouse dragged from ({x1}, {y1}) to ({x2}, {y2})"
+        write_action_log(action, {"fromX": x1, "fromY": y1, "toX": x2, "toY": y2}, result)
+        emit(result)
         return 0
     if action == "mouse-scroll":
+        enforce_window_guard(config, action)
         delta = -240 if arg1 == "down" else 240 if arg1 == "up" else round(float(arg1))
         user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, ctypes.c_uint32(ctypes.c_int32(delta).value).value, 0)
-        emit(f"Mouse wheel scrolled by {delta}")
+        result = f"Mouse wheel scrolled by {delta}"
+        write_action_log(action, {"delta": delta}, result)
+        emit(result)
         return 0
     if action == "type-text":
-        emit(type_text(arg1))
+        if not config.get("allowTyping", True):
+            raise PermissionError("Typing is disabled by safe-config")
+        enforce_window_guard(config, action)
+        result = type_text(arg1)
+        write_action_log(action, {"text": arg1}, result)
+        emit(result)
         return 0
     if action == "press-hotkey":
-        emit(press_hotkey(arg1))
+        if not config.get("allowHotkeys", True):
+            raise PermissionError("Hotkeys are disabled by safe-config")
+        enforce_window_guard(config, action)
+        result = press_hotkey(arg1)
+        write_action_log(action, {"keys": arg1}, result)
+        emit(result)
         return 0
     if action == "open-app":
-        emit(open_app(arg1))
+        if not config.get("allowOpenApp", True):
+            raise PermissionError("Open-app is disabled by safe-config")
+        result = open_app(arg1)
+        write_action_log(action, {"target": arg1}, result)
+        emit(result)
         return 0
     if action == "open-url":
-        emit(open_url(arg1))
+        if not config.get("allowOpenUrl", True):
+            raise PermissionError("Open-url is disabled by safe-config")
+        result = open_url(arg1)
+        write_action_log(action, {"url": arg1}, result)
+        emit(result)
         return 0
     if action == "run-command":
-        emit(run_command(arg1))
+        if not config.get("allowCommands", False):
+            raise PermissionError("Run-command is disabled by safe-config")
+        result = run_command(arg1)
+        write_action_log(action, {"command": arg1}, result)
+        emit(result)
         return 0
     if action == "focus-window":
-        emit(focus_window(arg1))
+        result = focus_window(arg1)
+        write_action_log(action, {"title": arg1}, result)
+        emit(result)
         return 0
     if action == "screen-capture":
         raise ValueError("screen-capture action moved to screen-capture-compat.ps1")

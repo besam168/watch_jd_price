@@ -132,6 +132,24 @@ function baseFindTextParams() {
   };
 }
 
+async function captureScreen(captureScriptPath: string, params: {
+  path?: string;
+  virtualScreen?: boolean;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}) {
+  const result = await execFileAsync("powershell", [
+    "-ExecutionPolicy",
+    "Bypass",
+    "-File",
+    captureScriptPath,
+    ...buildCaptureArgs(params),
+  ]);
+  return (result.stdout || "").trim() || (result.stderr || "").trim();
+}
+
 export default function (api) {
   const scriptPath = path.join(__dirname, "scripts", "desktop-input.py");
   const captureScriptPath = path.join(__dirname, "scripts", "screen-capture-compat.ps1");
@@ -251,6 +269,26 @@ export default function (api) {
   }, { optional: true });
 
   api.registerTool({
+    name: "desktop_get_foreground_window",
+    description: "Get the current foreground window title.",
+    parameters: Type.Object({}),
+    async execute() {
+      const text = await runPy(scriptPath, ["get-foreground-window"]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_get_recent_actions",
+    description: "Read recent desktop action logs for observability and debugging.",
+    parameters: Type.Object({ limit: Type.Optional(Type.Number()) }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["get-recent-actions", String(params.limit ?? 20)]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
     name: "desktop_screen_capture",
     description: "Capture the current screen to a PNG file, with optional virtual-screen and region support.",
     parameters: Type.Object({
@@ -262,14 +300,7 @@ export default function (api) {
       height: Type.Optional(Type.Number()),
     }),
     async execute(_id, params) {
-      const result = await execFileAsync("powershell", [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        captureScriptPath,
-        ...buildCaptureArgs(params),
-      ]);
-      const text = (result.stdout || "").trim() || (result.stderr || "").trim() || "OK";
+      const text = await captureScreen(captureScriptPath, params) || "OK";
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });
@@ -305,14 +336,7 @@ export default function (api) {
     description: "Capture the screen, run OCR, and return the best match plus optional top-N matches and engine info.",
     parameters: Type.Object(baseFindTextParams()),
     async execute(_id, params) {
-      const captureResult = await execFileAsync("powershell", [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        captureScriptPath,
-        ...buildCaptureArgs(params),
-      ]);
-      const imagePath = (captureResult.stdout || "").trim() || (captureResult.stderr || "").trim();
+      const imagePath = await captureScreen(captureScriptPath, params);
       const ocr = await runOcr(ocrScriptPath, {
         imagePath,
         lang: params.lang,
@@ -345,21 +369,17 @@ export default function (api) {
 
   api.registerTool({
     name: "desktop_click_text_on_screen",
-    description: "Find matching text on screen using OCR and click its center point. Supports dry-run mode.",
+    description: "Find matching text on screen using OCR and click its center point. Supports dry-run mode and optional post-click verification.",
     parameters: Type.Object({
       ...baseFindTextParams(),
       button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle"), Type.Literal("double")], { default: "left" })),
       dryRun: Type.Optional(Type.Boolean()),
+      verifyQuery: Type.Optional(Type.String()),
+      verifyAbsentQuery: Type.Optional(Type.String()),
+      verifyDelayMs: Type.Optional(Type.Number()),
     }),
     async execute(_id, params) {
-      const captureResult = await execFileAsync("powershell", [
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        captureScriptPath,
-        ...buildCaptureArgs(params),
-      ]);
-      const imagePath = (captureResult.stdout || "").trim() || (captureResult.stderr || "").trim();
+      const imagePath = await captureScreen(captureScriptPath, params);
       const ocr = await runOcr(ocrScriptPath, {
         imagePath,
         lang: params.lang,
@@ -399,9 +419,43 @@ export default function (api) {
       const button = params.button || "left";
       const dryRun = Boolean(params.dryRun);
       let clickText = "DRY_RUN";
+      let verify: any = null;
       if (!dryRun) {
         await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
         clickText = await runPy(scriptPath, ["mouse-click", button]);
+
+        const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery);
+        if (shouldVerify) {
+          const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
+          if (delayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+          }
+          const verifyImagePath = await captureScreen(captureScriptPath, params);
+          const verifyOcr = await runOcr(ocrScriptPath, {
+            imagePath: verifyImagePath,
+            lang: params.lang,
+            preprocess: params.preprocess,
+            groupBy: params.groupBy,
+            topN: Math.max(params.topN ?? 1, 3),
+          });
+          const verifyItems = Array.isArray(verifyOcr?.items) ? verifyOcr.items : [];
+          const normalizedTexts = verifyItems.map((item: any) => String(item?.normalizedText || ""));
+          const verifyQuery = String(params.verifyQuery || "").trim().toLowerCase();
+          const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
+          const present = verifyQuery ? normalizedTexts.some((t: string) => t.includes(verifyQuery)) : null;
+          const absent = verifyAbsentQuery ? !normalizedTexts.some((t: string) => t.includes(verifyAbsentQuery)) : null;
+          verify = {
+            imagePath: verifyImagePath,
+            verifyQuery: params.verifyQuery || null,
+            verifyAbsentQuery: params.verifyAbsentQuery || null,
+            verifyDelayMs: delayMs,
+            present,
+            absent,
+            success: [present, absent].filter((v) => v !== null).every(Boolean),
+            engine: verifyOcr?.engine || null,
+            count: verifyOcr?.count || 0,
+          };
+        }
       }
 
       return {
@@ -420,6 +474,7 @@ export default function (api) {
               executed: !dryRun,
               result: clickText,
             },
+            verify,
             match,
             matches,
             topN: params.topN ?? 1,

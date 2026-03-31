@@ -1,0 +1,14 @@
+{
+  "allowedWindowTitles": [],
+  "blockedWindowTitles": [
+    "task manager",
+    "registry editor",
+    "注册表编辑器"
+  ],
+  "allowCommands": false,
+  "allowOpenApp": true,
+  "allowOpenUrl": true,
+  "allowTyping": true,
+  "allowHotkeys": true,
+  "requireWindowMatchForInput": false
+}
