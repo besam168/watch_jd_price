@@ -32,6 +32,7 @@ description: 让 OpenClaw 通过“天猫精灵语音桥”方式接入家庭语
 - 支持可插拔播放后端
 - 支持 mock 后端与通用 HTTP 播放后端
 - 支持通过 HTTP `/speak` 接口触发播报
+- 支持通过 `/callback/text` / `/webhook/text` 接收上游 webhook / 技能文本回调并转成播报
 
 当前**不承诺**：
 
@@ -280,6 +281,38 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bri
 $body = @{ text = '你好，我是沈万三。' } | ConvertTo-Json -Compress
 Invoke-RestMethod -Uri 'http://127.0.0.1:57881/speak' -Method Post -ContentType 'application/json; charset=utf-8' -Body $body | ConvertTo-Json -Depth 8
 ```
+
+### 6.5) 用 webhook / 技能文本回调触发播报（新增）
+
+如果上游不是直接传 `{ text }`，而是技能平台 / 自动化平台回调，可直接打：
+
+- `POST /callback/text`
+- `POST /webhook/text`
+
+当前接受的常见文本字段：
+
+- `text`
+- `query`
+- `utterance`
+- `message`
+- `payload.text`
+- `payload.query`
+- `intent.query`
+- `request.text`
+- `request.query`
+
+最小示例：
+
+```powershell
+$body = @{ query = '打开客厅灯' ; source = 'tmall-skill-sim' ; session_id = 'demo-001' } | ConvertTo-Json -Compress
+Invoke-RestMethod -Uri 'http://127.0.0.1:57881/callback/text' -Method Post -ContentType 'application/json; charset=utf-8' -Body $body | ConvertTo-Json -Depth 10
+```
+
+注意：
+
+- 这条路线本质是**文本回调桥接**，不是原始麦克风 / PCM 音频桥接。
+- 适合先做“天猫精灵技能 / 云函数 / Home Assistant 自动化 -> 文本 -> 本地播报”闭环。
+- 返回里会保留 `callback` 元数据和 `recognized_text`，便于以后接真实上游。
 
 ## 推荐工作流
 
