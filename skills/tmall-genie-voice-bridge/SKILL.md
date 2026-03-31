@@ -45,6 +45,7 @@ description: 让 OpenClaw 通过“天猫精灵语音桥”方式接入家庭语
 - `scripts/bridge_server.py`：本地 HTTP bridge server
 - `scripts/speak.py`：文本转语音并调用后端
 - `scripts/listen_once.py`：Windows 一次性语音输入 / wav 转写入口
+- `scripts/check-microphone.ps1`：Windows 录音设备 / 默认输入 / 识别器预检脚本
 - `scripts/providers/tts_edge.py`：Edge TTS provider
 - `scripts/backends/base.py`：后端基类
 - `scripts/backends/mock_tmall_genie.py`：模拟后端
@@ -136,22 +137,44 @@ powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bri
 
 优先走 Windows 内置 `System.Speech`，不额外依赖云识别服务。
 
-直接听一次麦克风：
+#### 最短 bring-up 路线（以后插上麦再跑）
+
+先做只读预检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File skills/tmall-genie-voice-bridge/scripts/check-microphone.ps1
+```
+
+看三个点：
+
+- `recognizer.available` 是否为 `true`
+- `microphone.default_input_accessible` 是否为 `true`
+- `devices` 里是否能看到像样的录音端点 / 声卡设备
+
+再做最小麦克风识别：
 
 ```bash
 python skills/tmall-genie-voice-bridge/scripts/listen_once.py --timeout-seconds 6
 ```
 
-转写已有 wav 文件：
+最后做“听到就说”联调：
+
+```bash
+python skills/tmall-genie-voice-bridge/scripts/listen_once.py --timeout-seconds 6 --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json
+```
+
+#### 无麦克风时的替代验证
+
+先用 wav 文件验证识别链路：
 
 ```bash
 python skills/tmall-genie-voice-bridge/scripts/listen_once.py --wav skills/tmall-genie-voice-bridge/tmp_audio/smoke.wav
 ```
 
-识别成功后直接回灌现有 speak 流：
+再用 wav 文件验证“识别后回灌 speak”链路：
 
 ```bash
-python skills/tmall-genie-voice-bridge/scripts/listen_once.py --timeout-seconds 6 --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json
+python skills/tmall-genie-voice-bridge/scripts/listen_once.py --wav skills/tmall-genie-voice-bridge/tmp_audio/listen-once-test.wav --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json
 ```
 
 返回统一 JSON，核心字段：
@@ -163,15 +186,51 @@ python skills/tmall-genie-voice-bridge/scripts/listen_once.py --timeout-seconds 
 - `culture`
 - `speak_result`（仅 `--echo-speak` 时出现）
 
-注意：
+#### 麦克风 bring-up 排障顺序
 
-- 当前入口优先保证 **Windows 本机一次性输入 demo**，不是持续流式识别。
-- 若麦克风权限、设备占用、默认录音设备缺失或现场噪音导致识别不稳，先用 `--wav` 跑文件转写，最快拿到演示结果。
-- 如果 `SetInputToDefaultAudioDevice` 报错，下一条命令直接这样跑：
+按这个顺序查，最快：
 
-```bash
-python skills/tmall-genie-voice-bridge/scripts/listen_once.py --wav skills/tmall-genie-voice-bridge/tmp_audio/listen-once-test.wav --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json
-```
+1. **先跑 `check-microphone.ps1`**
+   - 如果 `recognizer.available=false`：本机没有对应语言识别器，先换 `--culture en-US` 试，或安装匹配的 Windows 语音识别语言包。
+   - 如果 `default_input_accessible=false`：默认录音设备不存在、被系统禁用、被别的软件占用，或当前机器没插麦。
+2. **去 Windows 设置确认默认输入**
+   - 系统 -> 声音 -> 输入
+   - 把目标麦克风设为默认输入，确认输入电平有波动。
+3. **确认麦克风权限**
+   - 系统 -> 隐私和安全性 -> 麦克风
+   - 打开桌面应用麦克风访问。
+4. **只跑 `listen_once.py`，别一上来就 `--echo-speak`**
+   - 先拿到 `ok=true` 和 `text`，再叠加播报。
+5. **如果默认设备链路不稳，先退回 `--wav`**
+   - 这能把问题切分成“识别问题”还是“录音设备问题”。
+6. **如果识别成功但没出声**
+   - 直接改测 `speak-local.ps1` 或 `scripts/speak.py`，确认是播放后端问题，不是麦克风问题。
+
+常见错误含义：
+
+- `No recognizer installed for culture ...`：系统没装该语言的识别器。
+- `SetInputToDefaultAudioDevice` 相关报错：默认录音设备不可用。
+- `No speech recognized before timeout.`：有设备，但这次没识别到有效语音，常见于静音、音量太低、离麦太远、环境噪音、说话太晚。
+
+#### 验收口径：mic in -> text -> spoken reply
+
+满足下面 4 条，才算“麦克风已打通”：
+
+1. `check-microphone.ps1` 显示：
+   - `recognizer.available=true`
+   - `microphone.default_input_accessible=true`
+2. `listen_once.py --timeout-seconds 6` 返回：
+   - `ok=true`
+   - `mode="microphone"`
+   - `text` 非空，且和口播内容大致一致
+3. `listen_once.py --echo-speak --config skills/tmall-genie-voice-bridge/config.local-speaker.json` 返回：
+   - `ok=true`
+   - `speak_result.ok=true`
+4. 现场主观验收：
+   - 人说一句
+   - 控制台打印出可接受文本
+   - 本机扬声器真实播出回复
+   - 不是只生成文件，也不是假成功
 
 ### 5) 再跑 bridge server
 
