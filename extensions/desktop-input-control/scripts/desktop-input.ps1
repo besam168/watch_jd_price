@@ -15,8 +15,17 @@ $signature = @"
 using System;
 using System.Runtime.InteropServices;
 public static class DesktopInputNative {
+  [StructLayout(LayoutKind.Sequential)]
+  public struct POINT {
+    public int X;
+    public int Y;
+  }
+
   [DllImport("user32.dll")]
   public static extern bool SetCursorPos(int X, int Y);
+
+  [DllImport("user32.dll")]
+  public static extern bool GetCursorPos(out POINT lpPoint);
 
   [DllImport("user32.dll")]
   public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
@@ -48,6 +57,12 @@ function Invoke-RightClick {
     [DesktopInputNative]::mouse_event($MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, [UIntPtr]::Zero)
     Start-Sleep -Milliseconds 40
     [DesktopInputNative]::mouse_event($MOUSEEVENTF_RIGHTUP, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+function Get-CursorPosition {
+    $point = New-Object DesktopInputNative+POINT
+    [DesktopInputNative]::GetCursorPos([ref]$point) | Out-Null
+    return $point
 }
 
 function Convert-ToSendKeysTarget([string]$value, $map) {
@@ -101,11 +116,25 @@ switch ($Action) {
         [DesktopInputNative]::SetCursorPos($x, $y) | Out-Null
         Write-Output "Mouse moved to ($x, $y)"
     }
+    "mouse-move-relative" {
+        $dx = [int][math]::Round([double]$Arg1)
+        $dy = [int][math]::Round([double]$Arg2)
+        $point = Get-CursorPosition
+        $x = $point.X + $dx
+        $y = $point.Y + $dy
+        [DesktopInputNative]::SetCursorPos($x, $y) | Out-Null
+        Write-Output "Mouse moved relatively by ($dx, $dy) to ($x, $y)"
+    }
     "mouse-click" {
         $button = ($Arg1 | ForEach-Object { $_.ToLowerInvariant() })
         if ($button -eq "right") {
             Invoke-RightClick
             Write-Output "Mouse right click sent"
+        } elseif ($button -eq "middle") {
+            [DesktopInputNative]::mouse_event(0x0020, 0, 0, 0, [UIntPtr]::Zero)
+            Start-Sleep -Milliseconds 40
+            [DesktopInputNative]::mouse_event(0x0040, 0, 0, 0, [UIntPtr]::Zero)
+            Write-Output "Mouse middle click sent"
         } elseif ($button -eq "double") {
             Invoke-LeftClick
             Start-Sleep -Milliseconds 80

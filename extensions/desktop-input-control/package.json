@@ -2,7 +2,16 @@
   "name": "desktop-input-control",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify:input": "python scripts/desktop-input.py mouse-move-relative 0 0",
+    "verify:capture": "powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1"
+  },
   "dependencies": {
     "@sinclair/typebox": "^0.34.41"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
   }
 }
