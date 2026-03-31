@@ -264,6 +264,11 @@ _这里记录一些需要记住的小事情_
   3. 本机 `local_windows_speaker` 的 WAV 播放应默认走 `SoundPlayer.PlaySync()`，不能再把 `WMPlayer playState=9` 当真人发声成功；
   4. 已新增并打通的关键入口包括：`speak-local.ps1`、`demo-text-roundtrip.ps1`、`scripts/listen_once.py`、`demo-wav-roundtrip.ps1`、`scripts/check-microphone.ps1`；
   5. 当前机器没有物理麦克风，因此**不能对外宣称“本机麦克风实测已打通”**；下午接上麦后，按 `check-microphone.ps1 -> listen_once.py --timeout-seconds 6 -> --echo-speak` 这条顺序继续验收。
+- 2026-03-31 晚间进一步确认：`tmall-genie-voice-bridge` 目前**还未完成真机闭环**，但两条关键桥接层已落地：
+  1. 已新增文本回调入口：`POST /callback/text`、`POST /webhook/text`，并支持 `text/query/utterance/message/payload.text/payload.query/intent.query/request.text/request.query` 等字段，说明“后台文本回调路线”已从概念变成当前最现实主线；
+  2. 已新增真实设备播放所需的音频 URL 能力：支持 `http_player.audio_base_url = "auto"` 与 `http_player.public_base_url`，说明“bridge 生成音频 -> 暴露可访问 URL -> 外部控制端驱动真机播放”这条路线已补上关键缺口；
+  3. 当前最准确项目状态不是“已完成”，而是：**桥接层基本成形，只差真实设备控制端接最后一跳**；
+  4. 下一阶段优先级固定为：**Home Assistant -> 阿里技能/云函数/官方开放平台 -> 第三方控制接口**；原始收音继续视为高风险备选，不当主线。 
 
 ---
 
