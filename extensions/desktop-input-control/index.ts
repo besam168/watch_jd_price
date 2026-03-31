@@ -132,6 +132,11 @@ function baseFindTextParams() {
   };
 }
 
+function createArtifactPath(prefix: string, suffix: string) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return path.join(__dirname, "artifacts", `${stamp}-${prefix}-${suffix}.png`);
+}
+
 async function captureScreen(captureScriptPath: string, params: {
   path?: string;
   virtualScreen?: boolean;
@@ -260,10 +265,20 @@ export default function (api) {
 
   api.registerTool({
     name: "desktop_focus_window",
-    description: "Bring a window to the foreground by title match using AppActivate.",
-    parameters: Type.Object({ title: Type.String() }),
+    description: "Bring a window to the foreground by title match or PID.",
+    parameters: Type.Object({ title: Type.Optional(Type.String()), pid: Type.Optional(Type.Number()) }),
     async execute(_id, params) {
-      const text = await runPy(scriptPath, ["focus-window", params.title]);
+      const text = await runPy(scriptPath, ["focus-window", params.title || "", String(params.pid ?? 0)]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_list_windows",
+    description: "List visible windows, optionally filtered by title substring.",
+    parameters: Type.Object({ query: Type.Optional(Type.String()) }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["list-windows", params.query || ""]);
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });
@@ -377,115 +392,151 @@ export default function (api) {
       verifyQuery: Type.Optional(Type.String()),
       verifyAbsentQuery: Type.Optional(Type.String()),
       verifyDelayMs: Type.Optional(Type.Number()),
+      retries: Type.Optional(Type.Number()),
+      retryDelayMs: Type.Optional(Type.Number()),
+      archiveScreenshots: Type.Optional(Type.Boolean()),
+      focusWindowTitle: Type.Optional(Type.String()),
+      focusWindowPid: Type.Optional(Type.Number()),
     }),
     async execute(_id, params) {
-      const imagePath = await captureScreen(captureScriptPath, params);
-      const ocr = await runOcr(ocrScriptPath, {
-        imagePath,
-        lang: params.lang,
-        preprocess: params.preprocess,
-        query: params.query,
-        queryMode: params.queryMode,
-        groupBy: params.groupBy,
-        topN: params.topN,
-        debugOverlay: params.debugOverlayPath,
-      });
-      const matches = pickTopMatches(ocr, params.topN ?? 1);
-      const match = matches[0] || null;
-      if (!match) {
-        return {
-          content: [{
-            type: "text",
-            text: JSON.stringify({
-              ok: false,
-              query: params.query,
-              queryMode: params.queryMode || "contains",
-              imagePath,
-              error: "text not found",
-              topN: params.topN ?? 1,
-              count: ocr?.count || 0,
-              items: ocr?.items || [],
-              matches,
-              debugOverlay: ocr?.debugOverlay || null,
-              engine: ocr?.engine || null,
-              ocr,
-            }),
-          }],
-        };
+      if (params.focusWindowTitle || params.focusWindowPid) {
+        await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
       }
 
-      const clickX = Math.round(match.centerX);
-      const clickY = Math.round(match.centerY);
-      const button = params.button || "left";
-      const dryRun = Boolean(params.dryRun);
-      let clickText = "DRY_RUN";
-      let verify: any = null;
-      if (!dryRun) {
-        await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
-        clickText = await runPy(scriptPath, ["mouse-click", button]);
+      const retries = Math.max(0, Math.round(params.retries ?? 0));
+      const retryDelayMs = Math.max(0, Math.round(params.retryDelayMs ?? 500));
+      const archiveScreenshots = Boolean(params.archiveScreenshots);
+      const attempts: any[] = [];
 
-        const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery);
-        if (shouldVerify) {
-          const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
-          if (delayMs > 0) {
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        const prefix = `click-text-attempt-${attempt + 1}`;
+        const imagePath = await captureScreen(captureScriptPath, {
+          ...params,
+          path: archiveScreenshots ? createArtifactPath(prefix, "before") : params.path,
+        });
+        const ocr = await runOcr(ocrScriptPath, {
+          imagePath,
+          lang: params.lang,
+          preprocess: params.preprocess,
+          query: params.query,
+          queryMode: params.queryMode,
+          groupBy: params.groupBy,
+          topN: params.topN,
+          debugOverlay: params.debugOverlayPath,
+        });
+        const matches = pickTopMatches(ocr, params.topN ?? 1);
+        const match = matches[0] || null;
+        if (!match) {
+          attempts.push({ attempt: attempt + 1, ok: false, imagePath, error: "text not found" });
+          if (attempt < retries && retryDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+            continue;
           }
-          const verifyImagePath = await captureScreen(captureScriptPath, params);
-          const verifyOcr = await runOcr(ocrScriptPath, {
-            imagePath: verifyImagePath,
-            lang: params.lang,
-            preprocess: params.preprocess,
-            groupBy: params.groupBy,
-            topN: Math.max(params.topN ?? 1, 3),
-          });
-          const verifyItems = Array.isArray(verifyOcr?.items) ? verifyOcr.items : [];
-          const normalizedTexts = verifyItems.map((item: any) => String(item?.normalizedText || ""));
-          const verifyQuery = String(params.verifyQuery || "").trim().toLowerCase();
-          const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
-          const present = verifyQuery ? normalizedTexts.some((t: string) => t.includes(verifyQuery)) : null;
-          const absent = verifyAbsentQuery ? !normalizedTexts.some((t: string) => t.includes(verifyAbsentQuery)) : null;
-          verify = {
-            imagePath: verifyImagePath,
-            verifyQuery: params.verifyQuery || null,
-            verifyAbsentQuery: params.verifyAbsentQuery || null,
-            verifyDelayMs: delayMs,
-            present,
-            absent,
-            success: [present, absent].filter((v) => v !== null).every(Boolean),
-            engine: verifyOcr?.engine || null,
-            count: verifyOcr?.count || 0,
+          return {
+            content: [{
+              type: "text",
+              text: JSON.stringify({
+                ok: false,
+                query: params.query,
+                queryMode: params.queryMode || "contains",
+                error: "text not found",
+                attempts,
+                imagePath,
+                topN: params.topN ?? 1,
+                count: ocr?.count || 0,
+                items: ocr?.items || [],
+                matches,
+                debugOverlay: ocr?.debugOverlay || null,
+                engine: ocr?.engine || null,
+                ocr,
+              }),
+            }],
           };
         }
+
+        const clickX = Math.round(match.centerX);
+        const clickY = Math.round(match.centerY);
+        const button = params.button || "left";
+        const dryRun = Boolean(params.dryRun);
+        let clickText = "DRY_RUN";
+        let verify: any = null;
+        if (!dryRun) {
+          await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
+          clickText = await runPy(scriptPath, ["mouse-click", button]);
+
+          const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery);
+          if (shouldVerify) {
+            const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
+            if (delayMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+            const verifyImagePath = await captureScreen(captureScriptPath, {
+              ...params,
+              path: archiveScreenshots ? createArtifactPath(prefix, "after") : params.path,
+            });
+            const verifyOcr = await runOcr(ocrScriptPath, {
+              imagePath: verifyImagePath,
+              lang: params.lang,
+              preprocess: params.preprocess,
+              groupBy: params.groupBy,
+              topN: Math.max(params.topN ?? 1, 3),
+            });
+            const verifyItems = Array.isArray(verifyOcr?.items) ? verifyOcr.items : [];
+            const normalizedTexts = verifyItems.map((item: any) => String(item?.normalizedText || ""));
+            const verifyQuery = String(params.verifyQuery || "").trim().toLowerCase();
+            const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
+            const present = verifyQuery ? normalizedTexts.some((t: string) => t.includes(verifyQuery)) : null;
+            const absent = verifyAbsentQuery ? !normalizedTexts.some((t: string) => t.includes(verifyAbsentQuery)) : null;
+            verify = {
+              imagePath: verifyImagePath,
+              verifyQuery: params.verifyQuery || null,
+              verifyAbsentQuery: params.verifyAbsentQuery || null,
+              verifyDelayMs: delayMs,
+              present,
+              absent,
+              success: [present, absent].filter((v) => v !== null).every(Boolean),
+              engine: verifyOcr?.engine || null,
+              count: verifyOcr?.count || 0,
+            };
+          }
+        }
+
+        const result = {
+          ok: true,
+          dryRun,
+          query: params.query,
+          queryMode: params.queryMode || "contains",
+          imagePath,
+          click: {
+            x: clickX,
+            y: clickY,
+            button,
+            executed: !dryRun,
+            result: clickText,
+          },
+          verify,
+          match,
+          matches,
+          attempts: [...attempts, { attempt: attempt + 1, ok: true, imagePath, verify }],
+          topN: params.topN ?? 1,
+          count: ocr?.count || 0,
+          items: ocr?.items || [],
+          debugOverlay: ocr?.debugOverlay || null,
+          engine: ocr?.engine || null,
+          ocr,
+        };
+
+        const verified = !verify || verify.success !== false;
+        if (verified || attempt >= retries) {
+          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        }
+        if (retryDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        }
+        attempts.push({ attempt: attempt + 1, ok: false, imagePath, verify, error: "verification failed, retrying" });
       }
 
-      return {
-        content: [{
-          type: "text",
-          text: JSON.stringify({
-            ok: true,
-            dryRun,
-            query: params.query,
-            queryMode: params.queryMode || "contains",
-            imagePath,
-            click: {
-              x: clickX,
-              y: clickY,
-              button,
-              executed: !dryRun,
-              result: clickText,
-            },
-            verify,
-            match,
-            matches,
-            topN: params.topN ?? 1,
-            count: ocr?.count || 0,
-            items: ocr?.items || [],
-            debugOverlay: ocr?.debugOverlay || null,
-            engine: ocr?.engine || null,
-            ocr,
-          }),
-        }],
-      };
+      return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "unexpected retry exit", attempts }) }] };
     },
   }, { optional: true });
 }

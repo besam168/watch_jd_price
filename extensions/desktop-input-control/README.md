@@ -3,12 +3,15 @@
 本地 Windows 桌面输入控制扩展。
 
 ## 当前阶段
-现在已经从“可用一版”升级到**二期稳态版方向**：
+现在已经从“二期稳态版”继续推进到**三期增强版**：
 - 输入控制可用
 - OCR 找字可用
-- 新增安全护栏
-- 新增动作日志
-- 新增点击后校验能力
+- 安全护栏可用
+- 动作日志可用
+- 点击后校验可用
+- 新增窗口列表/绑定
+- 新增失败重试
+- 新增点击前后截图归档
 
 ## 已完成功能
 
@@ -28,6 +31,7 @@
 - 打开 URL `desktop_open_url`
 - 运行命令 `desktop_run_command`（默认关闭，需在 `safe-config.json` 显式放开）
 - 窗口聚焦 `desktop_focus_window`
+- 窗口列表读取 `desktop_list_windows`
 - 当前前台窗口读取 `desktop_get_foreground_window`
 - 最近动作日志读取 `desktop_get_recent_actions`
 
@@ -40,11 +44,40 @@
   - 支持点击后 `verifyQuery`
   - 支持点击后 `verifyAbsentQuery`
   - 支持 `verifyDelayMs`
+  - 支持 `retries`
+  - 支持 `retryDelayMs`
+  - 支持 `archiveScreenshots`
+  - 支持点击前先 `focusWindowTitle` / `focusWindowPid`
 
-## 二期增强点
+## 三期增强点
 
-### 1) 安全护栏
-新增 `safe-config.json`：
+### 1) 更稳的窗口绑定
+新增：
+- `desktop_list_windows`
+- `desktop_focus_window` 支持 `title` 或 `pid`
+
+这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”。
+
+### 2) 重试机制
+`desktop_click_text_on_screen` 现在支持：
+- `retries`
+- `retryDelayMs`
+
+当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束。
+
+### 3) 点击前后截图归档
+新增：
+- `archiveScreenshots`
+
+启用后会把点击前/后的截图自动保存到：
+- `artifacts/`
+
+这对复盘、调试、留证都非常有用。
+
+## 二期保留能力
+
+### 安全护栏
+`safe-config.json`：
 - `blockedWindowTitles`
 - `allowedWindowTitles`
 - `requireWindowMatchForInput`
@@ -59,7 +92,7 @@
 - 可对高风险窗口做前台阻断
 - 可切成“只允许指定窗口接收输入”模式
 
-### 2) 动作日志
+### 动作日志
 所有关键动作会写入：
 - `logs/desktop-actions.jsonl`
 
@@ -70,12 +103,10 @@
 - 执行结果
 - 当前前台窗口
 
-### 3) 点击后校验
-`desktop_click_text_on_screen` 支持点击后再次截图 + OCR，用于判断：
+### 点击后校验
+可再次截图 + OCR，用于判断：
 - 某个目标文本是否出现
 - 某个旧文本是否消失
-
-这比“点完就算成功”稳得多。
 
 ## 结构
 - `index.ts`：OpenClaw 工具注册入口
@@ -84,6 +115,8 @@
 - `scripts/screen-capture-compat.ps1`：截图
 - `scripts/screen-ocr.py`：OCR 与文字定位
 - `safe-config.json`：安全配置
+- `logs/`：动作日志
+- `artifacts/`：截图归档
 - `openclaw.plugin.json`：插件元数据
 
 ## 风险提示
@@ -97,6 +130,7 @@
 ### 本地直接验证
 ```powershell
 python scripts/desktop-input.py get-foreground-window
+python scripts/desktop-input.py list-windows chrome
 python scripts/desktop-input.py mouse-move 200 200
 python scripts/desktop-input.py mouse-move-relative 50 20
 python scripts/desktop-input.py mouse-click left
@@ -107,18 +141,23 @@ python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 
 
 ### OpenClaw 调用建议
 更稳的调用顺序：
-1. `desktop_get_foreground_window`
-2. `desktop_screen_capture`
-3. `desktop_find_text_on_screen`
-4. `desktop_click_text_on_screen`（先 `dryRun=true`）
-5. 正式点击时带上 `verifyQuery` 或 `verifyAbsentQuery`
+1. `desktop_list_windows`
+2. `desktop_get_foreground_window`
+3. `desktop_screen_capture`
+4. `desktop_find_text_on_screen`
+5. `desktop_click_text_on_screen`（先 `dryRun=true`）
+6. 正式点击时带上 `verifyQuery` / `verifyAbsentQuery`
+7. 需要时启用 `retries` + `archiveScreenshots`
 
 ## 推荐实战策略
 不要盲点。优先用：
+- 窗口列表确认
 - 前台窗口确认
 - OCR 找字
 - dry-run
 - 点击后校验
+- 失败重试
+- 截图归档
 - 动作日志复盘
 
-这 5 个组合起来，才接近“稳”。
+这 8 个组合起来，才更接近真正可落地的桌面自动化工具。

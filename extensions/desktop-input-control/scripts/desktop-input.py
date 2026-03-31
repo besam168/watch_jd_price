@@ -96,6 +96,7 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_DIR = os.path.join(ROOT_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "desktop-actions.jsonl")
 SAFE_CONFIG_PATH = os.path.join(ROOT_DIR, "safe-config.json")
+ARTIFACTS_DIR = os.path.join(ROOT_DIR, "artifacts")
 
 
 def load_safe_config():
@@ -123,6 +124,7 @@ def load_safe_config():
 
 def ensure_log_dir():
     os.makedirs(LOG_DIR, exist_ok=True)
+    os.makedirs(ARTIFACTS_DIR, exist_ok=True)
 
 
 def write_action_log(action: str, payload: dict, result: str, ok: bool = True):
@@ -143,8 +145,7 @@ def normalize_title(value: str) -> str:
     return (value or "").strip().lower()
 
 
-def get_foreground_window_title(silent: bool = False) -> str:
-    hwnd = user32.GetForegroundWindow()
+def get_window_title(hwnd) -> str:
     if not hwnd:
         return ""
     length = user32.GetWindowTextLengthW(hwnd)
@@ -153,6 +154,59 @@ def get_foreground_window_title(silent: bool = False) -> str:
     buf = ctypes.create_unicode_buffer(length + 1)
     user32.GetWindowTextW(hwnd, buf, length + 1)
     return buf.value or ""
+
+
+def get_foreground_window_title(silent: bool = False) -> str:
+    hwnd = user32.GetForegroundWindow()
+    return get_window_title(hwnd)
+
+
+def list_windows(query: str = ""):
+    query = normalize_title(query)
+    rows = []
+    EnumWindows = user32.EnumWindows
+    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
+    IsWindowVisible = user32.IsWindowVisible
+    GetWindowThreadProcessId = user32.GetWindowThreadProcessId
+
+    @EnumWindowsProc
+    def enum_proc(hwnd, lParam):
+        if not IsWindowVisible(hwnd):
+            return True
+        title = get_window_title(hwnd)
+        if not title:
+            return True
+        normalized = normalize_title(title)
+        if query and query not in normalized:
+            return True
+        pid = wintypes.DWORD()
+        GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        rows.append({
+            "hwnd": int(hwnd),
+            "title": title,
+            "normalizedTitle": normalized,
+            "pid": int(pid.value),
+        })
+        return True
+
+    EnumWindows(enum_proc, 0)
+    return rows
+
+
+def find_best_window(query: str = "", pid: int = 0):
+    rows = list_windows(query)
+    if pid:
+        pid_rows = [row for row in rows if row.get("pid") == pid]
+        if pid_rows:
+            return pid_rows[-1]
+    return rows[-1] if rows else None
+
+
+def create_artifact_prefix(name: str):
+    ensure_log_dir()
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in (name or "artifact"))
+    return os.path.join(ARTIFACTS_DIR, f"{stamp}-{safe}")
 
 
 def enforce_window_guard(config: dict, action: str):
@@ -305,38 +359,17 @@ def run_command(command: str):
     return f"Started command: {command} (PID={proc.pid})"
 
 
-def focus_window(query: str):
+def focus_window(query: str = "", pid: int = 0):
     query = (query or "").strip().lower()
-    if not query:
-        raise ValueError("title is required")
-    matches = []
-
-    EnumWindows = user32.EnumWindows
-    EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
-    GetWindowTextLength = user32.GetWindowTextLengthW
-    GetWindowText = user32.GetWindowTextW
-    IsWindowVisible = user32.IsWindowVisible
+    if not query and not pid:
+        raise ValueError("title or pid is required")
+    match = find_best_window(query, pid)
+    if not match:
+        raise RuntimeError(f"Could not find a window matching: {query or pid}")
+    hwnd = match["hwnd"]
+    title = match["title"]
     ShowWindow = user32.ShowWindow
     SetForegroundWindow = user32.SetForegroundWindow
-
-    @EnumWindowsProc
-    def enum_proc(hwnd, lParam):
-        if not IsWindowVisible(hwnd):
-            return True
-        length = GetWindowTextLength(hwnd)
-        if length <= 0:
-            return True
-        buf = ctypes.create_unicode_buffer(length + 1)
-        GetWindowText(hwnd, buf, length + 1)
-        title = buf.value or ""
-        if query in title.lower():
-            matches.append((hwnd, title))
-        return True
-
-    EnumWindows(enum_proc, 0)
-    if not matches:
-        raise RuntimeError(f"Could not find a window matching: {query}")
-    hwnd, title = matches[-1]
     ShowWindow(hwnd, SW_RESTORE)
     if not SetForegroundWindow(hwnd):
         raise RuntimeError(f"Failed to focus window: {title}")
@@ -358,6 +391,9 @@ def main(argv):
 
     if action == "get-foreground-window":
         emit(get_foreground_window_title(silent=True))
+        return 0
+    if action == "list-windows":
+        emit(json.dumps(list_windows(arg1 or ""), ensure_ascii=False))
         return 0
     if action == "get-recent-actions":
         limit = max(1, int(arg1 or "20"))
@@ -452,8 +488,9 @@ def main(argv):
         emit(result)
         return 0
     if action == "focus-window":
-        result = focus_window(arg1)
-        write_action_log(action, {"title": arg1}, result)
+        pid = int(arg2 or "0") if str(arg2 or "0").strip() else 0
+        result = focus_window(arg1, pid)
+        write_action_log(action, {"title": arg1, "pid": pid}, result)
         emit(result)
         return 0
     if action == "screen-capture":
