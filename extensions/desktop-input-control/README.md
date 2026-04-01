@@ -37,6 +37,7 @@
 - 当前窗口锁读取 `desktop_get_window_lock`
 - 设置窗口锁 `desktop_set_window_lock`
 - 清除窗口锁 `desktop_clear_window_lock`
+- 锁定输入工作流 `desktop_run_locked_input_flow`
 - 最近动作日志读取 `desktop_get_recent_actions`
 
 ### 屏幕感知
@@ -52,6 +53,9 @@
   - 支持 `retryDelayMs`
   - 支持 `archiveScreenshots`
   - 支持点击前先 `focusWindowTitle` / `focusWindowPid`
+  - 支持 `lockForeground`
+  - 支持 `lockWindowTitle` / `lockWindowPid`
+  - 支持 `clearLockAfter`
 
 ## 三期增强点
 
@@ -62,8 +66,11 @@
 - `desktop_get_window_lock`
 - `desktop_set_window_lock`
 - `desktop_clear_window_lock`
+- `desktop_run_locked_input_flow`
 
 这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。现在 `desktop_set_window_lock` 还支持 `foreground=true`，可优先直接锁当前前台窗口，避免误锁到同类标题窗口。
+
+进一步地，`desktop_run_locked_input_flow` 可以把“锁窗口 -> 聚焦 -> 输入文字 -> 快捷键”串成一个更稳的一体化流程，减少上层编排时的状态漂移。
 
 ### 2) 重试机制
 `desktop_click_text_on_screen` 现在支持：

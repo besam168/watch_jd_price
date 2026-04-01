@@ -437,11 +437,25 @@ export default function (api) {
       archiveScreenshots: Type.Optional(Type.Boolean()),
       focusWindowTitle: Type.Optional(Type.String()),
       focusWindowPid: Type.Optional(Type.Number()),
+      lockForeground: Type.Optional(Type.Boolean()),
+      lockWindowTitle: Type.Optional(Type.String()),
+      lockWindowPid: Type.Optional(Type.Number()),
+      clearLockAfter: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, params) {
-      if (params.focusWindowTitle || params.focusWindowPid) {
-        await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
-      }
+      let lockApplied = false;
+      try {
+        if (params.lockForeground) {
+          await runPy(scriptPath, ["set-window-lock", "", "0", "true"]);
+          lockApplied = true;
+        } else if (params.lockWindowTitle || params.lockWindowPid) {
+          await runPy(scriptPath, ["set-window-lock", params.lockWindowTitle || "", String(params.lockWindowPid ?? 0), "false"]);
+          lockApplied = true;
+        }
+
+        if (params.focusWindowTitle || params.focusWindowPid) {
+          await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
+        }
 
       const retries = Math.max(0, Math.round(params.retries ?? 0));
       const retryDelayMs = Math.max(0, Math.round(params.retryDelayMs ?? 500));
@@ -577,6 +591,68 @@ export default function (api) {
       }
 
       return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "unexpected retry exit", attempts }) }] };
+      } finally {
+        if (lockApplied && params.clearLockAfter !== false) {
+          await runPy(scriptPath, ["clear-window-lock"]);
+        }
+      }
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_run_locked_input_flow",
+    description: "Run a safer input workflow: optionally lock a target window, optionally focus it, then type text and/or press a hotkey.",
+    parameters: Type.Object({
+      lockForeground: Type.Optional(Type.Boolean()),
+      lockWindowTitle: Type.Optional(Type.String()),
+      lockWindowPid: Type.Optional(Type.Number()),
+      focusWindowTitle: Type.Optional(Type.String()),
+      focusWindowPid: Type.Optional(Type.Number()),
+      text: Type.Optional(Type.String()),
+      hotkey: Type.Optional(Type.String()),
+      clearLockAfter: Type.Optional(Type.Boolean()),
+      settleDelayMs: Type.Optional(Type.Number()),
+    }),
+    async execute(_id, params) {
+      let lockApplied = false;
+      const steps: any[] = [];
+      try {
+        if (params.lockForeground) {
+          const lock = await runPy(scriptPath, ["set-window-lock", "", "0", "true"]);
+          steps.push({ step: "set-lock", mode: "foreground", result: lock });
+          lockApplied = true;
+        } else if (params.lockWindowTitle || params.lockWindowPid) {
+          const lock = await runPy(scriptPath, ["set-window-lock", params.lockWindowTitle || "", String(params.lockWindowPid ?? 0), "false"]);
+          steps.push({ step: "set-lock", mode: "query", result: lock });
+          lockApplied = true;
+        }
+
+        if (params.focusWindowTitle || params.focusWindowPid) {
+          const focus = await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
+          steps.push({ step: "focus", result: focus });
+        }
+
+        const settleDelayMs = Math.max(0, Math.round(params.settleDelayMs ?? 250));
+        if (settleDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, settleDelayMs));
+        }
+
+        if (params.text) {
+          const typed = await runPy(scriptPath, ["type-text", params.text]);
+          steps.push({ step: "type", result: typed });
+        }
+        if (params.hotkey) {
+          const hotkey = await runPy(scriptPath, ["press-hotkey", params.hotkey]);
+          steps.push({ step: "hotkey", result: hotkey });
+        }
+
+        const lockState = await runPy(scriptPath, ["get-window-lock"]);
+        return { content: [{ type: "text", text: JSON.stringify({ ok: true, steps, lockState }) }] };
+      } finally {
+        if (lockApplied && params.clearLockAfter !== false) {
+          await runPy(scriptPath, ["clear-window-lock"]);
+        }
+      }
     },
   }, { optional: true });
 }
