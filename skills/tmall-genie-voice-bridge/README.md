@@ -41,6 +41,8 @@ Mocked / not verified here:
 - `run-bridge.ps1`: helper to start the bridge with a selected config.
 - `run-failure-matrix.ps1`: one-shot validation runner for common last-hop success/failure scenarios.
 - `scripts/mock_http_player.py`: local mock HTTP player receiver for last-hop validation.
+- `scripts/rehearse-real-http-player.ps1`: preflight + one real `/speak` rehearsal runner with structured JSON summary.
+- `scripts/rehearse_real_http_player.py`: underlying rehearsal implementation.
 - `FAILURE_MATRIX.md`: quick troubleshooting matrix for HTTP playback integration.
 - `tests/test_mvp_smoke.py`: local smoke tests.
 
@@ -169,6 +171,18 @@ Preflight before real integration:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-real-http-player.ps1 -Config .\config.real-http-player.template.json
 ```
+
+Then run a single rehearsal call against `/speak`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http-player.ps1 -Config .\config.json -BridgeUrl http://127.0.0.1:57881/speak -Text "真实联调演练"
+```
+
+What the rehearsal does:
+- runs the same config preflight first
+- stops before `/speak` if preflight has blocking issues (unless `-Force` is used)
+- sends one real bridge request
+- returns structured JSON including bridge HTTP status, `audio_url`, backend name, and surfaced target status if the playback endpoint rejects the request
 
 The preflight script checks:
 - whether `backend.type` is `local_http_player`

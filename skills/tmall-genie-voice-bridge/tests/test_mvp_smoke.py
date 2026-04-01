@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from scripts import bridge_server
 from scripts.preflight_real_http_player import evaluate_config
+from scripts.rehearse_real_http_player import run_rehearsal
 from scripts.speak import load_config, speak
 from scripts.backends.local_http_player import PlaybackTargetHttpError
 
@@ -249,6 +250,129 @@ class MvpSmokeTests(unittest.TestCase):
         self.assertEqual(payload["target_status"], 500)
         self.assertEqual(payload["callback"]["source"], "matrix")
         self.assertIn("Forced status 500", payload["target_response_preview"])
+
+
+class RealHttpPlayerRehearsalTests(unittest.TestCase):
+    def setUp(self) -> None:
+        tests_tmp_root = Path(__file__).resolve().parents[1] / ".tmp_tests"
+        tests_tmp_root.mkdir(parents=True, exist_ok=True)
+        self._tmpdir = tests_tmp_root / f"tmall_bridge_rehearsal_{uuid4().hex[:12]}"
+        self._tmpdir.mkdir(parents=True, exist_ok=True)
+        self.config_path = self._tmpdir / "config.json"
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "host": "127.0.0.1",
+                    "port": 57881,
+                    "tts": {
+                        "provider": "mock",
+                        "output_dir": "./tmp_audio",
+                        "output_ext": "wav",
+                        "max_text_length": 128,
+                    },
+                    "backend": {
+                        "type": "local_http_player",
+                        "options": {},
+                    },
+                    "http_player": {
+                        "player_url": "http://player.local/play",
+                        "headers": {
+                            "Authorization": "Bearer real-token",
+                        },
+                        "body_template": {
+                            "entity_id": "media_player.real_speaker",
+                            "media_content_id": "{{audio_url}}",
+                            "media_content_type": "music",
+                        },
+                        "public_base_url": "https://bridge.example.com",
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def test_rehearsal_stops_when_preflight_fails(self) -> None:
+        self.config_path.write_text(
+            json.dumps(
+                {
+                    "backend": {"type": "mock_tmall_genie"},
+                    "http_player": {
+                        "player_url": "http://HOME_ASSISTANT_HOST:8123/api/services/media_player/play_media",
+                        "headers": {"Authorization": "Bearer REPLACE_WITH_REAL_TOKEN"},
+                        "body_template": {"entity_id": "media_player.REPLACE_ME"},
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+        with mock.patch("scripts.rehearse_real_http_player.requests.post") as post_mock:
+            result = run_rehearsal(
+                config_path=self.config_path,
+                bridge_url="http://127.0.0.1:57881/speak",
+                text="should not send",
+                skip_probe=True,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["preflight"]["ok"])
+        self.assertTrue(result["request"]["skipped"])
+        post_mock.assert_not_called()
+
+    def test_rehearsal_returns_structured_summary_on_bridge_error(self) -> None:
+        response_mock = mock.Mock()
+        response_mock.ok = False
+        response_mock.status_code = 401
+        response_mock.json.return_value = {
+            "ok": False,
+            "error": "Unauthorized",
+            "target_status": 401,
+            "player_url": "http://player.local/play",
+        }
+
+        with mock.patch("scripts.rehearse_real_http_player.requests.post", return_value=response_mock) as post_mock:
+            result = run_rehearsal(
+                config_path=self.config_path,
+                bridge_url="http://127.0.0.1:57881/speak",
+                text="auth fail demo",
+                skip_probe=True,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["preflight"]["ok"])
+        self.assertEqual(result["request"]["http_status"], 401)
+        self.assertEqual(result["request"]["target_status"], 401)
+        self.assertEqual(result["request"]["player_url"], "http://player.local/play")
+        post_mock.assert_called_once()
+
+    def test_rehearsal_returns_audio_url_on_success(self) -> None:
+        response_mock = mock.Mock()
+        response_mock.ok = True
+        response_mock.status_code = 200
+        response_mock.json.return_value = {
+            "ok": True,
+            "backend": "local_http_player",
+            "audio_url": "https://bridge.example.com/audio/demo.mp3",
+        }
+
+        with mock.patch("scripts.rehearse_real_http_player.requests.post", return_value=response_mock):
+            result = run_rehearsal(
+                config_path=self.config_path,
+                bridge_url="http://127.0.0.1:57881/speak",
+                text="success demo",
+                skip_probe=True,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["request"]["backend"], "local_http_player")
+        self.assertEqual(result["request"]["audio_url"], "https://bridge.example.com/audio/demo.mp3")
 
 
 class MockHttpPlayerHandlerTests(unittest.TestCase):

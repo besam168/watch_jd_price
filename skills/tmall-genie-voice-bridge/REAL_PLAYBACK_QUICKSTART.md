@@ -38,4 +38,10 @@ Before first real integration, run:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-real-http-player.ps1 -Config .\config.real-http-player.template.json
 ```
 
-Use this to catch obvious mistakes before claiming the bridge is ready for a real player.
+Then do one end-to-end rehearsal request:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http-player.ps1 -Config .\config.json -BridgeUrl http://127.0.0.1:57881/speak -Text "真实播放演练"
+```
+
+Use this to catch obvious mistakes before claiming the bridge is ready for a real player. The rehearsal output is still only a bridge/HTTP handoff check, not proof that real hardware playback happened.
