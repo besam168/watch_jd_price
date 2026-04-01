@@ -4,6 +4,7 @@ import json
 import shutil
 import unittest
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
 from scripts import bridge_server
@@ -102,6 +103,79 @@ class MvpSmokeTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["recognized_text"], "from dotted form")
         self.assertEqual(payload["callback"]["source"], "form-test")
+
+    def test_public_base_url_overrides_forwarded_headers(self) -> None:
+        bridge_server.APP_CONFIG["http_player"] = {
+            "audio_base_url": "auto",
+            "public_base_url": "https://public.example.com/bridge-root",
+        }
+        response = self.client.post(
+            "/speak",
+            json={"text": "public base url test"},
+            headers={
+                "X-Forwarded-Proto": "https",
+                "X-Forwarded-Host": "ignored.example.com",
+                "X-Forwarded-Prefix": "/ignored",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertTrue(
+            payload["audio_url"].startswith("https://public.example.com/bridge-root/audio/")
+        )
+
+    def test_local_http_player_receives_rendered_payload(self) -> None:
+        http_config = json.loads(json.dumps(bridge_server.APP_CONFIG))
+        http_config["backend"] = {
+            "type": "local_http_player",
+            "options": {},
+        }
+        http_config["http_player"] = {
+            "player_url": "http://player.local/play",
+            "method": "POST",
+            "timeout": 9,
+            "headers": {
+                "Authorization": "Bearer test-token",
+            },
+            "body_template": {
+                "entity_id": "media_player.test_speaker",
+                "media_content_id": "{{audio_url}}",
+                "media_content_type": "music",
+                "meta": {
+                    "spoken_text": "{{text}}",
+                    "local_file": "{{audio_path}}",
+                },
+            },
+            "public_base_url": "https://public.example.com/bridge",
+        }
+
+        with mock.patch("scripts.backends.local_http_player.requests.request") as request_mock:
+            response_mock = mock.Mock()
+            response_mock.status_code = 200
+            response_mock.text = '{"ok":true}'
+            response_mock.raise_for_status.return_value = None
+            request_mock.return_value = response_mock
+
+            result = speak(
+                text="play through http backend",
+                config=http_config,
+                config_path=self.config_path,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["backend"], "local_http_player")
+        self.assertTrue(result["audio_url"].startswith("https://public.example.com/bridge/"))
+
+        _, kwargs = request_mock.call_args
+        self.assertEqual(kwargs["method"], "POST")
+        self.assertEqual(kwargs["url"], "http://player.local/play")
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-token")
+        self.assertEqual(kwargs["timeout"], 9)
+        self.assertEqual(kwargs["json"]["entity_id"], "media_player.test_speaker")
+        self.assertEqual(kwargs["json"]["media_content_id"], result["audio_url"])
+        self.assertEqual(kwargs["json"]["meta"]["spoken_text"], "play through http backend")
+        self.assertEqual(kwargs["json"]["meta"]["local_file"], result["audio_path"])
 
     def test_audio_endpoint_serves_generated_file(self) -> None:
         generated = speak(

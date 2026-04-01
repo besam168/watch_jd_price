@@ -57,6 +57,11 @@ def load_config(config_path: Path) -> Dict[str, Any]:
 
 def build_audio_url(config: Dict[str, Any], audio_file: Path) -> str | None:
     http_player = config.get("http_player") or {}
+
+    public_base_url = str(http_player.get("public_base_url") or "").strip()
+    if public_base_url:
+        return join_audio_base_url(public_base_url.rstrip("/") + "/audio", audio_file.name)
+
     audio_base_url = http_player.get("audio_base_url")
     if not audio_base_url:
         return None

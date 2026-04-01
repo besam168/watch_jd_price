@@ -130,6 +130,35 @@ Serves generated audio files from `tts.output_dir`.
   - explicit URL: fixed base for audio URLs
 - `http_player.public_base_url`: if set, used as authoritative public base URL for `/audio/...` links.
 
+## Home Assistant / Real HTTP Player Integration Notes
+
+Recommended path for a real playback target:
+- Run this bridge on a machine reachable by the playback controller.
+- Set `backend.type` to `local_http_player`.
+- Keep `http_player.player_url` pointed at your Home Assistant or other HTTP player endpoint.
+- Do **not** leave external playback on `127.0.0.1` audio URLs unless the player runs on the same machine.
+
+Example Home Assistant service payload pattern:
+
+```json
+{
+  "entity_id": "media_player.tmall_genie",
+  "media_content_id": "{{audio_url}}",
+  "media_content_type": "music"
+}
+```
+
+Recommended config rules:
+- If Home Assistant reaches the bridge through a reverse proxy or fixed domain, set `http_player.public_base_url`.
+- If the incoming request host is already the correct externally reachable address, `audio_base_url: "auto"` is acceptable.
+- If the player endpoint needs auth, keep it in `http_player.headers.Authorization`.
+
+Minimum real-world checklist before claiming playback is ready:
+1. `/speak` returns an `audio_url` that the player machine can actually open.
+2. The player endpoint returns HTTP 2xx.
+3. The target device fetches the generated `/audio/...` file successfully.
+4. A human confirms the device actually played the sound.
+
 ## Validation
 
 Run smoke tests:
@@ -137,6 +166,15 @@ Run smoke tests:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+Current automated coverage includes:
+- `/speak` plain text requests
+- forwarded header handling for `audio_base_url: auto`
+- `public_base_url` override behavior
+- callback dotted-form payload parsing
+- generated audio file serving from `/audio/...`
+- max text length guard
+- HTTP player payload rendering and dispatch
 
 Run speak CLI directly:
 
