@@ -39,7 +39,9 @@ Mocked / not verified here:
 - `demo-wav-roundtrip.ps1`: WAV transcription -> speak demo.
 - `demo-http-player-roundtrip.ps1`: local HTTP player roundtrip demo.
 - `run-bridge.ps1`: helper to start the bridge with a selected config.
+- `run-failure-matrix.ps1`: one-shot validation runner for common last-hop success/failure scenarios.
 - `scripts/mock_http_player.py`: local mock HTTP player receiver for last-hop validation.
+- `FAILURE_MATRIX.md`: quick troubleshooting matrix for HTTP playback integration.
 - `tests/test_mvp_smoke.py`: local smoke tests.
 
 ## Quickstart
