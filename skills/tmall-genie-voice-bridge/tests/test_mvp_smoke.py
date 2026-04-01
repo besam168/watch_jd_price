@@ -201,17 +201,25 @@ class MvpSmokeTests(unittest.TestCase):
 
 
 class MockHttpPlayerHandlerTests(unittest.TestCase):
-    def test_mock_http_player_health_and_post(self) -> None:
+    def _start_server(self, *, required_bearer: str = "", required_entity_id: str = "", forced_status: int = 200):
         from scripts.mock_http_player import MockHttpPlayerHandler
         from http.server import ThreadingHTTPServer
         import threading
-        import requests
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), MockHttpPlayerHandler)
         server.output_path = None  # type: ignore[attr-defined]
         server.last_request = None  # type: ignore[attr-defined]
+        server.required_bearer = required_bearer  # type: ignore[attr-defined]
+        server.required_entity_id = required_entity_id  # type: ignore[attr-defined]
+        server.forced_status = forced_status  # type: ignore[attr-defined]
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
+        return server, thread
+
+    def test_mock_http_player_health_and_post(self) -> None:
+        import requests
+
+        server, thread = self._start_server()
         try:
             base_url = f"http://127.0.0.1:{server.server_address[1]}"
             health = requests.get(base_url + "/health", timeout=5)
@@ -225,6 +233,54 @@ class MockHttpPlayerHandlerTests(unittest.TestCase):
             self.assertTrue(body["ok"])
             self.assertEqual(body["payload"]["entity_id"], "media_player.test")
             self.assertEqual(server.last_request["payload"]["media_content_id"], payload["media_content_id"])  # type: ignore[index]
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_mock_http_player_rejects_missing_bearer(self) -> None:
+        import requests
+
+        server, thread = self._start_server(required_bearer="secret-token")
+        try:
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            response = requests.post(base_url + "/play", json={"entity_id": "media_player.test"}, timeout=5)
+            self.assertEqual(response.status_code, 401)
+            self.assertIn("Unauthorized", response.text)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_mock_http_player_rejects_wrong_entity_id(self) -> None:
+        import requests
+
+        server, thread = self._start_server(required_entity_id="media_player.expected")
+        try:
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            response = requests.post(
+                base_url + "/play",
+                json={"entity_id": "media_player.actual", "media_content_id": "https://example.com/audio.mp3"},
+                timeout=5,
+            )
+            self.assertEqual(response.status_code, 422)
+            body = response.json()
+            self.assertEqual(body["expected_entity_id"], "media_player.expected")
+            self.assertEqual(body["actual_entity_id"], "media_player.actual")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+    def test_mock_http_player_can_force_server_error(self) -> None:
+        import requests
+
+        server, thread = self._start_server(forced_status=500)
+        try:
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            response = requests.post(base_url + "/play", json={"entity_id": "media_player.test"}, timeout=5)
+            self.assertEqual(response.status_code, 500)
+            self.assertIn("Forced status 500", response.text)
         finally:
             server.shutdown()
             server.server_close()
