@@ -28,7 +28,9 @@ Use `tmall-genie-voice-bridge` with a real HTTP playback target in the shortest 
 
 ## Fast failure checks
 - If `audio_url` contains `127.0.0.1` and the player is on another machine, it will fail.
-- If the player returns non-2xx, inspect auth, entity_id, and payload schema.
+- If the player returns non-2xx, inspect auth, entity_id, payload schema, and exact Home Assistant service path.
+- If `Authorization` is not `Bearer ...`, many Home Assistant setups will reject the call.
+- If `media_content_id` no longer points at `{{audio_url}}`, the target may accept the request but still never fetch bridge audio.
 - If HTTP succeeds but nothing plays, the problem is now on the real playback target side, not the bridge.
 
 ## Preflight

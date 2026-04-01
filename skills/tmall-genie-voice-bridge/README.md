@@ -187,7 +187,11 @@ What the rehearsal does:
 The preflight script checks:
 - whether `backend.type` is `local_http_player`
 - whether auth/header placeholders are still present
+- whether `Authorization` still uses the expected `Bearer ...` shape
+- whether `Content-Type` still looks like JSON
 - whether `entity_id` still looks like the example value
+- whether `media_content_id` still contains `{{audio_url}}`
+- whether Home Assistant service paths still look like `/api/services/media_player/play_media`
 - whether `public_base_url` / `audio_base_url` still look local or placeholder
 - whether bridge `/health` is currently reachable
 - whether the playback target base URL answers a quick probe

@@ -33,12 +33,20 @@ def evaluate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     issues: List[str] = []
     warnings: List[str] = []
 
+    http_player = config.get("http_player") or {}
+    headers = http_player.get("headers") or {}
+    body_template = http_player.get("body_template") or {}
+
     backend_type = _string((config.get("backend") or {}).get("type"))
-    player_url = _string((config.get("http_player") or {}).get("player_url")).strip()
-    audio_base_url = _string((config.get("http_player") or {}).get("audio_base_url")).strip()
-    public_base_url = _string((config.get("http_player") or {}).get("public_base_url")).strip()
-    entity_id = _string((((config.get("http_player") or {}).get("body_template") or {}).get("entity_id"))).strip()
-    auth_header = _string((((config.get("http_player") or {}).get("headers") or {}).get("Authorization"))).strip()
+    player_url = _string(http_player.get("player_url")).strip()
+    player_method = _string(http_player.get("method") or "POST").strip().upper()
+    audio_base_url = _string(http_player.get("audio_base_url")).strip()
+    public_base_url = _string(http_player.get("public_base_url")).strip()
+    entity_id = _string(body_template.get("entity_id")).strip()
+    media_content_id = _string(body_template.get("media_content_id")).strip()
+    media_content_type = _string(body_template.get("media_content_type")).strip()
+    auth_header = _string(headers.get("Authorization")).strip()
+    content_type = _string(headers.get("Content-Type")).strip()
     host = _string(config.get("host")).strip()
     port = config.get("port")
     tts_provider = _string((config.get("tts") or {}).get("provider")).strip()
@@ -48,10 +56,14 @@ def evaluate_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "port": port,
         "backend": backend_type or None,
         "player_url": player_url or None,
+        "player_method": player_method or None,
         "audio_base_url": audio_base_url or None,
         "public_base_url": public_base_url or None,
         "entity_id": entity_id or None,
+        "media_content_id": media_content_id or None,
+        "media_content_type": media_content_type or None,
         "tts_provider": tts_provider or None,
+        "content_type": content_type or None,
     }
 
     if backend_type != "local_http_player":
@@ -62,15 +74,33 @@ def evaluate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     elif _looks_local_or_placeholder(player_url, ["HOME_ASSISTANT_HOST", "YOUR_PLAYER_HOST"]):
         warnings.append("http_player.player_url still looks local or placeholder; verify the playback controller can actually be reached")
 
+    if player_method != "POST":
+        warnings.append("http_player.method is not POST; verify the playback service really expects this method")
+
     if not auth_header:
         warnings.append("http_player.headers.Authorization is empty")
+    elif not auth_header.startswith("Bearer "):
+        warnings.append("http_player.headers.Authorization does not start with 'Bearer '; verify the target auth scheme")
     elif "REPLACE" in auth_header.upper():
         issues.append("http_player.headers.Authorization still contains placeholder text")
+
+    if not content_type:
+        warnings.append("http_player.headers.Content-Type is empty; most HTTP playback targets expect application/json")
+    elif "application/json" not in content_type.lower():
+        warnings.append("http_player.headers.Content-Type is not application/json; verify the target payload format")
 
     if not entity_id:
         issues.append("http_player.body_template.entity_id is required")
     elif entity_id == "media_player.tmall_genie" or "REPLACE_ME" in entity_id:
         warnings.append("entity_id is still the example/default value; verify it matches the real target entity")
+
+    if not media_content_id:
+        issues.append("http_player.body_template.media_content_id is required")
+    elif "{{audio_url}}" not in media_content_id:
+        warnings.append("http_player.body_template.media_content_id does not contain {{audio_url}}; verify the target can still fetch generated audio")
+
+    if not media_content_type:
+        warnings.append("http_player.body_template.media_content_type is empty; many players expect 'music'")
 
     if not public_base_url and not audio_base_url:
         issues.append("set http_player.public_base_url or audio_base_url so the playback target can fetch /audio/...")
@@ -80,6 +110,15 @@ def evaluate_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
     if audio_base_url.lower() == "auto" and host.lower() in {"127.0.0.1", "localhost"}:
         warnings.append("audio_base_url='auto' depends on the incoming host; if the bridge is only bound locally, remote playback will fail")
+
+    lowered_player_url = player_url.lower()
+    if "/api/services/" in lowered_player_url:
+        if "/media_player/play_media" not in lowered_player_url:
+            warnings.append("Home Assistant service path does not look like /api/services/media_player/play_media; verify the exact service endpoint")
+        if not auth_header.startswith("Bearer "):
+            warnings.append("Home Assistant usually expects a long-lived token in Bearer format")
+        if not content_type:
+            warnings.append("Home Assistant service calls normally use Content-Type: application/json")
 
     return {
         "ok": len(issues) == 0,
