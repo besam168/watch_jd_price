@@ -1,4 +1,7 @@
 config.json
 tmp_audio/
+.tmp_http_player_demo/
+.tmp_tests/
+tmp_test_pm/
 __pycache__/
 *.pyc
