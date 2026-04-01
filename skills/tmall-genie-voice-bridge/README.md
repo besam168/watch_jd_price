@@ -37,7 +37,9 @@ Mocked / not verified here:
 - `demo-text-roundtrip.ps1`: quick text -> speak demo.
 - `demo-callback-roundtrip.ps1`: quick callback/webhook text demo.
 - `demo-wav-roundtrip.ps1`: WAV transcription -> speak demo.
+- `demo-http-player-roundtrip.ps1`: local HTTP player roundtrip demo.
 - `run-bridge.ps1`: helper to start the bridge with a selected config.
+- `scripts/mock_http_player.py`: local mock HTTP player receiver for last-hop validation.
 - `tests/test_mvp_smoke.py`: local smoke tests.
 
 ## Quickstart

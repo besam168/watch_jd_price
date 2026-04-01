@@ -199,5 +199,37 @@ class MvpSmokeTests(unittest.TestCase):
         self.assertIn("too long", payload["error"])
 
 
+
+class MockHttpPlayerHandlerTests(unittest.TestCase):
+    def test_mock_http_player_health_and_post(self) -> None:
+        from scripts.mock_http_player import MockHttpPlayerHandler
+        from http.server import ThreadingHTTPServer
+        import threading
+        import requests
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), MockHttpPlayerHandler)
+        server.output_path = None  # type: ignore[attr-defined]
+        server.last_request = None  # type: ignore[attr-defined]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+            health = requests.get(base_url + "/health", timeout=5)
+            self.assertEqual(health.status_code, 200)
+            self.assertTrue(health.json()["ok"])
+
+            payload = {"media_content_id": "https://example.com/audio/demo.mp3", "entity_id": "media_player.test"}
+            response = requests.post(base_url + "/play", json=payload, timeout=5)
+            self.assertEqual(response.status_code, 200)
+            body = response.json()
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["payload"]["entity_id"], "media_player.test")
+            self.assertEqual(server.last_request["payload"]["media_content_id"], payload["media_content_id"])  # type: ignore[index]
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
