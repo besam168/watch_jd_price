@@ -314,6 +314,29 @@ export default function (api) {
   }, { optional: true });
 
   api.registerTool({
+    name: "desktop_focus_window_verified",
+    description: "Focus a target window and verify that it actually became foreground, with retries.",
+    parameters: Type.Object({
+      title: Type.Optional(Type.String()),
+      pid: Type.Optional(Type.Number()),
+      foreground: Type.Optional(Type.Boolean()),
+      retries: Type.Optional(Type.Number()),
+      verifyDelayMs: Type.Optional(Type.Number()),
+    }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, [
+        "focus-window-verified",
+        params.title || "",
+        String(params.pid ?? 0),
+        String(params.retries ?? 2),
+        String(params.verifyDelayMs ?? 250),
+        params.foreground ? "true" : "false",
+      ]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
     name: "desktop_set_window_lock",
     description: "Lock future desktop input actions to a target window by foreground, title, or PID. Foreground mode is safest.",
     parameters: Type.Object({ title: Type.Optional(Type.String()), pid: Type.Optional(Type.Number()), foreground: Type.Optional(Type.Boolean()) }),
@@ -437,6 +460,8 @@ export default function (api) {
       archiveScreenshots: Type.Optional(Type.Boolean()),
       focusWindowTitle: Type.Optional(Type.String()),
       focusWindowPid: Type.Optional(Type.Number()),
+      focusRetries: Type.Optional(Type.Number()),
+      focusVerifyDelayMs: Type.Optional(Type.Number()),
       lockForeground: Type.Optional(Type.Boolean()),
       lockWindowTitle: Type.Optional(Type.String()),
       lockWindowPid: Type.Optional(Type.Number()),
@@ -453,8 +478,16 @@ export default function (api) {
           lockApplied = true;
         }
 
+        let focusResult: any = null;
         if (params.focusWindowTitle || params.focusWindowPid) {
-          await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
+          focusResult = await runPy(scriptPath, [
+            "focus-window-verified",
+            params.focusWindowTitle || "",
+            String(params.focusWindowPid ?? 0),
+            String(params.focusRetries ?? 2),
+            String(params.focusVerifyDelayMs ?? 250),
+            "false",
+          ]);
         }
 
       const retries = Math.max(0, Math.round(params.retries ?? 0));
@@ -506,6 +539,7 @@ export default function (api) {
                 engine: ocr?.engine || null,
                 foregroundBefore,
                 lockStateBefore,
+                focusResult,
                 ocr,
               }),
             }],
@@ -581,6 +615,7 @@ export default function (api) {
           foregroundAfter,
           lockStateBefore,
           lockStateAfter,
+          focusResult,
           match,
           matches,
           attempts: [...attempts, { attempt: attempt + 1, ok: true, imagePath, verify, verifyImagePath, foregroundBefore, foregroundAfter }],
@@ -620,6 +655,8 @@ export default function (api) {
       lockWindowPid: Type.Optional(Type.Number()),
       focusWindowTitle: Type.Optional(Type.String()),
       focusWindowPid: Type.Optional(Type.Number()),
+      focusRetries: Type.Optional(Type.Number()),
+      focusVerifyDelayMs: Type.Optional(Type.Number()),
       text: Type.Optional(Type.String()),
       hotkey: Type.Optional(Type.String()),
       clearLockAfter: Type.Optional(Type.Boolean()),
@@ -640,7 +677,14 @@ export default function (api) {
         }
 
         if (params.focusWindowTitle || params.focusWindowPid) {
-          const focus = await runPy(scriptPath, ["focus-window", params.focusWindowTitle || "", String(params.focusWindowPid ?? 0)]);
+          const focus = await runPy(scriptPath, [
+            "focus-window-verified",
+            params.focusWindowTitle || "",
+            String(params.focusWindowPid ?? 0),
+            String(params.focusRetries ?? 2),
+            String(params.focusVerifyDelayMs ?? 250),
+            "false",
+          ]);
           steps.push({ step: "focus", result: focus });
         }
 

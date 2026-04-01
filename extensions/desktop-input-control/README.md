@@ -37,6 +37,7 @@
 - 当前窗口锁读取 `desktop_get_window_lock`
 - 设置窗口锁 `desktop_set_window_lock`
 - 清除窗口锁 `desktop_clear_window_lock`
+- 带复核的聚焦 `desktop_focus_window_verified`
 - 锁定输入工作流 `desktop_run_locked_input_flow`
 - 最近动作日志读取 `desktop_get_recent_actions`
 
@@ -71,6 +72,8 @@
 这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。现在 `desktop_set_window_lock` 还支持 `foreground=true`，可优先直接锁当前前台窗口，避免误锁到同类标题窗口。
 
 进一步地，`desktop_run_locked_input_flow` 可以把“锁窗口 -> 聚焦 -> 输入文字 -> 快捷键”串成一个更稳的一体化流程，减少上层编排时的状态漂移。
+
+现在还新增了 `desktop_focus_window_verified`：不是只调用一次聚焦，而是会在聚焦后复核当前前台窗口是否真的切过去；若失败，会明确返回 `focus verification failed` 以及 expected / actual / attempts。
 
 ### 2) 重试机制 + 更完整失败诊断
 `desktop_click_text_on_screen` 现在支持：

@@ -42,9 +42,11 @@ $realOverlay = Join-Path $artifactDir ("locked-click-real-overlay-" + $stamp + "
 $after = Join-Path $artifactDir ("locked-click-after-" + $stamp + ".png")
 
 $focusResult = $null
+$focusVerification = $null
 if (-not $UseForeground -and -not [string]::IsNullOrWhiteSpace($TargetWindow)) {
     try {
-        $focusResult = Run-Py -ScriptArgs @("focus-window", $TargetWindow, "0")
+        $focusResult = Run-Py -ScriptArgs @("focus-window-verified", $TargetWindow, "0", "2", "250")
+        $focusVerification = $focusResult | ConvertFrom-Json
         Start-Sleep -Milliseconds 400
     } catch {
         $focusResult = "FOCUS_FAILED: $($_.Exception.Message)"
@@ -99,6 +101,7 @@ $result = [pscustomobject]@{
     ok = $true
     query = $Query
     focusResult = $focusResult
+    focusVerification = $focusVerification
     lock = $lock
     foregroundBefore = $foregroundBefore
     before = $before

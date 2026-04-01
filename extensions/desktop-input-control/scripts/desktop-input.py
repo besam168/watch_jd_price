@@ -465,6 +465,7 @@ def focus_window(query: str = "", pid: int = 0, foreground: bool = False):
         info = get_foreground_window_info()
         hwnd = int(info.get("hwnd") or 0)
         title = str(info.get("title") or "")
+        target_pid = int(info.get("pid") or 0)
         if not hwnd:
             raise RuntimeError("Could not resolve foreground window")
     else:
@@ -473,14 +474,91 @@ def focus_window(query: str = "", pid: int = 0, foreground: bool = False):
         match = find_best_window(query, pid, prefer_foreground=True)
         if not match:
             raise RuntimeError(f"Could not find a window matching: {query or pid}")
-        hwnd = match["hwnd"]
-        title = match["title"]
+        hwnd = int(match["hwnd"])
+        title = str(match["title"])
+        target_pid = int(match.get("pid") or 0)
     ShowWindow = user32.ShowWindow
     SetForegroundWindow = user32.SetForegroundWindow
     ShowWindow(hwnd, SW_RESTORE)
     if not SetForegroundWindow(hwnd):
         raise RuntimeError(f"Failed to focus window: {title}")
     return f"Focused window: {title}"
+
+
+def focus_window_verified(query: str = "", pid: int = 0, foreground: bool = False, retries: int = 2, verify_delay_ms: int = 250):
+    query = (query or "").strip().lower()
+    expected = None
+    if foreground or query in {"foreground", "current", "active", "fg"}:
+        expected = get_foreground_window_info()
+        if not expected.get("hwnd"):
+            raise RuntimeError("Could not resolve foreground window")
+    else:
+        match = find_best_window(query, pid, prefer_foreground=True)
+        if not match:
+            raise RuntimeError(f"Could not find a window matching: {query or pid}")
+        expected = match
+
+    retries = max(0, int(retries))
+    verify_delay_ms = max(0, int(verify_delay_ms))
+    attempts = []
+    final_info = None
+
+    for attempt in range(retries + 1):
+        try:
+            focus_window(query, pid, foreground=foreground)
+            call_ok = True
+            call_error = None
+        except Exception as exc:
+            call_ok = False
+            call_error = str(exc)
+
+        if verify_delay_ms > 0:
+            time.sleep(verify_delay_ms / 1000.0)
+
+        final_info = get_foreground_window_info()
+        expected_hwnd = int(expected.get("hwnd") or 0)
+        expected_pid = int(expected.get("pid") or 0)
+        expected_title = normalize_title(str(expected.get("title") or ""))
+        actual_hwnd = int(final_info.get("hwnd") or 0)
+        actual_pid = int(final_info.get("pid") or 0)
+        actual_title = normalize_title(str(final_info.get("title") or ""))
+        success = bool(
+            (expected_hwnd and expected_hwnd == actual_hwnd)
+            or (expected_pid and expected_pid == actual_pid)
+            or (expected_title and expected_title == actual_title)
+        )
+        attempts.append({
+            "attempt": attempt + 1,
+            "callOk": call_ok,
+            "callError": call_error,
+            "actual": final_info,
+            "success": success,
+        })
+        if success:
+            return {
+                "ok": True,
+                "query": query or None,
+                "pid": int(pid or 0),
+                "foreground": bool(foreground or query in {"foreground", "current", "active", "fg"}),
+                "retries": retries,
+                "verifyDelayMs": verify_delay_ms,
+                "expected": expected,
+                "actual": final_info,
+                "attempts": attempts,
+            }
+
+    return {
+        "ok": False,
+        "error": "focus verification failed",
+        "query": query or None,
+        "pid": int(pid or 0),
+        "foreground": bool(foreground or query in {"foreground", "current", "active", "fg"}),
+        "retries": retries,
+        "verifyDelayMs": verify_delay_ms,
+        "expected": expected,
+        "actual": final_info,
+        "attempts": attempts,
+    }
 
 
 def emit(text: str):
@@ -629,13 +707,15 @@ def main(argv):
         write_action_log(action, {"command": arg1}, result)
         emit(result)
         return 0
-    if action == "focus-window":
+    if action in {"focus-window", "focus-window-verified"}:
         raw_args = [str(x or "").strip() for x in argv[2:]]
         truthy = {"1", "true", "yes", "foreground", "fg", "current", "active"}
         foreground = any(x.lower() in truthy for x in raw_args)
         non_flag_args = [x for x in raw_args if x and x.lower() not in truthy]
         title = ""
         pid = 0
+        retries = 2
+        verify_delay_ms = 250
         if len(non_flag_args) >= 1:
             first = non_flag_args[0]
             if first.isdigit():
@@ -648,6 +728,17 @@ def main(argv):
                 pid = int(second)
             elif not title:
                 title = second
+        if len(non_flag_args) >= 3 and non_flag_args[2].isdigit():
+            retries = int(non_flag_args[2])
+        if len(non_flag_args) >= 4 and non_flag_args[3].isdigit():
+            verify_delay_ms = int(non_flag_args[3])
+
+        if action == "focus-window-verified":
+            result_obj = focus_window_verified(title, pid, foreground=foreground, retries=retries, verify_delay_ms=verify_delay_ms)
+            write_action_log(action, {"title": title, "pid": pid, "foreground": foreground, "retries": retries, "verifyDelayMs": verify_delay_ms}, json.dumps(result_obj, ensure_ascii=False), ok=bool(result_obj.get("ok")))
+            emit(json.dumps(result_obj, ensure_ascii=False))
+            return 0 if result_obj.get("ok") else 1
+
         result = focus_window(title, pid, foreground=foreground)
         write_action_log(action, {"title": title, "pid": pid, "foreground": foreground}, result)
         emit(result)
