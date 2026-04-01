@@ -1,4 +1,4 @@
-﻿# tmall-genie-voice-bridge
+# tmall-genie-voice-bridge
 
 A local MVP bridge for text-to-speech and playback routing.
 
@@ -43,9 +43,12 @@ Mocked / not verified here:
 - `scripts/mock_http_player.py`: local mock HTTP player receiver for last-hop validation.
 - `scripts/rehearse-real-http-player.ps1`: preflight + one real `/speak` rehearsal runner with structured JSON summary.
 - `scripts/rehearse_real_http_player.py`: underlying rehearsal implementation.
+- `scripts/record-acceptance-result.ps1`: PowerShell helper to write acceptance evidence records.
+- `scripts/record_acceptance_result.py`: timestamped acceptance evidence recorder (JSON/Markdown).
 - `FAILURE_MATRIX.md`: quick troubleshooting matrix for HTTP playback integration.
 - `HOME_ASSISTANT_ACCEPTANCE.md`: real Home Assistant bring-up and human acceptance checklist.
 - `tests/test_mvp_smoke.py`: local smoke tests.
+- `tests/test_acceptance_recorder.py`: targeted tests for acceptance record generation.
 
 ## Quickstart
 
@@ -84,6 +87,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-callback-roundtrip.ps
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-text-roundtrip.ps1 -Text "本地直连测试" -Mode local -Config .\config.local-speaker.json
 ```
+
+## Microphone / STT Local Testing (Windows)
+
+The local STT path uses Windows `System.Speech` via PowerShell.
+Microphone access can be healthy while recognition quality is still unstable, especially for `zh-CN`.
+
+Preflight recognizer + microphone access:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-microphone.ps1 -Culture zh-CN
+```
+
+Run one-shot microphone recognition with practical defaults:
+
+```bash
+python scripts/listen_once.py --culture zh-CN --timeout-seconds 8 --attempts 2
+```
+
+If microphone results are unstable, use deterministic WAV fallback in the same command:
+
+```bash
+python scripts/listen_once.py --culture zh-CN --timeout-seconds 8 --attempts 2 --fallback-wav .\tmp_audio\listen-once-test.wav
+```
+
+`listen_once.py` keeps returning JSON and now includes richer diagnostics (`installed_recognizers`, `elapsed_ms`, per-attempt results, and warnings).  
+Do not treat this as proof of real hardware playback.
 
 ## Endpoint Contract
 
@@ -184,6 +213,21 @@ What the rehearsal does:
 - stops before `/speak` if preflight has blocking issues (unless `-Force` is used)
 - sends one real bridge request
 - returns structured JSON including bridge HTTP status, `audio_url`, backend name, and surfaced target status if the playback endpoint rejects the request
+
+Record one acceptance evidence artifact (timestamped JSON + Markdown under `acceptance_records/`):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\record-acceptance-result.ps1 `
+  -Config .\config.json `
+  -PreflightJsonPath .\tmp\preflight.json `
+  -RehearsalJsonPath .\tmp\rehearsal.json `
+  -HumanHeard `
+  -HumanNote "Heard on living-room speaker at normal volume."
+```
+
+You can also pass inline JSON with `-PreflightJsonInline` / `-RehearsalJsonInline`.
+This recorder is for integration evidence keeping and does not claim hardware playback unless `-HumanHeard` is set by a human.
+When output filenames collide in the same second, recorder files are auto-suffixed (`-2`, `-3`, ...) instead of being overwritten.
 
 The preflight script checks:
 - whether `backend.type` is `local_http_player`

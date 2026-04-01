@@ -31,6 +31,10 @@ $result = [ordered]@{
   ok = $false
   culture = $Culture
   timestamp = (Get-Date).ToString('s')
+  notes = @(
+    'Windows System.Speech dictation is best-effort; zh-CN accuracy can vary by device/noise/language pack.'
+    'If microphone STT is unstable, use scripts/listen_once.py --fallback-wav <path> to verify STT flow deterministically.'
+  )
   recognizer = [ordered]@{
     requested = $Culture
     installed = @()

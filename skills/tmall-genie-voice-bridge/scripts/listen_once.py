@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
@@ -15,16 +15,56 @@ if str(CURRENT_DIR) not in sys.path:
 from speak import load_config, speak
 
 
-def _powershell_recognize(*, timeout_seconds: int, culture: str, wav_path: Path | None) -> Dict[str, Any]:
+SYSTEM_SPEECH_NOTE = (
+    "Windows System.Speech dictation is best-effort. "
+    "zh-CN recognition quality and timeout behavior can vary by device, room noise, and installed language packs."
+)
+
+
+def _decode_powershell_json(stdout: str) -> Dict[str, Any]:
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("PowerShell recognition returned no output")
+
+    last_line = lines[-1]
+    try:
+        decoded = base64.b64decode(last_line, validate=True)
+        return json.loads(decoded.decode("utf-8"))
+    except Exception:
+        pass
+
+    try:
+        return json.loads(last_line)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Failed to parse recognition output: {stdout}") from exc
+
+
+def _powershell_recognize(
+    *,
+    timeout_seconds: int,
+    culture: str,
+    wav_path: Path | None,
+    initial_silence_seconds: float,
+    babble_timeout_seconds: float,
+    end_silence_seconds: float,
+    allow_culture_fallback: bool,
+) -> Dict[str, Any]:
     payload = {
         "timeout_seconds": int(timeout_seconds),
         "culture": culture,
         "wav_path": str(wav_path) if wav_path else "",
+        "initial_silence_seconds": float(initial_silence_seconds),
+        "babble_timeout_seconds": float(babble_timeout_seconds),
+        "end_silence_seconds": float(end_silence_seconds),
+        "allow_culture_fallback": bool(allow_culture_fallback),
     }
     encoded = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
 
     script = rf'''
 $ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 Add-Type -AssemblyName System.Speech
 
 $PayloadBase64 = '{encoded}'
@@ -33,6 +73,10 @@ $payload = $payloadJson | ConvertFrom-Json
 $timeoutSeconds = [int]$payload.timeout_seconds
 $culture = [string]$payload.culture
 $wavPath = [string]$payload.wav_path
+$initialSilenceSeconds = [double]$payload.initial_silence_seconds
+$babbleTimeoutSeconds = [double]$payload.babble_timeout_seconds
+$endSilenceSeconds = [double]$payload.end_silence_seconds
+$allowCultureFallback = [bool]$payload.allow_culture_fallback
 
 $result = [ordered]@{{
   ok = $false
@@ -40,24 +84,44 @@ $result = [ordered]@{{
   text = ''
   confidence = $null
   culture = $culture
+  requested_culture = $culture
+  selected_culture = $null
+  culture_fallback_used = $false
+  installed_recognizers = @()
   timed_out = $false
   wav_path = if ([string]::IsNullOrWhiteSpace($wavPath)) {{ $null }} else {{ $wavPath }}
+  elapsed_ms = 0
   error = $null
 }}
 
-try {{
-  $recognizerInfo = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
-    Where-Object {{ $_.Culture.Name -eq $culture }} |
-    Select-Object -First 1
+$sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-  if (-not $recognizerInfo) {{
-    $installed = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers() |
-      ForEach-Object {{ $_.Culture.Name }}
-    throw ("No recognizer installed for culture '{0}'. Installed: {1}" -f $culture, ($installed -join ', '))
+try {{
+  $installedRecognizers = [System.Speech.Recognition.SpeechRecognitionEngine]::InstalledRecognizers()
+  $result.installed_recognizers = @($installedRecognizers | ForEach-Object {{ $_.Culture.Name }})
+
+  if (-not $installedRecognizers -or $installedRecognizers.Count -eq 0) {{
+    throw 'No System.Speech recognizers are installed on this machine.'
   }}
 
+  $recognizerInfo = $installedRecognizers | Where-Object {{ $_.Culture.Name -eq $culture }} | Select-Object -First 1
+
+  if (-not $recognizerInfo) {{
+    if ($allowCultureFallback) {{
+      $recognizerInfo = $installedRecognizers | Select-Object -First 1
+      $result.culture_fallback_used = $true
+    }}
+    else {{
+      throw ("No recognizer installed for culture '{0}'. Installed: {1}" -f $culture, ($result.installed_recognizers -join ', '))
+    }}
+  }}
+
+  $result.selected_culture = $recognizerInfo.Culture.Name
   $engine = [System.Speech.Recognition.SpeechRecognitionEngine]::new($recognizerInfo)
   $engine.LoadGrammar([System.Speech.Recognition.DictationGrammar]::new())
+  $engine.InitialSilenceTimeout = [TimeSpan]::FromSeconds($initialSilenceSeconds)
+  $engine.BabbleTimeout = [TimeSpan]::FromSeconds($babbleTimeoutSeconds)
+  $engine.EndSilenceTimeout = [TimeSpan]::FromSeconds($endSilenceSeconds)
 
   if ([string]::IsNullOrWhiteSpace($wavPath)) {{
     $engine.SetInputToDefaultAudioDevice()
@@ -82,7 +146,7 @@ try {{
       $result.culture = $recognized.Grammar.Culture.Name
     }}
     else {{
-      $result.culture = $culture
+      $result.culture = $result.selected_culture
     }}
   }}
 
@@ -91,8 +155,13 @@ try {{
 catch {{
   $result.error = $_.Exception.Message
 }}
+finally {{
+  $sw.Stop()
+  $result.elapsed_ms = [int]$sw.ElapsedMilliseconds
+}}
 
-$result | ConvertTo-Json -Depth 4 -Compress
+$json = $result | ConvertTo-Json -Depth 6 -Compress
+[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($json))
 '''
 
     command = [
@@ -109,23 +178,165 @@ $result | ConvertTo-Json -Depth 4 -Compress
 
     if completed.returncode != 0:
         raise RuntimeError(stderr or stdout or f"PowerShell recognition failed with exit code {completed.returncode}")
-    if not stdout:
+    if not stdout.strip():
         raise RuntimeError("PowerShell recognition returned no output")
 
-    try:
-        return json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"Failed to parse recognition output: {stdout}") from exc
+    return _decode_powershell_json(stdout)
 
 
-def listen_once(*, timeout_seconds: int, culture: str, wav_path: Path | None) -> Dict[str, Any]:
-    result = _powershell_recognize(timeout_seconds=timeout_seconds, culture=culture, wav_path=wav_path)
+def _choose_best_attempt(attempts: List[Dict[str, Any]]) -> Dict[str, Any]:
+    successful = [item for item in attempts if item.get("ok") and str(item.get("text") or "").strip()]
+    if successful:
+        return max(successful, key=lambda item: float(item.get("confidence") or 0.0))
+
+    partially_successful = [item for item in attempts if item.get("ok")]
+    if partially_successful:
+        return partially_successful[0]
+
+    return attempts[-1]
+
+
+def _build_warnings(
+    *,
+    result: Dict[str, Any],
+    timeout_seconds: int,
+    primary_mode: str,
+    fallback_wav: Path | None,
+) -> List[str]:
+    warnings: List[str] = []
+    warnings.append(SYSTEM_SPEECH_NOTE)
+
+    attempt_items = result.get("attempts") if isinstance(result.get("attempts"), list) else []
+    primary_attempts = [item for item in attempt_items if isinstance(item, dict)]
+    timeout_seen = bool(result.get("timed_out")) or any(item.get("timed_out") for item in primary_attempts)
+    primary_success_seen = bool(result.get("ok")) and result.get("result_source") == "primary"
+    culture_fallback_seen = bool(result.get("culture_fallback_used")) or any(
+        item.get("culture_fallback_used") for item in primary_attempts
+    )
+
+    if culture_fallback_seen:
+        selected = result.get("selected_culture")
+        requested = result.get("requested_culture")
+        if not selected or not requested:
+            for item in primary_attempts:
+                selected = selected or item.get("selected_culture")
+                requested = requested or item.get("requested_culture")
+        warnings.append(
+            f"Requested culture '{requested}' was not installed. Recognition fell back to '{selected}'."
+        )
+
+    if primary_mode == "microphone" and timeout_seen:
+        warnings.append(
+            f"Microphone timed out after {timeout_seconds}s. Try a higher timeout or reduce room noise."
+        )
+
+    if primary_mode == "microphone" and not primary_success_seen:
+        warnings.append("If microphone recognition is unstable, validate STT with the deterministic --wav path first.")
+
+    if fallback_wav and result.get("result_source") == "fallback_wav":
+        warnings.append("Microphone recognition failed; output text came from --fallback-wav.")
+
+    return warnings
+
+
+def _run_recognition_attempts(
+    *,
+    timeout_seconds: int,
+    culture: str,
+    wav_path: Path | None,
+    attempts: int,
+    initial_silence_seconds: float,
+    babble_timeout_seconds: float,
+    end_silence_seconds: float,
+    allow_culture_fallback: bool,
+) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    for attempt_index in range(1, attempts + 1):
+        current = _powershell_recognize(
+            timeout_seconds=timeout_seconds,
+            culture=culture,
+            wav_path=wav_path,
+            initial_silence_seconds=initial_silence_seconds,
+            babble_timeout_seconds=babble_timeout_seconds,
+            end_silence_seconds=end_silence_seconds,
+            allow_culture_fallback=allow_culture_fallback,
+        )
+        current["attempt"] = attempt_index
+        results.append(current)
+        if current.get("ok") and str(current.get("text") or "").strip():
+            break
+    return results
+
+
+def listen_once(
+    *,
+    timeout_seconds: int,
+    culture: str,
+    wav_path: Path | None,
+    attempts: int,
+    fallback_wav: Path | None,
+    initial_silence_seconds: float,
+    babble_timeout_seconds: float,
+    end_silence_seconds: float,
+    allow_culture_fallback: bool,
+) -> Dict[str, Any]:
+    primary_mode = "wav_file" if wav_path else "microphone"
+    attempt_count = 1 if wav_path else max(1, int(attempts))
+
+    attempt_results = _run_recognition_attempts(
+        timeout_seconds=timeout_seconds,
+        culture=culture,
+        wav_path=wav_path,
+        attempts=attempt_count,
+        initial_silence_seconds=initial_silence_seconds,
+        babble_timeout_seconds=babble_timeout_seconds,
+        end_silence_seconds=end_silence_seconds,
+        allow_culture_fallback=allow_culture_fallback,
+    )
+    result = dict(_choose_best_attempt(attempt_results))
     result.setdefault("ok", False)
     result.setdefault("text", "")
     result.setdefault("culture", culture)
-    result.setdefault("mode", "wav_file" if wav_path else "microphone")
+    result.setdefault("mode", primary_mode)
+    result["result_source"] = "primary"
+    result["engine"] = {
+        "name": "windows_system_speech",
+        "transport": "powershell",
+        "note": SYSTEM_SPEECH_NOTE,
+    }
+    if len(attempt_results) > 1:
+        result["attempts"] = attempt_results
+    result["attempt_count"] = len(attempt_results)
+
     if wav_path and not result.get("wav_path"):
         result["wav_path"] = str(wav_path)
+
+    fallback_result: Dict[str, Any] | None = None
+    if fallback_wav and not wav_path and not result.get("ok"):
+        fallback_result = _powershell_recognize(
+            timeout_seconds=timeout_seconds,
+            culture=culture,
+            wav_path=fallback_wav,
+            initial_silence_seconds=initial_silence_seconds,
+            babble_timeout_seconds=babble_timeout_seconds,
+            end_silence_seconds=end_silence_seconds,
+            allow_culture_fallback=allow_culture_fallback,
+        )
+        fallback_result["attempt"] = 1
+        result["fallback"] = fallback_result
+        if fallback_result.get("ok") and str(fallback_result.get("text") or "").strip():
+            result["ok"] = True
+            result["text"] = str(fallback_result["text"])
+            result["confidence"] = fallback_result.get("confidence")
+            result["culture"] = str(fallback_result.get("culture") or culture)
+            result["result_source"] = "fallback_wav"
+
+    result["warnings"] = _build_warnings(
+        result=result,
+        timeout_seconds=timeout_seconds,
+        primary_mode=primary_mode,
+        fallback_wav=fallback_wav,
+    )
     return result
 
 
@@ -140,13 +351,46 @@ def main() -> None:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=6,
+        default=8,
         help="Recognition timeout in seconds for either microphone or wav recognition.",
+    )
+    parser.add_argument(
+        "--attempts",
+        type=int,
+        default=2,
+        help="Microphone retry attempts before failing. Ignored when --wav is provided.",
     )
     parser.add_argument(
         "--culture",
         default="zh-CN",
         help="Recognizer culture, default zh-CN.",
+    )
+    parser.add_argument(
+        "--allow-culture-fallback",
+        action="store_true",
+        help="If requested culture is unavailable, fall back to the first installed recognizer culture.",
+    )
+    parser.add_argument(
+        "--initial-silence-seconds",
+        type=float,
+        default=3.0,
+        help="Initial silence timeout for System.Speech before speech starts.",
+    )
+    parser.add_argument(
+        "--babble-timeout-seconds",
+        type=float,
+        default=2.0,
+        help="Babble timeout for System.Speech.",
+    )
+    parser.add_argument(
+        "--end-silence-seconds",
+        type=float,
+        default=0.8,
+        help="End-of-speech silence timeout for System.Speech.",
+    )
+    parser.add_argument(
+        "--fallback-wav",
+        help="Optional WAV file used only when microphone recognition fails. Useful as a practical fallback path.",
     )
     parser.add_argument(
         "--config",
@@ -161,12 +405,28 @@ def main() -> None:
     args = parser.parse_args()
 
     wav_path = Path(args.wav).resolve() if args.wav else None
+    fallback_wav = Path(args.fallback_wav).resolve() if args.fallback_wav else None
+
+    if wav_path and fallback_wav:
+        parser.error("--fallback-wav cannot be used together with --wav")
+    if args.attempts < 1:
+        parser.error("--attempts must be >= 1")
+    if args.timeout_seconds < 1:
+        parser.error("--timeout-seconds must be >= 1")
+    if args.initial_silence_seconds <= 0 or args.babble_timeout_seconds <= 0 or args.end_silence_seconds <= 0:
+        parser.error("silence timeout arguments must be > 0")
 
     try:
         result = listen_once(
             timeout_seconds=args.timeout_seconds,
             culture=args.culture,
             wav_path=wav_path,
+            attempts=args.attempts,
+            fallback_wav=fallback_wav,
+            initial_silence_seconds=args.initial_silence_seconds,
+            babble_timeout_seconds=args.babble_timeout_seconds,
+            end_silence_seconds=args.end_silence_seconds,
+            allow_culture_fallback=bool(args.allow_culture_fallback),
         )
 
         if args.echo_speak and result.get("ok") and result.get("text"):
@@ -190,6 +450,9 @@ def main() -> None:
         }
         if wav_path:
             error["wav_path"] = str(wav_path)
+        if fallback_wav:
+            error["fallback_wav"] = str(fallback_wav)
+        error["warnings"] = [SYSTEM_SPEECH_NOTE]
         print(json.dumps(error, ensure_ascii=False, indent=2))
         raise SystemExit(1)
 

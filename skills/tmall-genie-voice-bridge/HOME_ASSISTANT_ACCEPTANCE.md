@@ -98,7 +98,7 @@ Expected:
 Run:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http-player.ps1 -Config .\config.json -BridgeUrl http://127.0.0.1:57881/speak -Text "真实播放验收"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http-player.ps1 -Config .\config.json -BridgeUrl http://127.0.0.1:57881/speak -Text "真实联调演练"
 ```
 
 Expected:
@@ -184,3 +184,19 @@ For any real acceptance run, keep these four items:
 - preflight JSON result
 - rehearsal JSON result
 - human confirmation that audio was actually heard
+
+Record them in one timestamped artifact:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\record-acceptance-result.ps1 `
+  -Config .\config.json `
+  -PreflightJsonPath .\tmp\preflight.json `
+  -RehearsalJsonPath .\tmp\rehearsal.json `
+  -HumanHeard `
+  -HumanNote "Heard clear playback near the target speaker."
+```
+
+The script writes JSON and Markdown evidence files under `.\acceptance_records\` by default.
+If multiple records are written in the same second, filenames are auto-suffixed (`-2`, `-3`, ...) to avoid overwrite.
+If no human heard playback, omit `-HumanHeard` and record the reason in `-HumanNote`.
+
