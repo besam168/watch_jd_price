@@ -44,6 +44,7 @@ Mocked / not verified here:
 - `scripts/rehearse-real-http-player.ps1`: preflight + one real `/speak` rehearsal runner with structured JSON summary.
 - `scripts/rehearse_real_http_player.py`: underlying rehearsal implementation.
 - `FAILURE_MATRIX.md`: quick troubleshooting matrix for HTTP playback integration.
+- `HOME_ASSISTANT_ACCEPTANCE.md`: real Home Assistant bring-up and human acceptance checklist.
 - `tests/test_mvp_smoke.py`: local smoke tests.
 
 ## Quickstart

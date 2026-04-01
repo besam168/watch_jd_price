@@ -47,3 +47,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http
 ```
 
 Use this to catch obvious mistakes before claiming the bridge is ready for a real player. The rehearsal output is still only a bridge/HTTP handoff check, not proof that real hardware playback happened.
+
+## Acceptance checklist
+For the final real bring-up flow and honest sign-off language, use:
+
+- `HOME_ASSISTANT_ACCEPTANCE.md`
