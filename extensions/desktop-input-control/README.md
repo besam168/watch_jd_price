@@ -72,12 +72,16 @@
 
 进一步地，`desktop_run_locked_input_flow` 可以把“锁窗口 -> 聚焦 -> 输入文字 -> 快捷键”串成一个更稳的一体化流程，减少上层编排时的状态漂移。
 
-### 2) 重试机制
+### 2) 重试机制 + 更完整失败诊断
 `desktop_click_text_on_screen` 现在支持：
 - `retries`
 - `retryDelayMs`
+- 点击前后前台窗口信息
+- 锁状态回传
+- `verifyImagePath`
+- 更完整的 attempt 记录
 
-当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束。
+当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束；同时失败回包会更适合复盘和回放。
 
 ### 3) 点击前后截图归档
 新增：
@@ -148,6 +152,7 @@ python scripts/desktop-input.py get-foreground-window-info
 python scripts/desktop-input.py list-windows chrome
 python scripts/desktop-input.py set-window-lock "" 0 true
 python scripts/desktop-input.py get-window-lock
+python scripts/desktop-input.py focus-window foreground
 python scripts/desktop-input.py mouse-move 200 200
 python scripts/desktop-input.py mouse-move-relative 50 20
 python scripts/desktop-input.py mouse-click left
@@ -156,17 +161,20 @@ python scripts/desktop-input.py get-recent-actions 10
 powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1
 python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 设置 --top-n 3
 powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
+powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
 ```
 
 ### OpenClaw 调用建议
 更稳的调用顺序：
 1. `desktop_list_windows`
 2. `desktop_get_foreground_window`
-3. `desktop_screen_capture`
-4. `desktop_find_text_on_screen`
-5. `desktop_click_text_on_screen`（先 `dryRun=true`）
-6. 正式点击时带上 `verifyQuery` / `verifyAbsentQuery`
-7. 需要时启用 `retries` + `archiveScreenshots`
+3. `desktop_set_window_lock`（优先 `foreground=true`）
+4. `desktop_screen_capture`
+5. `desktop_find_text_on_screen`
+6. `desktop_click_text_on_screen`（先 `dryRun=true`）
+7. 正式点击时带上 `verifyQuery` / `verifyAbsentQuery`
+8. 需要时启用 `retries` + `archiveScreenshots`
+9. 输入型动作优先走 `desktop_run_locked_input_flow`
 
 ## 推荐实战策略
 不要盲点。优先用：

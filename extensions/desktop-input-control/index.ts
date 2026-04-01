@@ -461,6 +461,8 @@ export default function (api) {
       const retryDelayMs = Math.max(0, Math.round(params.retryDelayMs ?? 500));
       const archiveScreenshots = Boolean(params.archiveScreenshots);
       const attempts: any[] = [];
+      const lockStateBefore = lockApplied ? await runPy(scriptPath, ["get-window-lock"]) : null;
+      const foregroundBefore = await runPy(scriptPath, ["get-foreground-window-info"]);
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         const prefix = `click-text-attempt-${attempt + 1}`;
@@ -481,7 +483,7 @@ export default function (api) {
         const matches = pickTopMatches(ocr, params.topN ?? 1);
         const match = matches[0] || null;
         if (!match) {
-          attempts.push({ attempt: attempt + 1, ok: false, imagePath, error: "text not found" });
+          attempts.push({ attempt: attempt + 1, ok: false, imagePath, error: "text not found", foregroundBefore, lockStateBefore });
           if (attempt < retries && retryDelayMs > 0) {
             await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
             continue;
@@ -502,6 +504,8 @@ export default function (api) {
                 matches,
                 debugOverlay: ocr?.debugOverlay || null,
                 engine: ocr?.engine || null,
+                foregroundBefore,
+                lockStateBefore,
                 ocr,
               }),
             }],
@@ -514,6 +518,7 @@ export default function (api) {
         const dryRun = Boolean(params.dryRun);
         let clickText = "DRY_RUN";
         let verify: any = null;
+        let verifyImagePath: string | null = null;
         if (!dryRun) {
           await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
           clickText = await runPy(scriptPath, ["mouse-click", button]);
@@ -524,7 +529,7 @@ export default function (api) {
             if (delayMs > 0) {
               await new Promise((resolve) => setTimeout(resolve, delayMs));
             }
-            const verifyImagePath = await captureScreen(captureScriptPath, {
+            verifyImagePath = await captureScreen(captureScriptPath, {
               ...params,
               path: archiveScreenshots ? createArtifactPath(prefix, "after") : params.path,
             });
@@ -555,6 +560,8 @@ export default function (api) {
           }
         }
 
+        const foregroundAfter = await runPy(scriptPath, ["get-foreground-window-info"]);
+        const lockStateAfter = lockApplied ? await runPy(scriptPath, ["get-window-lock"]) : null;
         const result = {
           ok: true,
           dryRun,
@@ -569,9 +576,14 @@ export default function (api) {
             result: clickText,
           },
           verify,
+          verifyImagePath,
+          foregroundBefore,
+          foregroundAfter,
+          lockStateBefore,
+          lockStateAfter,
           match,
           matches,
-          attempts: [...attempts, { attempt: attempt + 1, ok: true, imagePath, verify }],
+          attempts: [...attempts, { attempt: attempt + 1, ok: true, imagePath, verify, verifyImagePath, foregroundBefore, foregroundAfter }],
           topN: params.topN ?? 1,
           count: ocr?.count || 0,
           items: ocr?.items || [],

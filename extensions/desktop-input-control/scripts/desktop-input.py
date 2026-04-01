@@ -459,15 +459,22 @@ def run_command(command: str):
     return f"Started command: {command} (PID={proc.pid})"
 
 
-def focus_window(query: str = "", pid: int = 0):
+def focus_window(query: str = "", pid: int = 0, foreground: bool = False):
     query = (query or "").strip().lower()
-    if not query and not pid:
-        raise ValueError("title or pid is required")
-    match = find_best_window(query, pid)
-    if not match:
-        raise RuntimeError(f"Could not find a window matching: {query or pid}")
-    hwnd = match["hwnd"]
-    title = match["title"]
+    if foreground or query in {"foreground", "current", "active", "fg"}:
+        info = get_foreground_window_info()
+        hwnd = int(info.get("hwnd") or 0)
+        title = str(info.get("title") or "")
+        if not hwnd:
+            raise RuntimeError("Could not resolve foreground window")
+    else:
+        if not query and not pid:
+            raise ValueError("title or pid is required")
+        match = find_best_window(query, pid, prefer_foreground=True)
+        if not match:
+            raise RuntimeError(f"Could not find a window matching: {query or pid}")
+        hwnd = match["hwnd"]
+        title = match["title"]
     ShowWindow = user32.ShowWindow
     SetForegroundWindow = user32.SetForegroundWindow
     ShowWindow(hwnd, SW_RESTORE)
@@ -623,9 +630,26 @@ def main(argv):
         emit(result)
         return 0
     if action == "focus-window":
-        pid = int(arg2 or "0") if str(arg2 or "0").strip() else 0
-        result = focus_window(arg1, pid)
-        write_action_log(action, {"title": arg1, "pid": pid}, result)
+        raw_args = [str(x or "").strip() for x in argv[2:]]
+        truthy = {"1", "true", "yes", "foreground", "fg", "current", "active"}
+        foreground = any(x.lower() in truthy for x in raw_args)
+        non_flag_args = [x for x in raw_args if x and x.lower() not in truthy]
+        title = ""
+        pid = 0
+        if len(non_flag_args) >= 1:
+            first = non_flag_args[0]
+            if first.isdigit():
+                pid = int(first)
+            else:
+                title = first
+        if len(non_flag_args) >= 2:
+            second = non_flag_args[1]
+            if second.isdigit():
+                pid = int(second)
+            elif not title:
+                title = second
+        result = focus_window(title, pid, foreground=foreground)
+        write_action_log(action, {"title": title, "pid": pid, "foreground": foreground}, result)
         emit(result)
         return 0
     if action == "screen-capture":
