@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
@@ -6,6 +6,15 @@ from typing import Any, Dict
 import requests
 
 from .base import PlaybackBackend
+
+
+class PlaybackTargetHttpError(RuntimeError):
+    def __init__(self, *, status_code: int, player_url: str, response_text: str, payload: Dict[str, Any]) -> None:
+        self.status_code = int(status_code)
+        self.player_url = player_url
+        self.response_text = response_text
+        self.payload = payload
+        super().__init__(f"Playback target returned HTTP {self.status_code}")
 
 
 class LocalHttpPlayerBackend(PlaybackBackend):
@@ -24,7 +33,13 @@ class LocalHttpPlayerBackend(PlaybackBackend):
         payload = _replace_placeholders(body_template, text=text, audio_url=audio_url, audio_path=str(audio_path))
 
         response = requests.request(method=method, url=player_url, headers=headers, json=payload, timeout=timeout)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            raise PlaybackTargetHttpError(
+                status_code=response.status_code,
+                player_url=str(player_url),
+                response_text=response.text[:1000],
+                payload=payload,
+            )
 
         return {
             "ok": True,

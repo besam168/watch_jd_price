@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from scripts import bridge_server
 from scripts.speak import load_config, speak
+from scripts.backends.local_http_player import PlaybackTargetHttpError
 
 
 class MvpSmokeTests(unittest.TestCase):
@@ -198,6 +199,55 @@ class MvpSmokeTests(unittest.TestCase):
         assert payload is not None
         self.assertIn("too long", payload["error"])
 
+    def test_speak_route_surfaces_target_401(self) -> None:
+        with mock.patch("scripts.bridge_server.speak") as speak_mock:
+            speak_mock.side_effect = PlaybackTargetHttpError(
+                status_code=401,
+                player_url="http://player.local/play",
+                response_text='{"ok":false,"error":"Unauthorized"}',
+                payload={"entity_id": "media_player.test"},
+            )
+            response = self.client.post("/speak", json={"text": "auth fail test"})
+
+        self.assertEqual(response.status_code, 401)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["target_status"], 401)
+        self.assertEqual(payload["player_url"], "http://player.local/play")
+        self.assertIn("Unauthorized", payload["target_response_preview"])
+
+    def test_speak_route_surfaces_target_422(self) -> None:
+        with mock.patch("scripts.bridge_server.speak") as speak_mock:
+            speak_mock.side_effect = PlaybackTargetHttpError(
+                status_code=422,
+                player_url="http://player.local/play",
+                response_text='{"ok":false,"error":"Entity mismatch"}',
+                payload={"entity_id": "media_player.actual"},
+            )
+            response = self.client.post("/speak", json={"text": "entity fail test"})
+
+        self.assertEqual(response.status_code, 422)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["target_status"], 422)
+        self.assertIn("Entity mismatch", payload["target_response_preview"])
+
+    def test_callback_route_surfaces_target_500(self) -> None:
+        with mock.patch("scripts.bridge_server.speak") as speak_mock:
+            speak_mock.side_effect = PlaybackTargetHttpError(
+                status_code=500,
+                player_url="http://player.local/play",
+                response_text='{"ok":false,"error":"Forced status 500"}',
+                payload={"entity_id": "media_player.test"},
+            )
+            response = self.client.post("/callback/text", json={"query": "server fail test", "source": "matrix"})
+
+        self.assertEqual(response.status_code, 500)
+        payload = response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["target_status"], 500)
+        self.assertEqual(payload["callback"]["source"], "matrix")
+        self.assertIn("Forced status 500", payload["target_response_preview"])
 
 
 class MockHttpPlayerHandlerTests(unittest.TestCase):

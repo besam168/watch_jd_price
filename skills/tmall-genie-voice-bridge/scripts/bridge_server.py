@@ -14,6 +14,7 @@ if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
 from speak import load_config, speak
+from backends.local_http_player import PlaybackTargetHttpError
 
 
 app = Flask(__name__)
@@ -149,6 +150,25 @@ def _extract_text_callback_payload(data: Dict[str, Any]) -> Tuple[str, Dict[str,
     return text, metadata
 
 
+def _build_target_error_response(exc: Exception, *, callback: Dict[str, Any] | None = None):
+    status_code = getattr(exc, "status_code", None)
+    player_url = getattr(exc, "player_url", None)
+    if status_code is None or player_url is None:
+        return None
+
+    body = {
+        "ok": False,
+        "error": str(exc),
+        "target_status": int(status_code),
+        "player_url": player_url,
+        "target_response_preview": getattr(exc, "response_text", None),
+        "target_payload": getattr(exc, "payload", None),
+    }
+    if callback is not None:
+        body["callback"] = callback
+    return jsonify(body), int(status_code)
+
+
 @app.get("/health")
 def health() -> Any:
     backend_type = None
@@ -178,6 +198,9 @@ def speak_route() -> Any:
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
+        target_error = _build_target_error_response(exc)
+        if target_error is not None:
+            return target_error
         return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify(result)
 
@@ -206,6 +229,9 @@ def text_callback_route() -> Any:
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc), "callback": metadata}), 400
     except Exception as exc:
+        target_error = _build_target_error_response(exc, callback=metadata)
+        if target_error is not None:
+            return target_error
         return jsonify({"ok": False, "error": str(exc), "callback": metadata}), 500
 
     return jsonify({
@@ -246,6 +272,13 @@ def main() -> None:
     APP_CONFIG_PATH = Path(args.config).resolve()
     APP_CONFIG = load_config(APP_CONFIG_PATH)
 
+    host = APP_CONFIG.get("host", "127.0.0.1")
+    port = int(APP_CONFIG.get("port", 57881))
+    app.run(host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()
     host = APP_CONFIG.get("host", "127.0.0.1")
     port = int(APP_CONFIG.get("port", 57881))
     app.run(host=host, port=port)

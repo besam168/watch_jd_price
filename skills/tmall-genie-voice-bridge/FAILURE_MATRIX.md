@@ -38,5 +38,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-http-player-roundtrip
 ## Interpretation rules
 - If the mock player log was never created, the bridge probably never dispatched to the playback target.
 - If the player log exists but bridge returned an error, inspect auth, entity_id, and returned status code.
-- In the current bridge implementation, downstream 401/422/500 are surfaced back to `/speak` as upstream HTTP 500. So use the mock player record to distinguish auth failure vs entity mismatch vs target error.
+- The bridge now surfaces downstream HTTP status codes back through `/speak` and `/callback/text` for common playback-target failures, including `target_status`, `player_url`, `target_response_preview`, and `target_payload`.
 - If everything is 200 locally but a real device still stays silent, focus on real target accessibility and media fetching.
