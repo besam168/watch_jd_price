@@ -51,7 +51,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-li
 powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-live.ps1 -NoMedia
 ```
 
+## Telegram bot direct-send test
+Use this when `MEDIA:` path delivery is unreliable and a direct Telegram Bot API send is required.
+
+```powershell
+python {baseDir}/scripts/send-telegram-photo.py "C:\path\to\image.png" 8397228579 "最新桌面图"
+```
+
+The script:
+- reads the Telegram bot token from `C:\Users\besam\.openclaw\openclaw.json`
+- sends the image directly with Telegram Bot API `sendPhoto`
+- returns JSON with `message_id` when successful
+
 ## Notes
 - Windows only
 - Designed for Telegram screenshot replies
 - Prefer this skill when older screenshot flows appear stale, cached, or confusing to verify
+- Direct-send mode is an external action and should only be used when the user explicitly wants the image sent
