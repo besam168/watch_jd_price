@@ -8,6 +8,7 @@ from unittest import mock
 from uuid import uuid4
 
 from scripts import bridge_server
+from scripts.preflight_real_http_player import evaluate_config
 from scripts.speak import load_config, speak
 from scripts.backends.local_http_player import PlaybackTargetHttpError
 
