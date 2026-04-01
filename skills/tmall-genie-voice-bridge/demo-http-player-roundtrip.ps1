@@ -1,6 +1,6 @@
 param(
   [Parameter(Position = 0)]
-  [string]$Text = '收到。HTTP 播放端验收桩已收到请求。',
+  [string]$Text = 'HTTP player validation request received',
 
   [string]$BridgeUrl = 'http://127.0.0.1:57881/speak',
 

@@ -1,0 +1,34 @@
+{
+  "host": "127.0.0.1",
+  "port": 57881,
+  "tts": {
+    "provider": "mock",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "rate": "+0%",
+    "output_dir": "./tmp_audio",
+    "output_ext": "wav",
+    "max_text_length": 4000
+  },
+  "backend": {
+    "type": "local_http_player",
+    "options": {}
+  },
+  "http_player": {
+    "player_url": "http://127.0.0.1:58081/play",
+    "method": "POST",
+    "timeout": 15,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "body_template": {
+      "entity_id": "media_player.mock_receiver",
+      "media_content_id": "{{audio_url}}",
+      "media_content_type": "music",
+      "meta": {
+        "spoken_text": "{{text}}",
+        "local_file": "{{audio_path}}"
+      }
+    },
+    "public_base_url": "http://127.0.0.1:57881"
+  }
+}
