@@ -30,3 +30,12 @@ Use `tmall-genie-voice-bridge` with a real HTTP playback target in the shortest 
 - If `audio_url` contains `127.0.0.1` and the player is on another machine, it will fail.
 - If the player returns non-2xx, inspect auth, entity_id, and payload schema.
 - If HTTP succeeds but nothing plays, the problem is now on the real playback target side, not the bridge.
+
+## Preflight
+Before first real integration, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-real-http-player.ps1 -Config .\config.real-http-player.template.json
+```
+
+Use this to catch obvious mistakes before claiming the bridge is ready for a real player.

@@ -164,6 +164,20 @@ Minimum real-world checklist before claiming playback is ready:
 3. The target device fetches the generated `/audio/...` file successfully.
 4. A human confirms the device actually played the sound.
 
+Preflight before real integration:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-real-http-player.ps1 -Config .\config.real-http-player.template.json
+```
+
+The preflight script checks:
+- whether `backend.type` is `local_http_player`
+- whether auth/header placeholders are still present
+- whether `entity_id` still looks like the example value
+- whether `public_base_url` / `audio_base_url` still look local or placeholder
+- whether bridge `/health` is currently reachable
+- whether the playback target base URL answers a quick probe
+
 ## Validation
 
 Run smoke tests:
