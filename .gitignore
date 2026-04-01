@@ -1,0 +1,5 @@
+# Local screenshot/test outputs
+skills/telegram-image-sender/output/
+skills/telegram-image-sender/*.png
+new photo/
+live-send/
