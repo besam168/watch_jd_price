@@ -33,6 +33,7 @@
 - 窗口聚焦 `desktop_focus_window`
 - 窗口列表读取 `desktop_list_windows`
 - 当前前台窗口读取 `desktop_get_foreground_window`
+- 当前前台窗口详情读取 `desktop_get_foreground_window_info`
 - 当前窗口锁读取 `desktop_get_window_lock`
 - 设置窗口锁 `desktop_set_window_lock`
 - 清除窗口锁 `desktop_clear_window_lock`
@@ -62,7 +63,7 @@
 - `desktop_set_window_lock`
 - `desktop_clear_window_lock`
 
-这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。
+这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。现在 `desktop_set_window_lock` 还支持 `foreground=true`，可优先直接锁当前前台窗口，避免误锁到同类标题窗口。
 
 ### 2) 重试机制
 `desktop_click_text_on_screen` 现在支持：
@@ -136,8 +137,9 @@
 ### 本地直接验证
 ```powershell
 python scripts/desktop-input.py get-foreground-window
+python scripts/desktop-input.py get-foreground-window-info
 python scripts/desktop-input.py list-windows chrome
-python scripts/desktop-input.py set-window-lock chrome 0
+python scripts/desktop-input.py set-window-lock "" 0 true
 python scripts/desktop-input.py get-window-lock
 python scripts/desktop-input.py mouse-move 200 200
 python scripts/desktop-input.py mouse-move-relative 50 20

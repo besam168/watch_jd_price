@@ -294,6 +294,16 @@ export default function (api) {
   }, { optional: true });
 
   api.registerTool({
+    name: "desktop_get_foreground_window_info",
+    description: "Get the current foreground window title, PID, and HWND as JSON.",
+    parameters: Type.Object({}),
+    async execute() {
+      const text = await runPy(scriptPath, ["get-foreground-window-info"]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
     name: "desktop_get_window_lock",
     description: "Get the currently active window lock, if any.",
     parameters: Type.Object({}),
@@ -305,10 +315,10 @@ export default function (api) {
 
   api.registerTool({
     name: "desktop_set_window_lock",
-    description: "Lock future desktop input actions to a target window by title or PID.",
-    parameters: Type.Object({ title: Type.Optional(Type.String()), pid: Type.Optional(Type.Number()) }),
+    description: "Lock future desktop input actions to a target window by foreground, title, or PID. Foreground mode is safest.",
+    parameters: Type.Object({ title: Type.Optional(Type.String()), pid: Type.Optional(Type.Number()), foreground: Type.Optional(Type.Boolean()) }),
     async execute(_id, params) {
-      const text = await runPy(scriptPath, ["set-window-lock", params.title || "", String(params.pid ?? 0)]);
+      const text = await runPy(scriptPath, ["set-window-lock", params.title || "", String(params.pid ?? 0), params.foreground ? "true" : "false"]);
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });

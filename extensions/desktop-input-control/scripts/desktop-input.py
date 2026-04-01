@@ -157,9 +157,22 @@ def get_window_title(hwnd) -> str:
     return buf.value or ""
 
 
-def get_foreground_window_title(silent: bool = False) -> str:
+def get_foreground_window_info():
     hwnd = user32.GetForegroundWindow()
-    return get_window_title(hwnd)
+    title = get_window_title(hwnd)
+    pid = wintypes.DWORD()
+    if hwnd:
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return {
+        "hwnd": int(hwnd) if hwnd else 0,
+        "title": title,
+        "normalizedTitle": normalize_title(title),
+        "pid": int(pid.value),
+    }
+
+
+def get_foreground_window_title(silent: bool = False) -> str:
+    return get_foreground_window_info().get("title", "")
 
 
 def list_windows(query: str = ""):
@@ -194,13 +207,47 @@ def list_windows(query: str = ""):
     return rows
 
 
-def find_best_window(query: str = "", pid: int = 0):
+def find_best_window(query: str = "", pid: int = 0, prefer_foreground: bool = False):
+    query = normalize_title(query)
     rows = list_windows(query)
     if pid:
         pid_rows = [row for row in rows if row.get("pid") == pid]
         if pid_rows:
-            return pid_rows[-1]
-    return rows[-1] if rows else None
+            rows = pid_rows
+        else:
+            return None
+    if not rows:
+        return None
+
+    fg = get_foreground_window_info()
+    fg_hwnd = int(fg.get("hwnd") or 0)
+    fg_pid = int(fg.get("pid") or 0)
+    fg_title = normalize_title(str(fg.get("title") or ""))
+
+    if prefer_foreground:
+        for row in rows:
+            if int(row.get("hwnd") or 0) == fg_hwnd and fg_hwnd:
+                return row
+        for row in rows:
+            if int(row.get("pid") or 0) == fg_pid and fg_pid:
+                return row
+        for row in rows:
+            title = normalize_title(str(row.get("title") or ""))
+            if fg_title and title == fg_title:
+                return row
+
+    exact_title_rows = [row for row in rows if normalize_title(str(row.get("title") or "")) == query]
+    if exact_title_rows:
+        return exact_title_rows[-1]
+
+    exact_pid_title_rows = [
+        row for row in rows
+        if pid and int(row.get("pid") or 0) == pid and normalize_title(str(row.get("title") or "")) == query
+    ]
+    if exact_pid_title_rows:
+        return exact_pid_title_rows[-1]
+
+    return rows[-1]
 
 
 def create_artifact_prefix(name: str):
@@ -219,6 +266,23 @@ def read_window_lock():
         return data if isinstance(data, dict) else None
     except Exception:
         return None
+
+
+def resolve_window_lock(title: str = "", pid: int = 0, foreground: bool = False):
+    if foreground:
+        fg = get_foreground_window_info()
+        if not fg.get("hwnd"):
+            raise RuntimeError("Could not resolve foreground window")
+        return {"title": fg.get("title"), "pid": fg.get("pid"), "hwnd": fg.get("hwnd"), "mode": "foreground"}
+
+    title = (title or "").strip()
+    if not title and not pid:
+        raise ValueError("title or pid is required unless foreground=true")
+
+    match = find_best_window(title, pid, prefer_foreground=True)
+    if not match:
+        raise RuntimeError(f"Could not find a window matching: {title or pid}")
+    return {"title": match.get("title"), "pid": match.get("pid"), "hwnd": match.get("hwnd"), "mode": "query"}
 
 
 def write_window_lock(data: dict | None):
@@ -241,13 +305,17 @@ def enforce_window_guard(config: dict, action: str):
 
     lock = read_window_lock()
     if lock:
+        fg = get_foreground_window_info()
         lock_title = normalize_title(str(lock.get("title") or ""))
         lock_pid = int(lock.get("pid") or 0)
-        current = find_best_window(title, 0)
-        current_pid = int(current.get("pid") or 0) if current else 0
-        title_ok = lock_title and lock_title in normalized
-        pid_ok = lock_pid and current_pid == lock_pid
-        if not (title_ok or pid_ok):
+        lock_hwnd = int(lock.get("hwnd") or 0)
+        current_title = normalize_title(str(fg.get("title") or ""))
+        current_pid = int(fg.get("pid") or 0)
+        current_hwnd = int(fg.get("hwnd") or 0)
+        title_ok = bool(lock_title and lock_title == current_title)
+        pid_ok = bool(lock_pid and current_pid == lock_pid)
+        hwnd_ok = bool(lock_hwnd and current_hwnd == lock_hwnd)
+        if not (hwnd_ok or (pid_ok and title_ok) or pid_ok):
             raise PermissionError(f"Foreground window violates active lock for action {action}: {title}")
 
     if config.get("requireWindowMatchForInput"):
@@ -424,6 +492,9 @@ def main(argv):
     if action == "get-foreground-window":
         emit(get_foreground_window_title(silent=True))
         return 0
+    if action == "get-foreground-window-info":
+        emit(json.dumps(get_foreground_window_info(), ensure_ascii=False))
+        return 0
     if action == "list-windows":
         emit(json.dumps(list_windows(arg1 or ""), ensure_ascii=False))
         return 0
@@ -431,14 +502,27 @@ def main(argv):
         emit(json.dumps(read_window_lock(), ensure_ascii=False))
         return 0
     if action == "set-window-lock":
-        pid = int(arg2 or "0") if str(arg2 or "0").strip() else 0
-        title = (arg1 or "").strip()
-        if not title and not pid:
-            raise ValueError("title or pid is required")
-        match = find_best_window(title, pid)
-        if not match:
-            raise RuntimeError(f"Could not find a window matching: {title or pid}")
-        lock = {"title": match.get("title"), "pid": match.get("pid"), "hwnd": match.get("hwnd")}
+        raw_args = [str(x or "").strip() for x in argv[2:]]
+        truthy = {"1", "true", "yes", "foreground", "fg"}
+        foreground = any(x.lower() in truthy for x in raw_args)
+        non_flag_args = [x for x in raw_args if x and x.lower() not in truthy]
+
+        title = ""
+        pid = 0
+        if len(non_flag_args) >= 1:
+            first = non_flag_args[0]
+            if first.isdigit():
+                pid = int(first)
+            else:
+                title = first
+        if len(non_flag_args) >= 2:
+            second = non_flag_args[1]
+            if second.isdigit():
+                pid = int(second)
+            elif not title:
+                title = second
+
+        lock = resolve_window_lock(title=title, pid=pid, foreground=foreground)
         write_window_lock(lock)
         emit(json.dumps(lock, ensure_ascii=False))
         return 0

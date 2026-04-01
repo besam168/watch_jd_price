@@ -1,5 +1,6 @@
 param(
-    [string]$WindowQuery = "OpenClaw",
+    [string]$WindowQuery = "",
+    [switch]$UseForeground,
     [string]$TextToType = "Desktop automation demo workflow"
 )
 
@@ -15,10 +16,19 @@ function Run-Py {
     & python $py @ScriptArgs
 }
 
-$lock = Run-Py -ScriptArgs @("set-window-lock", $WindowQuery, "0")
+if (-not $PSBoundParameters.ContainsKey('UseForeground') -and [string]::IsNullOrWhiteSpace($WindowQuery)) {
+    $UseForeground = $true
+}
+
+if ($UseForeground) {
+    $lock = Run-Py -ScriptArgs @("set-window-lock", "", "0", "true")
+} else {
+    $lock = Run-Py -ScriptArgs @("set-window-lock", $WindowQuery, "0", "false")
+    Run-Py -ScriptArgs @("focus-window", $WindowQuery, "0") | Out-Null
+}
+
 $before = Join-Path $artifactDir ("demo-before-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".png")
 & powershell -ExecutionPolicy Bypass -File $capture $before | Out-Null
-Run-Py -ScriptArgs @("focus-window", $WindowQuery, "0") | Out-Null
 Start-Sleep -Milliseconds 300
 $typeResult = Run-Py -ScriptArgs @("type-text", $TextToType)
 Start-Sleep -Milliseconds 300
