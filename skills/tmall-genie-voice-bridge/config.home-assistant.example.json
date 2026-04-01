@@ -1,0 +1,32 @@
+{
+  "host": "127.0.0.1",
+  "port": 57881,
+  "tts": {
+    "provider": "edge",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "rate": "+0%",
+    "output_dir": "./tmp_audio",
+    "output_ext": "mp3",
+    "max_text_length": 4000
+  },
+  "backend": {
+    "type": "local_http_player",
+    "options": {}
+  },
+  "http_player": {
+    "player_url": "http://HOME_ASSISTANT_HOST:8123/api/services/media_player/play_media",
+    "method": "POST",
+    "timeout": 15,
+    "headers": {
+      "Authorization": "Bearer REPLACE_WITH_HOME_ASSISTANT_LONG_LIVED_TOKEN",
+      "Content-Type": "application/json"
+    },
+    "body_template": {
+      "entity_id": "media_player.tmall_genie",
+      "media_content_id": "{{audio_url}}",
+      "media_content_type": "music"
+    },
+    "audio_base_url": "auto",
+    "public_base_url": "http://BRIDGE_HOST:57881"
+  }
+}

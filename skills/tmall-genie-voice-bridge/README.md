@@ -154,6 +154,7 @@ Recommended config rules:
 - If Home Assistant reaches the bridge through a reverse proxy or fixed domain, set `http_player.public_base_url`.
 - If the incoming request host is already the correct externally reachable address, `audio_base_url: "auto"` is acceptable.
 - If the player endpoint needs auth, keep it in `http_player.headers.Authorization`.
+- Start from `config.home-assistant.example.json` and replace `HOME_ASSISTANT_HOST`, `BRIDGE_HOST`, token, and `entity_id` before real testing.
 
 Minimum real-world checklist before claiming playback is ready:
 1. `/speak` returns an `audio_url` that the player machine can actually open.
