@@ -1,6 +1,6 @@
 ---
 name: telegram-live-screenshot
-description: Capture a fresh Windows desktop screenshot and return a Telegram-sendable image path from a dedicated output folder. Use when the user wants a current/live screenshot, asks to send the desktop to Telegram, or when the older screenshot route appears cached or unreliable.
+description: Capture a fresh Windows desktop screenshot and return a Telegram-sendable image path from a dedicated output folder. Default to PIL/ImageGrab for live screenshots, fall back to system Win+PrtScn capture when needed, and avoid CopyFromScreen as the default because it may freeze on stale frames.
 ---
 
 # telegram-live-screenshot
@@ -44,6 +44,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-li
 ### Add a visible timestamp overlay
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-live.ps1 -OverlayTimestamp
+```
+
+### Force fallback system screenshot
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-live.ps1 -Method system
 ```
 
 ### Return plain path instead of MEDIA

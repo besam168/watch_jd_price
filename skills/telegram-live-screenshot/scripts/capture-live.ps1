@@ -1,44 +1,44 @@
 param(
     [string]$OutputDir = "C:\Users\besam\.openclaw\workspace\new photo",
     [switch]$OverlayTimestamp,
-    [switch]$NoMedia
+    [switch]$NoMedia,
+    [ValidateSet('pil','system')]
+    [string]$Method = 'pil'
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss_fff"
 $outputPath = Join-Path $OutputDir "live-screenshot_$timestamp.png"
+$stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
 
-$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-$bitmap = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+if ($Method -eq 'system') {
+    $captureScript = "C:\Users\besam\.openclaw\workspace\skills\telegram-image-sender\scripts\capture-screen.ps1"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File $captureScript -UseSystemScreenshot -OutputPath $outputPath | Out-Null
+} else {
+    $py = @'
+from PIL import ImageGrab, ImageDraw
+from datetime import datetime
+from pathlib import Path
+import sys
 
-if ($OverlayTimestamp) {
-    $stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
-    $font = New-Object System.Drawing.Font("Microsoft YaHei UI", 24, [System.Drawing.FontStyle]::Bold)
-    $textBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
-    $bgBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(180,0,0,0))
-    $padding = 14
-    $textSize = $graphics.MeasureString($stamp, $font)
-    $rectWidth = [int][Math]::Ceiling($textSize.Width) + ($padding * 2)
-    $rectHeight = [int][Math]::Ceiling($textSize.Height) + ($padding * 2)
-    $rectX = 20
-    $rectY = 20
-    $graphics.FillRectangle($bgBrush, $rectX, $rectY, $rectWidth, $rectHeight)
-    $graphics.DrawString($stamp, $font, $textBrush, ($rectX + $padding), ($rectY + $padding))
-    $textBrush.Dispose()
-    $bgBrush.Dispose()
-    $font.Dispose()
+out = Path(sys.argv[1])
+overlay = sys.argv[2] == "1"
+stamp = sys.argv[3]
+img = ImageGrab.grab(all_screens=False)
+if overlay:
+    d = ImageDraw.Draw(img)
+    d.rectangle((20,20,520,80), fill=(0,0,0))
+    d.text((35,35), stamp, fill=(255,255,255))
+img.save(out)
+print(out)
+'@
+    $tmp = Join-Path $env:TEMP 'telegram_live_capture_pil.py'
+    Set-Content -Path $tmp -Value $py -Encoding UTF8
+    $overlayFlag = if ($OverlayTimestamp) { '1' } else { '0' }
+    python $tmp $outputPath $overlayFlag $stamp | Out-Null
 }
-
-$bitmap.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
-$graphics.Dispose()
-$bitmap.Dispose()
 
 if ($NoMedia) {
     Write-Output $outputPath

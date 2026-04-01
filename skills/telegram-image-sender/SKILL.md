@@ -1,6 +1,6 @@
 ---
 name: telegram-image-sender
-description: Capture Windows desktop screenshots and return a Telegram-sendable image path. Supports direct PowerShell capture and system-level realtime screenshots via Win+PrtScn.
+description: Capture Windows desktop screenshots and return a Telegram-sendable image path. Default to PIL/ImageGrab for fresh screenshots, use Win+PrtScn as fallback, and keep CopyFromScreen only as a compatibility path when explicitly needed.
 ---
 
 # telegram-image-sender
@@ -64,12 +64,14 @@ This mode:
   - `MEDIA:<absolute-path>`
 
 ## Recommended response behavior
-- If the user wants a quick local screenshot, use the default direct capture path.
-- If the user specifically wants a **realtime desktop screenshot**, prefer `-UseSystemScreenshot`.
-- If the user wants all monitors, use `-UseVirtualScreen`.
+- If the user wants a quick fresh screenshot, use the default PIL path.
+- If the PIL route is unreliable on the current machine, prefer `-Method system`.
+- If the user wants all monitors, use `-Method copy -UseVirtualScreen` only when explicitly needed.
 
 ## Notes
 - Windows only
-- Direct capture uses `System.Windows.Forms` + `System.Drawing`
-- System realtime mode uses the Windows `Win + PrtScn` screenshot flow
+- Default capture now uses **PIL / ImageGrab**
+- Fallback realtime mode uses the Windows `Win + PrtScn` screenshot flow
+- `CopyFromScreen` is kept only as a compatibility path because it may freeze on stale frames in this workspace
 - The Telegram return path has been validated in this workspace
+kspace
