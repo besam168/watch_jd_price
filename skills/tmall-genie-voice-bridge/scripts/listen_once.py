@@ -221,6 +221,8 @@ def _build_warnings(
             for item in primary_attempts:
                 selected = selected or item.get("selected_culture")
                 requested = requested or item.get("requested_culture")
+        selected = str(selected or "unknown")
+        requested = str(requested or "unknown")
         warnings.append(
             f"Requested culture '{requested}' was not installed. Recognition fell back to '{selected}'."
         )
@@ -235,6 +237,12 @@ def _build_warnings(
 
     if fallback_wav and result.get("result_source") == "fallback_wav":
         warnings.append("Microphone recognition failed; output text came from --fallback-wav.")
+    elif fallback_wav and isinstance(result.get("fallback"), dict):
+        fallback_error = str(result["fallback"].get("error") or "").strip()
+        if fallback_error:
+            warnings.append(f"Fallback WAV attempt failed: {fallback_error}")
+        else:
+            warnings.append("Fallback WAV attempt failed.")
 
     return warnings
 
@@ -329,6 +337,7 @@ def listen_once(
             result["text"] = str(fallback_result["text"])
             result["confidence"] = fallback_result.get("confidence")
             result["culture"] = str(fallback_result.get("culture") or culture)
+            result["wav_path"] = str(fallback_result.get("wav_path") or fallback_wav)
             result["result_source"] = "fallback_wav"
 
     result["warnings"] = _build_warnings(
@@ -409,6 +418,10 @@ def main() -> None:
 
     if wav_path and fallback_wav:
         parser.error("--fallback-wav cannot be used together with --wav")
+    if wav_path and not wav_path.is_file():
+        parser.error(f"--wav file does not exist: {wav_path}")
+    if fallback_wav and not fallback_wav.is_file():
+        parser.error(f"--fallback-wav file does not exist: {fallback_wav}")
     if args.attempts < 1:
         parser.error("--attempts must be >= 1")
     if args.timeout_seconds < 1:

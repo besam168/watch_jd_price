@@ -106,6 +106,45 @@ class ListenOnceTests(unittest.TestCase):
         self.assertTrue(any("timed out" in warning for warning in result["warnings"]))
         self.assertTrue(any("--fallback-wav" in warning for warning in result["warnings"]))
 
+    def test_microphone_warns_when_fallback_attempt_fails(self) -> None:
+        primary_failure = {
+            "ok": False,
+            "text": "",
+            "confidence": None,
+            "culture": "zh-CN",
+            "timed_out": False,
+            "error": "no speech",
+        }
+        fallback_failure = {
+            "ok": False,
+            "text": "",
+            "confidence": None,
+            "culture": "zh-CN",
+            "timed_out": False,
+            "error": "wav file unreadable",
+        }
+
+        with mock.patch.object(
+            listen_once_module,
+            "_powershell_recognize",
+            side_effect=[primary_failure, fallback_failure],
+        ):
+            result = listen_once_module.listen_once(
+                timeout_seconds=8,
+                culture="zh-CN",
+                wav_path=None,
+                attempts=1,
+                fallback_wav=Path("fallback.wav"),
+                initial_silence_seconds=3.0,
+                babble_timeout_seconds=2.0,
+                end_silence_seconds=0.8,
+                allow_culture_fallback=False,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["result_source"], "primary")
+        self.assertTrue(any("Fallback WAV attempt failed" in warning for warning in result["warnings"]))
+
     def test_wav_mode_runs_once_and_sets_wav_path_when_missing(self) -> None:
         wav_path = Path("sample.wav").resolve()
         with mock.patch.object(
