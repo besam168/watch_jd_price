@@ -1,0 +1,145 @@
+﻿# tmall-genie-voice-bridge
+
+A local MVP bridge for text-to-speech and playback routing.
+
+This project does **not** directly capture microphone audio from a real Tmall Genie device and does **not** directly push audio to Tmall Genie hardware in this repository state.
+
+## Honest Status (2026-04-01)
+
+Implemented:
+- HTTP bridge server with `/health`, `/speak`, `/callback/text`, `/webhook/text`, `/audio/<filename>`.
+- Text -> TTS file generation pipeline (`mock` and `edge` providers).
+- Playback backends:
+  - `mock_tmall_genie` (mock only)
+  - `local_http_player` (HTTP dispatch to external player service)
+  - `local_windows_speaker` (PowerShell local playback)
+- Demo scripts for local text roundtrip, callback roundtrip, and WAV roundtrip.
+- Lightweight smoke tests for request handling and core audio flow.
+
+Locally tested in this environment:
+- Python unit smoke tests with `unittest` (Flask test client + mock provider/backend).
+- `scripts/speak.py` CLI with `config.example.json`.
+
+Mocked / not verified here:
+- Real Tmall Genie hardware playback.
+- Production deployment behavior.
+- Real microphone capture quality and device compatibility on every machine.
+
+## Repository Layout
+
+- `scripts/bridge_server.py`: Flask bridge server.
+- `scripts/speak.py`: text-to-audio generation and backend dispatch.
+- `scripts/listen_once.py`: one-shot speech recognition (Windows System.Speech).
+- `scripts/backends/`: playback adapters.
+- `scripts/providers/`: TTS providers.
+- `config.example.json`: baseline config template.
+- `config.local-speaker.json`: local Windows speaker demo config.
+- `demo-text-roundtrip.ps1`: quick text -> speak demo.
+- `demo-callback-roundtrip.ps1`: quick callback/webhook text demo.
+- `demo-wav-roundtrip.ps1`: WAV transcription -> speak demo.
+- `run-bridge.ps1`: helper to start the bridge with a selected config.
+- `tests/test_mvp_smoke.py`: local smoke tests.
+
+## Quickstart
+
+1. Install dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+2. Start the bridge server with mock-safe config:
+
+```bash
+python scripts/bridge_server.py --config config.example.json
+```
+
+Or:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\\run-bridge.ps1 -Config .\\config.example.json
+```
+
+3. In another terminal, call `/speak`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-text-roundtrip.ps1 -Text "收到，链路可用" -Mode bridge -Config .\config.example.json
+```
+
+4. Call callback/webhook text path:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-callback-roundtrip.ps1 -Text "打开客厅灯"
+```
+
+5. Local direct mode (no bridge HTTP):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-text-roundtrip.ps1 -Text "本地直连测试" -Mode local -Config .\config.local-speaker.json
+```
+
+## Endpoint Contract
+
+### `POST /speak`
+
+Accepted request payload formats:
+- JSON body
+- `application/x-www-form-urlencoded`
+- query string
+- plain text body
+
+Accepted text keys:
+- `text`
+- `query`
+- `utterance`
+- `message`
+- `payload.text`
+- `payload.query`
+- `intent.query`
+- `request.text`
+- `request.query`
+
+Minimal example:
+
+```json
+{ "text": "你好" }
+```
+
+### `POST /callback/text` and `POST /webhook/text`
+
+Same accepted payload formats and text keys as `/speak`.
+
+Extra callback metadata fields (optional):
+- `source`
+- `session_id` / `sessionId`
+- `user_id` / `userId`
+- `trace_id` / `traceId`
+- `intent`
+
+### `GET /audio/<filename>`
+
+Serves generated audio files from `tts.output_dir`.
+
+## Config Notes
+
+- `tts.provider`: `mock` (no external TTS dependency) or `edge` (requires `edge-tts`).
+- `tts.max_text_length`: optional integer guard. Default `4000`.
+- `backend.type`: `mock_tmall_genie`, `local_http_player`, or `local_windows_speaker`.
+- `http_player.audio_base_url`:
+  - `auto`: derive from request host/proto (supports `X-Forwarded-*` headers)
+  - explicit URL: fixed base for audio URLs
+- `http_player.public_base_url`: if set, used as authoritative public base URL for `/audio/...` links.
+
+## Validation
+
+Run smoke tests:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Run speak CLI directly:
+
+```bash
+python scripts/speak.py "MVP smoke check" --config config.example.json
+```

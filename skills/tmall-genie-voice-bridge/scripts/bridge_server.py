@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Any, Dict, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -19,25 +21,99 @@ APP_CONFIG: Dict[str, Any] = {}
 APP_CONFIG_PATH: Path | None = None
 
 
+def _request_external_base_url() -> str:
+    proto = str(request.headers.get("X-Forwarded-Proto") or request.scheme).split(",")[0].strip()
+    host = str(request.headers.get("X-Forwarded-Host") or request.host).split(",")[0].strip()
+    prefix = str(request.headers.get("X-Forwarded-Prefix") or "").split(",")[0].strip().strip("/")
+
+    base = f"{proto}://{host}"
+    if prefix:
+        base = f"{base}/{prefix}"
+    return base.rstrip("/")
+
+
+def _join_base_url(base_url: str, suffix_path: str) -> str:
+    parsed = urlsplit(base_url.rstrip("/"))
+    joined_path = parsed.path.rstrip("/") + "/" + suffix_path.lstrip("/")
+    return urlunsplit((parsed.scheme, parsed.netloc, joined_path, parsed.query, parsed.fragment))
+
+
 def _resolve_audio_base_url() -> str | None:
     http_player = APP_CONFIG.get("http_player") or {}
     configured = str(http_player.get("audio_base_url") or "").strip()
     public_base_url = str(http_player.get("public_base_url") or "").strip()
 
     if public_base_url:
-        return public_base_url.rstrip("/") + "/audio"
+        return _join_base_url(public_base_url, "audio")
 
     if not configured:
         return None
 
     lowered = configured.lower()
     if lowered == "auto":
-        return request.url_root.rstrip("/") + "/audio"
+        return _join_base_url(_request_external_base_url(), "audio")
 
     return configured
 
 
-def _extract_text_callback_payload(data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+def _expand_dotted_keys(data: Dict[str, Any]) -> Dict[str, Any]:
+    expanded: Dict[str, Any] = {}
+    for key, value in data.items():
+        if "." not in key:
+            expanded[key] = value
+            continue
+
+        node = expanded
+        parts = key.split(".")
+        for part in parts[:-1]:
+            existing = node.get(part)
+            if not isinstance(existing, dict):
+                existing = {}
+                node[part] = existing
+            node = existing
+        node[parts[-1]] = value
+    return expanded
+
+
+def _coerce_request_payload() -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+
+    json_payload = request.get_json(silent=True)
+    if isinstance(json_payload, dict):
+        payload.update(json_payload)
+    elif isinstance(json_payload, str) and json_payload.strip():
+        payload["text"] = json_payload.strip()
+
+    form_payload = request.form.to_dict(flat=True)
+    if form_payload:
+        payload.update(_expand_dotted_keys(form_payload))
+
+    query_payload = request.args.to_dict(flat=True)
+    if query_payload:
+        payload.update(_expand_dotted_keys(query_payload))
+
+    raw_text = request.get_data(as_text=True).strip()
+    if raw_text:
+        parsed_from_raw: Dict[str, Any] | None = None
+        if not payload:
+            try:
+                raw_json = json.loads(raw_text)
+            except json.JSONDecodeError:
+                raw_json = None
+
+            if isinstance(raw_json, dict):
+                parsed_from_raw = raw_json
+                payload.update(raw_json)
+            elif isinstance(raw_json, str) and raw_json.strip():
+                payload["text"] = raw_json.strip()
+
+        if "text" not in payload and parsed_from_raw is None:
+            payload["text"] = raw_text
+
+    return payload
+
+
+def _extract_text_value(data: Dict[str, Any]) -> str:
     candidates = [
         data.get("text"),
         data.get("query"),
@@ -58,7 +134,11 @@ def _extract_text_callback_payload(data: Dict[str, Any]) -> Tuple[str, Dict[str,
         if value:
             text = value
             break
+    return text
 
+
+def _extract_text_callback_payload(data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    text = _extract_text_value(data)
     metadata = {
         "source": str(data.get("source", "text_callback")).strip() or "text_callback",
         "session_id": str(data.get("session_id") or data.get("sessionId") or "").strip() or None,
@@ -83,8 +163,8 @@ def health() -> Any:
 
 @app.post("/speak")
 def speak_route() -> Any:
-    data = request.get_json(silent=True) or {}
-    text = str(data.get("text", "")).strip()
+    data = _coerce_request_payload()
+    text = _extract_text_value(data)
     if not text:
         return jsonify({"ok": False, "error": "Missing required field: text"}), 400
 
@@ -95,6 +175,8 @@ def speak_route() -> Any:
             config_path=APP_CONFIG_PATH,
             audio_base_url_override=_resolve_audio_base_url(),
         )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
     return jsonify(result)
@@ -103,12 +185,15 @@ def speak_route() -> Any:
 @app.post("/callback/text")
 @app.post("/webhook/text")
 def text_callback_route() -> Any:
-    data = request.get_json(silent=True) or {}
+    data = _coerce_request_payload()
     text, metadata = _extract_text_callback_payload(data)
     if not text:
         return jsonify({
             "ok": False,
-            "error": "Missing text-like field. Accepted: text, query, utterance, message, payload.text, payload.query, intent.query, request.text, request.query",
+            "error": (
+                "Missing text-like field. Accepted: text, query, utterance, message, "
+                "payload.text, payload.query, intent.query, request.text, request.query."
+            ),
         }), 400
 
     try:
@@ -118,6 +203,8 @@ def text_callback_route() -> Any:
             config_path=APP_CONFIG_PATH,
             audio_base_url_override=_resolve_audio_base_url(),
         )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc), "callback": metadata}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc), "callback": metadata}), 500
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
@@ -18,5 +18,5 @@ class MockTmallGenieBackend(PlaybackBackend):
             "audio_path": str(audio_path),
             "audio_url": audio_url,
             "played_at": datetime.now().isoformat(timespec="seconds"),
-            "note": "这是模拟后端：链路已打通，但未真正下发到天猫精灵。"
+            "note": "Mock backend only. Audio dispatch to real Tmall Genie hardware is not implemented.",
         }

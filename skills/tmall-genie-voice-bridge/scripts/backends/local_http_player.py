@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, Dict
@@ -11,11 +11,11 @@ from .base import PlaybackBackend
 class LocalHttpPlayerBackend(PlaybackBackend):
     def play(self, *, text: str, audio_path: Path, audio_url: str | None = None) -> Dict[str, Any]:
         if not audio_url:
-            raise ValueError("local_http_player 需要 audio_url，当前未提供。")
+            raise ValueError("local_http_player requires audio_url, but none was provided")
 
         player_url = self.options.get("player_url")
         if not player_url:
-            raise ValueError("local_http_player 缺少 player_url 配置。")
+            raise ValueError("local_http_player requires http_player.player_url")
 
         headers = dict(self.options.get("headers") or {})
         method = str(self.options.get("method", "POST")).upper()

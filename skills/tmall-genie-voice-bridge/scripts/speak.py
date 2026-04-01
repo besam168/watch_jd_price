@@ -38,16 +38,29 @@ PROVIDERS: Dict[str, Dict[str, Any]] = {
 }
 
 
+def normalize_text(text: str, *, config: Dict[str, Any]) -> str:
+    normalized = str(text).strip()
+    if not normalized:
+        raise ValueError("Input text is empty after trimming")
+
+    max_text_length = int((config.get("tts") or {}).get("max_text_length", 4000))
+    if max_text_length > 0 and len(normalized) > max_text_length:
+        raise ValueError(f"Input text is too long ({len(normalized)} > {max_text_length})")
+    return normalized
+
+
 def load_config(config_path: Path) -> Dict[str, Any]:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
-    return json.loads(config_path.read_text(encoding="utf-8"))
+    return json.loads(config_path.read_text(encoding="utf-8-sig"))
 
 
 def build_audio_url(config: Dict[str, Any], audio_file: Path) -> str | None:
     http_player = config.get("http_player") or {}
     audio_base_url = http_player.get("audio_base_url")
     if not audio_base_url:
+        return None
+    if str(audio_base_url).strip().lower() == "auto":
         return None
     return join_audio_base_url(str(audio_base_url), audio_file.name)
 
@@ -126,6 +139,7 @@ def speak(
     config_path: Path,
     audio_base_url_override: str | None = None,
 ) -> Dict[str, Any]:
+    normalized_text = normalize_text(text=text, config=config)
     backend_cfg = config.get("backend") or {}
     backend_type = backend_cfg.get("type", "mock_tmall_genie")
     backend_options = build_backend_options(backend_type, config, config_path)
@@ -136,7 +150,7 @@ def speak(
         raise ValueError(f"Unsupported backend.type: {backend_type}. Supported: {supported}")
 
     output_dir = resolve_output_dir(config, config_path)
-    audio_path = synthesize_audio(text=text, config=config, output_dir=output_dir)
+    audio_path = synthesize_audio(text=normalized_text, config=config, output_dir=output_dir)
 
     audio_url = (
         join_audio_base_url(audio_base_url_override, audio_path.name)
@@ -144,11 +158,11 @@ def speak(
         else build_audio_url(config, audio_path)
     )
     backend = backend_cls(backend_options)
-    backend_result = backend.play(text=text, audio_path=audio_path, audio_url=audio_url)
+    backend_result = backend.play(text=normalized_text, audio_path=audio_path, audio_url=audio_url)
 
     return {
         "ok": True,
-        "text": text,
+        "text": normalized_text,
         "audio_path": str(audio_path),
         "audio_url": audio_url,
         "backend": backend_type,

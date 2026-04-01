@@ -1,10 +1,9 @@
 ﻿param(
-  [string]$Wav = "tmp_audio/listen-once-test.wav",
-  [string]$Config = "config.local-speaker.json",
+  [string]$Config,
   [string]$Python = "python"
 )
 
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -16,27 +15,29 @@ if (-not $skillRoot) {
   $skillRoot = (Get-Location).Path
 }
 
-if (-not [System.IO.Path]::IsPathRooted($Wav)) {
-  $Wav = Join-Path $skillRoot $Wav
+if (-not $Config -or [string]::IsNullOrWhiteSpace($Config)) {
+  if (Test-Path -LiteralPath (Join-Path $skillRoot 'config.example.json')) {
+    $Config = Join-Path $skillRoot 'config.example.json'
+  }
+  else {
+    $Config = Join-Path $skillRoot 'config.json'
+  }
 }
+
 if (-not [System.IO.Path]::IsPathRooted($Config)) {
   $Config = Join-Path $skillRoot $Config
 }
 
-if (-not (Test-Path -LiteralPath $Wav)) {
-  throw "WAV file not found: $Wav"
-}
 if (-not (Test-Path -LiteralPath $Config)) {
   throw "Config file not found: $Config"
 }
 
-$Wav = (Resolve-Path -LiteralPath $Wav).Path
 $Config = (Resolve-Path -LiteralPath $Config).Path
+$serverPy = Join-Path $skillRoot 'scripts/bridge_server.py'
 
-$listenPy = Join-Path $skillRoot 'scripts/listen_once.py'
-if (-not (Test-Path -LiteralPath $listenPy)) {
-  throw "Cannot find scripts/listen_once.py at: $listenPy"
+if (-not (Test-Path -LiteralPath $serverPy)) {
+  throw "Cannot find scripts/bridge_server.py at: $serverPy"
 }
 
-& $Python $listenPy --wav $Wav --echo-speak --config $Config
+& $Python $serverPy --config $Config
 exit $LASTEXITCODE
