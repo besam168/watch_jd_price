@@ -176,7 +176,6 @@ def run_loop(
             event["trigger_count"] = trigger_count
 
             if listen_after_wake:
-                prompt_result = speak(text=question_prompt_text, config=config, config_path=config_path)
                 question_result = listen_question(
                     culture=culture,
                     timeout_seconds=timeout_seconds,
@@ -185,8 +184,6 @@ def run_loop(
                     keep_recorded_wav=keep_recorded_wav,
                     pre_roll_seconds=pre_roll_seconds,
                 )
-                event["question_prompt_text"] = question_prompt_text
-                event["question_prompt_result"] = prompt_result
                 event["question_result"] = question_result
                 event["question_text"] = str(question_result.get("text") or "").strip()
 
@@ -207,8 +204,8 @@ def main() -> None:
         help="Path to config JSON file",
     )
     parser.add_argument("--wake-phrase", default="阿三在吗", help="Wake phrase to detect")
-    parser.add_argument("--response-text", default="大老板，我在", help="Text to speak when wake phrase is detected")
-    parser.add_argument("--question-prompt-text", default="请说", help="Prompt to speak before listening for the next user question")
+    parser.add_argument("--response-text", default="在", help="Text to speak when wake phrase is detected")
+    parser.add_argument("--question-prompt-text", default="", help="Prompt to speak before listening for the next user question")
     parser.add_argument("--culture", default="zh-CN", help="Recognition culture/language hint")
     parser.add_argument("--timeout-seconds", type=int, default=4, help="Per-listen capture duration in seconds")
     parser.add_argument("--whisper-model", default="base", help="Whisper model name")
