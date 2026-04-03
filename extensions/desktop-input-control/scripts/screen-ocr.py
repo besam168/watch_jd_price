@@ -51,6 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N)
     parser.add_argument("--debug-overlay")
     parser.add_argument("--engine", choices=["auto", "rapidocr", "tesseract"], default="auto")
+    parser.add_argument("--psm", default="auto")
     return parser.parse_args()
 
 
@@ -365,16 +366,35 @@ def configure_tesseract() -> Tuple[str, Optional[str]]:
     return pytesseract.pytesseract.tesseract_cmd, tessdata_dir
 
 
-def run_tesseract(processed_image: Image.Image, roi: Dict[str, Any], lang: str) -> Tuple[str, str, str, str, List[Dict[str, Any]]]:
+def choose_tesseract_psm(lang: str, roi: Dict[str, Any], requested_psm: str) -> str:
+    requested = (requested_psm or "auto").strip().lower()
+    if requested and requested != "auto":
+        return requested
+
+    normalized_lang = (lang or "").lower()
+    contains_chinese = any(token in normalized_lang for token in ("chi_sim", "chi_tra", "chi", "zh", "chinese"))
+    area = int(roi.get("width", 0) or 0) * int(roi.get("height", 0) or 0)
+    if contains_chinese and area >= 1_000_000:
+        return "12"
+    if contains_chinese:
+        return "6"
+    return "3"
+
+
+def run_tesseract(processed_image: Image.Image, roi: Dict[str, Any], lang: str, requested_psm: str = "auto") -> Tuple[str, str, str, str, List[Dict[str, Any]]]:
     tesseract_cmd, tessdata_dir = configure_tesseract()
-    config = ""
+    psm = choose_tesseract_psm(lang, roi, requested_psm)
+    config_parts: List[str] = []
     if tessdata_dir:
         safe_tessdata_dir = str(Path(tessdata_dir).resolve())
         os.environ["TESSDATA_PREFIX"] = safe_tessdata_dir
-        config = f'--tessdata-dir {safe_tessdata_dir}'
+        config_parts.extend(["--tessdata-dir", safe_tessdata_dir])
+    if psm:
+        config_parts.extend(["--psm", psm])
+    config = " ".join(config_parts)
     full_text = pytesseract.image_to_string(processed_image, lang=lang, config=config)
     data = pytesseract.image_to_data(processed_image, lang=lang, output_type=Output.DICT, config=config)
-    detail = tesseract_cmd if not tessdata_dir else f"{tesseract_cmd} | tessdata={tessdata_dir}"
+    detail = tesseract_cmd if not tessdata_dir else f"{tesseract_cmd} | tessdata={tessdata_dir} | psm={psm}"
     word_items = build_word_items_from_tesseract(data, roi)
     return "tesseract", "pytesseract", detail, full_text, word_items
 
@@ -424,7 +444,7 @@ def main() -> int:
 
         if preferred_engine == "tesseract":
             try:
-                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang)
+                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang, args.psm)
                 engine_name = tess_engine
                 engine_version = tess_version
                 engine_detail = tess_detail
@@ -459,7 +479,7 @@ def main() -> int:
                     "detail": str(rapid_exc),
                     "status": "fallback_to_tesseract",
                 })
-                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang)
+                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang, args.psm)
                 engine_name = tess_engine
                 engine_version = tess_version
                 engine_detail = tess_detail
