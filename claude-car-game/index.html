@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Car Game</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Car Dodge</h1>
+      <p class="hint">← / → move · Space restart</p>
+      <div class="hud">Score: <span id="score">0</span></div>
+
+      <div id="gameArea" class="game-area">
+        <div id="player" class="car player"></div>
+        <div id="overlay" class="overlay hidden">
+          <h2>Game Over</h2>
+          <p>Press Space to restart</p>
+        </div>
+      </div>
+    </main>
+
+    <script src="game.js"></script>
+  </body>
+</html>
