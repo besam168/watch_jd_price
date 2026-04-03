@@ -26,34 +26,18 @@ def normalize_text(value: str) -> str:
 def build_wake_variants(wake_phrase: str) -> set[str]:
     base = normalize_text(wake_phrase)
     short_name_variants = {
-        "沈万三",
-        "神万三",
-        "深万三",
-        "申万三",
-        "沈萬三",
-        "神萬三",
-        "深萬三",
-        "申萬三",
-        "沈万山",
-        "神万山",
-        "深万山",
-        "申万山",
-        "沈萬山",
-        "神萬山",
-        "深萬山",
-        "申萬山",
-        "沈万散",
-        "神万散",
-        "沈萬散",
-        "神萬散",
-        "沈万桑",
-        "神万桑",
-        "沈萬桑",
-        "神萬桑",
-        "沈万伞",
-        "神万伞",
-        "沈萬傘",
-        "神萬傘",
+        "阿三",
+        "啊三",
+        "阿散",
+        "阿山",
+        "阿桑",
+        "啊散",
+        "啊山",
+        "啊桑",
+        "阿伞",
+        "啊伞",
+        "阿傘",
+        "啊傘",
     }
     ending_variants = {"在吗", "在嗎", "在麻", "在嘛", "在吗?", "在嗎?", "在么", "在麼"}
     variants = {base}
@@ -72,16 +56,15 @@ def contains_wake_phrase(recognized_text: str, wake_phrase: str) -> bool:
         if variant and variant in recognized:
             return True
 
-    surname_family = ("沈", "神", "深", "申")
+    first_family = ("阿", "啊")
     tail_family = ("三", "山", "散", "桑", "伞", "傘")
-    middle_family = "万萬"
     ending_variants = ("在吗", "在嗎", "在麻", "在嘛", "在么", "在麼")
 
-    if len(recognized) >= 3:
-        for i in range(len(recognized) - 2):
-            chunk = recognized[i : i + 3]
-            if chunk[0] in surname_family and chunk[1] in middle_family and chunk[2] in tail_family:
-                if any(ending in recognized[i + 3 :] for ending in ending_variants):
+    if len(recognized) >= 2:
+        for i in range(len(recognized) - 1):
+            chunk = recognized[i : i + 2]
+            if chunk[0] in first_family and chunk[1] in tail_family:
+                if any(ending in recognized[i + 2 :] for ending in ending_variants):
                     return True
 
     return False
@@ -177,7 +160,7 @@ def main() -> None:
         default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
         help="Path to config JSON file",
     )
-    parser.add_argument("--wake-phrase", default="沈万三在吗", help="Wake phrase to detect")
+    parser.add_argument("--wake-phrase", default="阿三在吗", help="Wake phrase to detect")
     parser.add_argument("--response-text", default="大老板，我在", help="Text to speak when wake phrase is detected")
     parser.add_argument("--culture", default="zh-CN", help="Recognition culture/language hint")
     parser.add_argument("--timeout-seconds", type=int, default=4, help="Per-listen capture duration in seconds")
