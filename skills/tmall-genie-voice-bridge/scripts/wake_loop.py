@@ -70,6 +70,33 @@ def contains_wake_phrase(recognized_text: str, wake_phrase: str) -> bool:
     return False
 
 
+def listen_question(
+    *,
+    culture: str,
+    timeout_seconds: int,
+    whisper_model: str,
+    mic_device: str | None,
+    keep_recorded_wav: bool,
+    pre_roll_seconds: float,
+) -> dict[str, Any]:
+    return listen_once(
+        timeout_seconds=timeout_seconds,
+        culture=culture,
+        wav_path=None,
+        attempts=1,
+        fallback_wav=None,
+        initial_silence_seconds=5.0,
+        babble_timeout_seconds=5.0,
+        end_silence_seconds=0.8,
+        allow_culture_fallback=False,
+        engine="local_whisper",
+        whisper_model=whisper_model,
+        mic_device=mic_device,
+        keep_recorded_wav=keep_recorded_wav,
+        pre_roll_seconds=pre_roll_seconds,
+    )
+
+
 def run_loop(
     *,
     config_path: Path,
@@ -79,10 +106,12 @@ def run_loop(
     mic_device: str | None,
     wake_phrase: str,
     response_text: str,
+    question_prompt_text: str,
     pre_roll_seconds: float,
     cooldown_seconds: float,
     keep_recorded_wav: bool,
     max_turns: int,
+    listen_after_wake: bool,
 ) -> int:
     config = load_config(config_path)
     trigger_count = 0
@@ -98,6 +127,7 @@ def run_loop(
                 "model": whisper_model,
                 "mic_device": mic_device or "default",
                 "wake_variants": sorted(build_wake_variants(wake_phrase)),
+                "listen_after_wake": listen_after_wake,
             },
             ensure_ascii=False,
         ),
@@ -144,6 +174,22 @@ def run_loop(
             event["response_text"] = response_text
             event["speak_result"] = speak_result
             event["trigger_count"] = trigger_count
+
+            if listen_after_wake:
+                prompt_result = speak(text=question_prompt_text, config=config, config_path=config_path)
+                question_result = listen_question(
+                    culture=culture,
+                    timeout_seconds=timeout_seconds,
+                    whisper_model=whisper_model,
+                    mic_device=mic_device,
+                    keep_recorded_wav=keep_recorded_wav,
+                    pre_roll_seconds=pre_roll_seconds,
+                )
+                event["question_prompt_text"] = question_prompt_text
+                event["question_prompt_result"] = prompt_result
+                event["question_result"] = question_result
+                event["question_text"] = str(question_result.get("text") or "").strip()
+
             print(json.dumps(event, ensure_ascii=False), flush=True)
             if max_turns > 0 and trigger_count >= max_turns:
                 return 0
@@ -162,6 +208,7 @@ def main() -> None:
     )
     parser.add_argument("--wake-phrase", default="阿三在吗", help="Wake phrase to detect")
     parser.add_argument("--response-text", default="大老板，我在", help="Text to speak when wake phrase is detected")
+    parser.add_argument("--question-prompt-text", default="请说", help="Prompt to speak before listening for the next user question")
     parser.add_argument("--culture", default="zh-CN", help="Recognition culture/language hint")
     parser.add_argument("--timeout-seconds", type=int, default=4, help="Per-listen capture duration in seconds")
     parser.add_argument("--whisper-model", default="base", help="Whisper model name")
@@ -170,6 +217,7 @@ def main() -> None:
     parser.add_argument("--cooldown-seconds", type=float, default=1.0, help="Delay after a successful wake response")
     parser.add_argument("--keep-recorded-wav", action="store_true", help="Keep captured wav files for debugging")
     parser.add_argument("--max-turns", type=int, default=1, help="Exit after this many successful wake detections; 0 means run forever")
+    parser.add_argument("--listen-after-wake", action="store_true", help="After wake response, prompt and listen for one follow-up question")
     args = parser.parse_args()
 
     if args.timeout_seconds <= 0:
@@ -191,10 +239,12 @@ def main() -> None:
             mic_device=args.mic_device,
             wake_phrase=args.wake_phrase,
             response_text=args.response_text,
+            question_prompt_text=args.question_prompt_text,
             pre_roll_seconds=float(args.pre_roll_seconds),
             cooldown_seconds=float(args.cooldown_seconds),
             keep_recorded_wav=bool(args.keep_recorded_wav),
             max_turns=int(args.max_turns),
+            listen_after_wake=bool(args.listen_after_wake),
         )
     )
 
