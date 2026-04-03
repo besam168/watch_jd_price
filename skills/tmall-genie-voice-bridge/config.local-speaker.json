@@ -2,7 +2,7 @@
   "host": "127.0.0.1",
   "port": 57881,
   "tts": {
-    "provider": "mock",
+    "provider": "edge",
     "voice": "zh-CN-XiaoxiaoNeural",
     "rate": "+0%",
     "output_dir": "./tmp_audio",
