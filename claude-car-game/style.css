@@ -2,33 +2,82 @@
   box-sizing: border-box;
 }
 
+:root {
+  --neon-blue: #4fc3ff;
+  --neon-pink: #ff4fe5;
+  --road-dark: #151720;
+  --road-mid: #1e2230;
+  --text-main: #ecf8ff;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #111;
-  color: #fff;
-  font-family: Arial, sans-serif;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 15%, #2e2a6a 0%, transparent 30%),
+    radial-gradient(circle at 85% 20%, #3a1452 0%, transparent 28%),
+    linear-gradient(180deg, #070912 0%, #03050b 100%);
+  color: var(--text-main);
+  font-family: "Segoe UI", "Trebuchet MS", Arial, sans-serif;
 }
 
 .wrap {
   text-align: center;
 }
 
-h1 {
-  margin: 0 0 8px;
+.top h1 {
+  margin: 0;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 30px;
+  color: #f4fbff;
+  text-shadow:
+    0 0 10px rgba(79, 195, 255, 0.65),
+    0 0 22px rgba(255, 79, 229, 0.35);
 }
 
 .hint {
-  margin: 0 0 8px;
-  color: #bbb;
+  margin: 8px 0 12px;
+  color: #9ab0cb;
+  font-size: 14px;
+  letter-spacing: 0.3px;
 }
 
 .hud {
-  margin-bottom: 10px;
-  font-size: 20px;
-  font-weight: bold;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.hud-card {
+  min-width: 130px;
+  padding: 10px 16px;
+  border: 1px solid rgba(96, 153, 255, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(20, 30, 55, 0.78), rgba(10, 14, 28, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 0 18px rgba(79, 195, 255, 0.28);
+}
+
+.hud-label {
+  display: block;
+  font-size: 11px;
+  color: #8ea4c3;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.hud-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 30px;
+  font-weight: 800;
+  color: #f7fdff;
+  line-height: 1;
 }
 
 .game-area {
@@ -36,44 +85,176 @@ h1 {
   width: 320px;
   height: 560px;
   margin: 0 auto;
-  border: 4px solid #444;
-  background:
-    linear-gradient(#2c2c2c, #2c2c2c) center/8px 100% no-repeat,
-    repeating-linear-gradient(
-      to bottom,
-      transparent 0 24px,
-      #f6f6f6 24px 40px
-    ) center/8px 80px repeat-y,
-    #555;
+  border-radius: 18px;
+  border: 2px solid rgba(122, 173, 255, 0.4);
   overflow: hidden;
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.6),
+    0 0 26px rgba(79, 195, 255, 0.3);
+  background: linear-gradient(180deg, #060812 0%, #080a14 38%, #090b14 100%);
+}
+
+.skyline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(77, 96, 165, 0.26), transparent 32%),
+    repeating-linear-gradient(
+      to right,
+      rgba(107, 133, 188, 0.1) 0 8px,
+      rgba(4, 8, 16, 0.4) 8px 20px
+    ) center 65px / 100% 96px no-repeat,
+    radial-gradient(circle at 8% 12%, rgba(79, 195, 255, 0.65) 0 2px, transparent 3px),
+    radial-gradient(circle at 82% 18%, rgba(255, 79, 229, 0.65) 0 2px, transparent 3px),
+    radial-gradient(circle at 60% 11%, rgba(255, 255, 255, 0.55) 0 1.5px, transparent 2.5px);
+  opacity: 0.85;
+  animation: skylineGlow 6s ease-in-out infinite alternate;
+}
+
+.road-glow {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 88%;
+  height: 100%;
+  border-radius: 20px;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(36, 44, 80, 0.5), rgba(6, 9, 18, 0.85) 28%),
+    linear-gradient(90deg, transparent 0 3%, rgba(89, 118, 193, 0.4) 6%, transparent 11%) 0 0 / 50% 100% no-repeat,
+    linear-gradient(270deg, transparent 0 3%, rgba(89, 118, 193, 0.35) 6%, transparent 11%) 100% 0 / 50% 100% no-repeat,
+    linear-gradient(180deg, var(--road-mid), var(--road-dark));
+  box-shadow:
+    inset 0 0 26px rgba(0, 0, 0, 0.8),
+    inset 0 0 14px rgba(79, 195, 255, 0.16);
+}
+
+.road-glow::before,
+.road-glow::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, rgba(79, 195, 255, 0.1), rgba(79, 195, 255, 0.75), rgba(79, 195, 255, 0.1));
+  filter: blur(0.2px);
+}
+
+.road-glow::before {
+  left: 14px;
+}
+
+.road-glow::after {
+  right: 14px;
+}
+
+.game-area::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -120%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 250%;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 248, 206, 0) 0 24px,
+    rgba(255, 248, 206, 0.96) 24px 54px
+  );
+  box-shadow: 0 0 12px rgba(255, 236, 141, 0.6);
+  animation: laneMove 0.55s linear infinite;
+  z-index: 1;
+}
+
+.game-area::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 100%, transparent 30%, rgba(0, 0, 0, 0.38) 100%);
+  z-index: 7;
 }
 
 .car {
   position: absolute;
   width: 42px;
   height: 72px;
-  border-radius: 8px;
+  border-radius: 11px;
+  z-index: 5;
+}
+
+.car::before,
+.car::after {
+  content: "";
+  position: absolute;
 }
 
 .player {
-  background: #2da9ff;
-  border: 2px solid #a6ddff;
   bottom: 16px;
   left: 139px;
+  background:
+    linear-gradient(180deg, #8de3ff 0%, #30b3ff 36%, #1885d9 100%);
+  border: 2px solid #d1f1ff;
+  box-shadow:
+    0 8px 18px rgba(0, 0, 0, 0.5),
+    0 0 14px rgba(79, 195, 255, 0.55);
+}
+
+.player::before {
+  left: 8px;
+  top: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(237, 250, 255, 0.95), rgba(159, 220, 255, 0.38));
+}
+
+.player::after {
+  left: 6px;
+  bottom: 9px;
+  width: 26px;
+  height: 7px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #58c2ff, #b2edff, #58c2ff);
+  box-shadow: 0 0 9px rgba(79, 195, 255, 0.8);
 }
 
 .enemy {
-  background: #ff4d4d;
-  border: 2px solid #ffd0d0;
+  background: linear-gradient(180deg, #ff9aa7 0%, #ff5366 40%, #c7173f 100%);
+  border: 2px solid #ffd9df;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45);
+}
+
+.enemy::before {
+  left: 8px;
+  top: 10px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 235, 239, 0.95), rgba(255, 170, 185, 0.3));
+}
+
+.enemy::after {
+  left: 6px;
+  bottom: 9px;
+  width: 26px;
+  height: 7px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #ff7c8d, #ffd4db, #ff7c8d);
 }
 
 .overlay {
   position: absolute;
   inset: 0;
+  z-index: 10;
   display: grid;
   place-content: center;
-  gap: 8px;
-  background: rgba(0, 0, 0, 0.65);
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(4, 8, 20, 0.54), rgba(4, 8, 20, 0.82));
+  backdrop-filter: blur(2px);
 }
 
 .overlay h2,
@@ -81,6 +262,41 @@ h1 {
   margin: 0;
 }
 
+.overlay h2 {
+  font-size: 34px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  text-shadow: 0 0 16px rgba(79, 195, 255, 0.55);
+}
+
+.overlay p {
+  color: #bdd0eb;
+  font-size: 16px;
+}
+
+.overlay[data-state="gameover"] h2 {
+  color: #ffd4db;
+  text-shadow: 0 0 16px rgba(255, 79, 103, 0.6);
+}
+
 .hidden {
   display: none;
+}
+
+@keyframes laneMove {
+  from {
+    background-position-y: 0;
+  }
+  to {
+    background-position-y: 78px;
+  }
+}
+
+@keyframes skylineGlow {
+  from {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 0.92;
+  }
 }

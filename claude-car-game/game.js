@@ -2,9 +2,12 @@ const gameArea = document.getElementById("gameArea");
 const player = document.getElementById("player");
 const scoreEl = document.getElementById("score");
 const overlay = document.getElementById("overlay");
+const overlayTitle = document.getElementById("overlayTitle");
+const overlayText = document.getElementById("overlayText");
 
 const state = {
-  running: true,
+  running: false,
+  started: false,
   leftPressed: false,
   rightPressed: false,
   speed: 260,
@@ -16,6 +19,24 @@ const state = {
   obstacles: [],
   lastTime: 0,
 };
+
+function showOverlay(mode) {
+  overlay.classList.remove("hidden");
+  overlay.dataset.state = mode;
+
+  if (mode === "start") {
+    overlayTitle.textContent = "Ready to Drive?";
+    overlayText.textContent = "Press Space to start";
+    return;
+  }
+
+  overlayTitle.textContent = "Game Over";
+  overlayText.textContent = "Press Space to restart";
+}
+
+function hideOverlay() {
+  overlay.classList.add("hidden");
+}
 
 function makeObstacle() {
   const el = document.createElement("div");
@@ -39,19 +60,20 @@ function rectsOverlap(a, b) {
 
 function gameOver() {
   state.running = false;
-  overlay.classList.remove("hidden");
+  showOverlay("gameover");
 }
 
 function resetGame() {
   for (const obs of state.obstacles) obs.el.remove();
   state.obstacles = [];
   state.running = true;
+  state.started = true;
   state.spawnTimer = 0;
   state.score = 0;
   state.playerX = 139;
   player.style.left = `${state.playerX}px`;
   scoreEl.textContent = "0";
-  overlay.classList.add("hidden");
+  hideOverlay();
 }
 
 function update(dt) {
@@ -109,7 +131,11 @@ function loop(ts) {
 document.addEventListener("keydown", (e) => {
   if (e.code === "ArrowLeft") state.leftPressed = true;
   if (e.code === "ArrowRight") state.rightPressed = true;
-  if (e.code === "Space" && !state.running) resetGame();
+
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!state.started || !state.running) resetGame();
+  }
 });
 
 document.addEventListener("keyup", (e) => {
@@ -117,4 +143,5 @@ document.addEventListener("keyup", (e) => {
   if (e.code === "ArrowRight") state.rightPressed = false;
 });
 
+showOverlay("start");
 requestAnimationFrame(loop);
