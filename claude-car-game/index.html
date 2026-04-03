@@ -18,11 +18,23 @@
           <span class="hud-label">Score</span>
           <span id="score" class="hud-value">0</span>
         </div>
+        <div class="hud-card energy-card">
+          <span class="hud-label">Energy</span>
+          <span id="energyValue" class="hud-value">0%</span>
+          <div class="energy-track" aria-hidden="true">
+            <div id="energyFill" class="energy-fill"></div>
+          </div>
+        </div>
       </section>
 
       <div id="gameArea" class="game-area">
+        <div class="parallax far"></div>
+        <div class="parallax near"></div>
         <div class="skyline"></div>
         <div class="road-glow"></div>
+        <div class="lane-streaks"></div>
+        <div class="speed-lines"></div>
+        <div id="impactFlash" class="impact-flash" aria-hidden="true"></div>
         <div id="player" class="car player"></div>
 
         <div id="overlay" class="overlay" data-state="start">
