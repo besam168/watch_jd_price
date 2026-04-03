@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -16,15 +17,69 @@ from speak import load_config, speak
 
 
 def normalize_text(value: str) -> str:
-    return " ".join(str(value or "").strip().lower().split())
+    normalized = str(value or "").strip().lower()
+    normalized = re.sub(r"\s+", "", normalized)
+    normalized = re.sub(r"[\W_]+", "", normalized)
+    return normalized
+
+
+def build_wake_variants(wake_phrase: str) -> set[str]:
+    base = normalize_text(wake_phrase)
+    variants = {
+        base,
+        "沈万三",
+        "神万三",
+        "深万三",
+        "申万三",
+        "沈萬三",
+        "神萬三",
+        "深萬三",
+        "申萬三",
+        "沈万山",
+        "神万山",
+        "深万山",
+        "申万山",
+        "沈萬山",
+        "神萬山",
+        "深萬山",
+        "申萬山",
+        "沈万散",
+        "神万散",
+        "沈萬散",
+        "神萬散",
+        "沈万桑",
+        "神万桑",
+        "沈萬桑",
+        "神萬桑",
+        "沈万伞",
+        "神万伞",
+        "沈萬傘",
+        "神萬傘",
+    }
+    return {normalize_text(v) for v in variants if normalize_text(v)}
 
 
 def contains_wake_phrase(recognized_text: str, wake_phrase: str) -> bool:
     recognized = normalize_text(recognized_text)
-    wake = normalize_text(wake_phrase)
-    if not recognized or not wake:
+    if not recognized:
         return False
-    return wake in recognized
+
+    variants = build_wake_variants(wake_phrase)
+    for variant in variants:
+        if variant and variant in recognized:
+            return True
+
+    surname_family = ("沈", "神", "深", "申")
+    tail_family = ("三", "山", "散", "桑", "伞", "傘")
+    middle_family = "万萬"
+
+    if len(recognized) >= 3:
+        for i in range(len(recognized) - 2):
+            chunk = recognized[i : i + 3]
+            if chunk[0] in surname_family and chunk[1] in middle_family and chunk[2] in tail_family:
+                return True
+
+    return False
 
 
 def run_loop(
@@ -54,6 +109,7 @@ def run_loop(
                 "engine": "local_whisper",
                 "model": whisper_model,
                 "mic_device": mic_device or "default",
+                "wake_variants": sorted(build_wake_variants(wake_phrase)),
             },
             ensure_ascii=False,
         ),
