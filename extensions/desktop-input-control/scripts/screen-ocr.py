@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--group-by", choices=sorted(GROUP_BY_MODES), default="auto")
     parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N)
     parser.add_argument("--debug-overlay")
+    parser.add_argument("--engine", choices=["auto", "rapidocr", "tesseract"], default="auto")
     return parser.parse_args()
 
 
@@ -339,19 +340,43 @@ def try_rapidocr(processed_image: Image.Image) -> Tuple[str, str, str, List[Dict
         raise OcrEngineError(f"RapidOCR failed: {exc}") from exc
 
 
-def configure_tesseract() -> str:
+def default_tessdata_dir() -> Optional[Path]:
+    script_dir = Path(__file__).resolve().parent
+    candidates = [
+        script_dir.parent / "third_party" / "tessdata",
+        Path(r"C:\Program Files\Tesseract-OCR\tessdata"),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def configure_tesseract() -> Tuple[str, Optional[str]]:
     tesseract_cmd = os.environ.get("TESSERACT_CMD") or r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    tessdata_dir = os.environ.get("TESSDATA_PREFIX")
+    if not tessdata_dir:
+        detected = default_tessdata_dir()
+        if detected is not None:
+            tessdata_dir = str(detected)
+            os.environ["TESSDATA_PREFIX"] = tessdata_dir
     if Path(tesseract_cmd).exists():
         pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-    return pytesseract.pytesseract.tesseract_cmd
+    return pytesseract.pytesseract.tesseract_cmd, tessdata_dir
 
 
 def run_tesseract(processed_image: Image.Image, roi: Dict[str, Any], lang: str) -> Tuple[str, str, str, str, List[Dict[str, Any]]]:
-    tesseract_cmd = configure_tesseract()
-    full_text = pytesseract.image_to_string(processed_image, lang=lang)
-    data = pytesseract.image_to_data(processed_image, lang=lang, output_type=Output.DICT)
+    tesseract_cmd, tessdata_dir = configure_tesseract()
+    config = ""
+    if tessdata_dir:
+        safe_tessdata_dir = str(Path(tessdata_dir).resolve())
+        os.environ["TESSDATA_PREFIX"] = safe_tessdata_dir
+        config = f'--tessdata-dir {safe_tessdata_dir}'
+    full_text = pytesseract.image_to_string(processed_image, lang=lang, config=config)
+    data = pytesseract.image_to_data(processed_image, lang=lang, output_type=Output.DICT, config=config)
+    detail = tesseract_cmd if not tessdata_dir else f"{tesseract_cmd} | tessdata={tessdata_dir}"
     word_items = build_word_items_from_tesseract(data, roi)
-    return "tesseract", "pytesseract", tesseract_cmd, full_text, word_items
+    return "tesseract", "pytesseract", detail, full_text, word_items
 
 
 def remap_items_to_abs(items: List[Dict[str, Any]], roi: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -391,26 +416,54 @@ def main() -> int:
         full_text = ""
         raw_word_items: List[Dict[str, Any]] = []
 
-        try:
-            rapid_engine, rapid_version, rapid_detail, rapid_items, rapid_status = try_rapidocr(processed_image)
-            engine_attempts.append({"engine": rapid_engine, "ok": True, "detail": rapid_detail, "status": rapid_status, "version": rapid_version})
-            engine_name = rapid_engine
-            engine_version = rapid_version
-            engine_detail = rapid_detail
-            full_text = "\n".join(item.get("text", "") for item in rapid_items)
-            raw_word_items = remap_items_to_abs(rapid_items, roi)
-        except Exception as rapid_exc:
-            engine_attempts.append({
-                "engine": "rapidocr",
-                "ok": False,
-                "detail": str(rapid_exc),
-                "status": "fallback_to_tesseract",
-            })
-            tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang)
-            engine_name = tess_engine
-            engine_version = tess_version
-            engine_detail = tess_detail
-            engine_attempts.append({"engine": tess_engine, "ok": True, "detail": tess_detail, "status": "ok", "version": tess_version})
+        normalized_lang = (lang or "").lower()
+        contains_chinese = any(token in normalized_lang for token in ("chi_sim", "chi_tra", "chi", "zh", "chinese"))
+        preferred_engine = args.engine
+        if preferred_engine == "auto":
+            preferred_engine = "tesseract" if contains_chinese else "rapidocr"
+
+        if preferred_engine == "tesseract":
+            try:
+                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang)
+                engine_name = tess_engine
+                engine_version = tess_version
+                engine_detail = tess_detail
+                engine_attempts.append({"engine": tess_engine, "ok": True, "detail": tess_detail, "status": "ok", "version": tess_version})
+            except Exception as tess_exc:
+                engine_attempts.append({
+                    "engine": "tesseract",
+                    "ok": False,
+                    "detail": str(tess_exc),
+                    "status": "fallback_to_rapidocr",
+                })
+                rapid_engine, rapid_version, rapid_detail, rapid_items, rapid_status = try_rapidocr(processed_image)
+                engine_attempts.append({"engine": rapid_engine, "ok": True, "detail": rapid_detail, "status": rapid_status, "version": rapid_version})
+                engine_name = rapid_engine
+                engine_version = rapid_version
+                engine_detail = rapid_detail
+                full_text = "\n".join(item.get("text", "") for item in rapid_items)
+                raw_word_items = remap_items_to_abs(rapid_items, roi)
+        else:
+            try:
+                rapid_engine, rapid_version, rapid_detail, rapid_items, rapid_status = try_rapidocr(processed_image)
+                engine_attempts.append({"engine": rapid_engine, "ok": True, "detail": rapid_detail, "status": rapid_status, "version": rapid_version})
+                engine_name = rapid_engine
+                engine_version = rapid_version
+                engine_detail = rapid_detail
+                full_text = "\n".join(item.get("text", "") for item in rapid_items)
+                raw_word_items = remap_items_to_abs(rapid_items, roi)
+            except Exception as rapid_exc:
+                engine_attempts.append({
+                    "engine": "rapidocr",
+                    "ok": False,
+                    "detail": str(rapid_exc),
+                    "status": "fallback_to_tesseract",
+                })
+                tess_engine, tess_version, tess_detail, full_text, raw_word_items = run_tesseract(processed_image, roi, lang)
+                engine_name = tess_engine
+                engine_version = tess_version
+                engine_detail = tess_detail
+                engine_attempts.append({"engine": tess_engine, "ok": True, "detail": tess_detail, "status": "ok", "version": tess_version})
 
         effective_group_by = choose_group_mode(args.group_by, engine_name, args.query or "")
         aggregated_items = aggregate_items(raw_word_items, effective_group_by)
@@ -434,8 +487,8 @@ def main() -> int:
                 "version": engine_version,
                 "detail": engine_detail,
                 "attempts": engine_attempts,
-                "preferred": "rapidocr",
-                "fallback": "tesseract",
+                "preferred": preferred_engine,
+                "fallback": "rapidocr" if preferred_engine == "tesseract" else "tesseract",
                 "selectedGroupBy": effective_group_by,
             },
             "tesseract": pytesseract.pytesseract.tesseract_cmd,
@@ -454,15 +507,27 @@ def main() -> int:
             "debugOverlay": debug_overlay_path,
             "allItemsCount": len(aggregated_items),
         }
-        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        safe_print_json(result)
         return 0
     except Exception as exc:
-        print(json.dumps({
+        safe_print_json({
             "ok": False,
             "error": str(exc),
             "traceback": traceback.format_exc(limit=3),
-        }, ensure_ascii=False, separators=(",", ":")))
+        })
         return 1
+
+
+def safe_print_json(payload: Dict[str, Any]) -> None:
+    text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    try:
+        sys.stdout.write(text)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+        try:
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
