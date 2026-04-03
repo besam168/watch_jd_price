@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -19,6 +21,83 @@ SYSTEM_SPEECH_NOTE = (
     "Windows System.Speech dictation is best-effort. "
     "zh-CN recognition quality and timeout behavior can vary by device, room noise, and installed language packs."
 )
+
+LOCAL_WHISPER_NOTE = (
+    "Local Whisper runs offline after model download and is currently the preferred path for Chinese wav transcription on this machine."
+)
+
+SKILL_ROOT = CURRENT_DIR.parent
+WORKSPACE_ROOT = SKILL_ROOT.parent.parent
+LOCAL_WHISPER_ROOT = WORKSPACE_ROOT / "skills" / "local-whisper"
+LOCAL_WHISPER_VENV_PYTHON = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "python.exe"
+LOCAL_WHISPER_FFMPEG = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "ffmpeg.exe"
+
+
+def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str, Any]:
+    if not wav_path or not wav_path.is_file():
+        raise RuntimeError("Local Whisper requires an existing --wav file")
+
+    if not LOCAL_WHISPER_VENV_PYTHON.is_file():
+        raise RuntimeError(f"Local Whisper venv python not found: {LOCAL_WHISPER_VENV_PYTHON}")
+
+    env = os.environ.copy()
+    ffmpeg_dir = str(LOCAL_WHISPER_FFMPEG.parent)
+    env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
+    env["PYTHONIOENCODING"] = "utf-8"
+
+    ffmpeg_named = shutil.which("ffmpeg", path=env["PATH"])
+    if not ffmpeg_named:
+        raise RuntimeError(
+            f"ffmpeg executable not found in PATH for Local Whisper. Expected under: {LOCAL_WHISPER_FFMPEG.parent}"
+        )
+
+    command = [
+        str(LOCAL_WHISPER_VENV_PYTHON),
+        "-c",
+        (
+            "import json, whisper; "
+            f"m=whisper.load_model({json.dumps(model)}); "
+            f"r=m.transcribe(r'{str(wav_path)}', language={json.dumps(language)}, verbose=False); "
+            "print(json.dumps({'text': r['text'].strip(), 'language': r.get('language', 'unknown')}, ensure_ascii=False))"
+        ),
+    ]
+
+    completed = subprocess.run(command, capture_output=True, text=False, check=False, env=env)
+    stdout = (completed.stdout or b"").decode("utf-8", errors="ignore").strip()
+    stderr = (completed.stderr or b"").decode("utf-8", errors="ignore").strip()
+
+    if completed.returncode != 0:
+        raise RuntimeError(stderr or stdout or f"Local Whisper failed with exit code {completed.returncode}")
+    if not stdout:
+        raise RuntimeError("Local Whisper returned no output")
+
+    json_lines = [line.strip() for line in stdout.splitlines() if line.strip().startswith("{")]
+    payload = json.loads(json_lines[-1] if json_lines else stdout.splitlines()[-1])
+    text = str(payload.get("text") or "").strip()
+
+    return {
+        "ok": bool(text),
+        "mode": "wav_file",
+        "text": text,
+        "confidence": None,
+        "culture": str(payload.get("language") or language or "unknown"),
+        "requested_culture": language,
+        "selected_culture": str(payload.get("language") or language or "unknown"),
+        "culture_fallback_used": False,
+        "installed_recognizers": [],
+        "timed_out": False,
+        "wav_path": str(wav_path),
+        "elapsed_ms": 0,
+        "error": None if text else "Local Whisper returned empty text",
+        "engine": {
+            "name": "local_whisper",
+            "transport": "python_subprocess",
+            "model": model,
+            "note": LOCAL_WHISPER_NOTE,
+            "ffmpeg": ffmpeg_named,
+            "python": str(LOCAL_WHISPER_VENV_PYTHON),
+        },
+    }
 
 
 def _decode_powershell_json(stdout: str) -> Dict[str, Any]:
@@ -287,8 +366,24 @@ def listen_once(
     babble_timeout_seconds: float,
     end_silence_seconds: float,
     allow_culture_fallback: bool,
+    engine: str,
+    whisper_model: str,
 ) -> Dict[str, Any]:
     primary_mode = "wav_file" if wav_path else "microphone"
+
+    if engine == "local_whisper":
+        if not wav_path:
+            raise RuntimeError("local_whisper currently requires --wav. Microphone -> wav capture can be added next.")
+        result = _run_local_whisper(wav_path=wav_path, language=culture.split("-")[0].lower(), model=whisper_model)
+        result.setdefault("ok", False)
+        result.setdefault("text", "")
+        result.setdefault("culture", culture)
+        result.setdefault("mode", primary_mode)
+        result["result_source"] = "primary"
+        result["attempt_count"] = 1
+        result["warnings"] = [LOCAL_WHISPER_NOTE]
+        return result
+
     attempt_count = 1 if wav_path else max(1, int(attempts))
 
     attempt_results = _run_recognition_attempts(
@@ -402,6 +497,17 @@ def main() -> None:
         help="Optional WAV file used only when microphone recognition fails. Useful as a practical fallback path.",
     )
     parser.add_argument(
+        "--engine",
+        choices=["system_speech", "local_whisper"],
+        default="system_speech",
+        help="Speech recognition engine. local_whisper currently supports --wav mode and is preferred for Chinese wav transcription.",
+    )
+    parser.add_argument(
+        "--whisper-model",
+        default="base",
+        help="Whisper model name when --engine local_whisper is selected.",
+    )
+    parser.add_argument(
         "--config",
         default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
         help="Config JSON used when --echo-speak is enabled.",
@@ -440,6 +546,8 @@ def main() -> None:
             babble_timeout_seconds=args.babble_timeout_seconds,
             end_silence_seconds=args.end_silence_seconds,
             allow_culture_fallback=bool(args.allow_culture_fallback),
+            engine=args.engine,
+            whisper_model=args.whisper_model,
         )
 
         if args.echo_speak and result.get("ok") and result.get("text"):
