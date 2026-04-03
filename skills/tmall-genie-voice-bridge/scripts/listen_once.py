@@ -586,7 +586,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--whisper-model",
-        default="base",
+        default="small",
         help="Whisper model name when --engine local_whisper is selected.",
     )
     parser.add_argument(
