@@ -50,7 +50,12 @@ def _resolve_local_whisper_env() -> tuple[dict[str, str], str]:
     return env, ffmpeg_named
 
 
-def _record_microphone_to_wav(*, timeout_seconds: int, mic_device: str | None) -> tuple[Path, str]:
+def _record_microphone_to_wav(
+    *,
+    timeout_seconds: int,
+    mic_device: str | None,
+    pre_roll_seconds: float,
+) -> tuple[Path, str, int]:
     env, ffmpeg_named = _resolve_local_whisper_env()
 
     with tempfile.NamedTemporaryFile(prefix="tmall-mic-", suffix=".wav", delete=False) as tmp:
@@ -59,6 +64,9 @@ def _record_microphone_to_wav(*, timeout_seconds: int, mic_device: str | None) -
     device_name = str(mic_device or "").strip() or "audio=麦克风 (Logi C270 HD WebCam)"
     if not device_name.lower().startswith("audio="):
         device_name = f"audio={device_name}"
+
+    if pre_roll_seconds > 0:
+        time.sleep(pre_roll_seconds)
 
     command = [
         ffmpeg_named,
@@ -96,7 +104,7 @@ def _record_microphone_to_wav(*, timeout_seconds: int, mic_device: str | None) -
             pass
         raise RuntimeError("ffmpeg microphone capture produced an empty wav file")
 
-    return wav_path, device_name
+    return wav_path, device_name, elapsed_ms
 
 
 def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str, Any]:
@@ -426,18 +434,22 @@ def listen_once(
     engine: str,
     whisper_model: str,
     mic_device: str | None,
+    keep_recorded_wav: bool,
+    pre_roll_seconds: float,
 ) -> Dict[str, Any]:
     primary_mode = "wav_file" if wav_path else "microphone"
 
     if engine == "local_whisper":
         cleanup_wav: Path | None = None
         recorded_device: str | None = None
+        record_elapsed_ms = 0
         try:
             actual_wav_path = wav_path
             if not actual_wav_path:
-                cleanup_wav, recorded_device = _record_microphone_to_wav(
+                cleanup_wav, recorded_device, record_elapsed_ms = _record_microphone_to_wav(
                     timeout_seconds=timeout_seconds,
                     mic_device=mic_device,
+                    pre_roll_seconds=pre_roll_seconds,
                 )
                 actual_wav_path = cleanup_wav
 
@@ -457,10 +469,17 @@ def listen_once(
             if recorded_device:
                 result["mic_device"] = recorded_device
                 result["mode"] = "microphone"
-            result["warnings"] = [LOCAL_WHISPER_NOTE]
+            if record_elapsed_ms:
+                result["record_elapsed_ms"] = record_elapsed_ms
+            warnings = [LOCAL_WHISPER_NOTE]
+            if pre_roll_seconds > 0:
+                warnings.append(f"Pre-roll delay applied before capture: {pre_roll_seconds:.1f}s")
+            if keep_recorded_wav and cleanup_wav:
+                warnings.append("Recorded wav was kept on disk for inspection.")
+            result["warnings"] = warnings
             return result
         finally:
-            if cleanup_wav:
+            if cleanup_wav and not keep_recorded_wav:
                 try:
                     cleanup_wav.unlink(missing_ok=True)
                 except Exception:
@@ -594,6 +613,17 @@ def main() -> None:
         help="Optional ffmpeg dshow audio device name for microphone capture. Example: '麦克风 (Logi C270 HD WebCam)'.",
     )
     parser.add_argument(
+        "--keep-recorded-wav",
+        action="store_true",
+        help="Keep microphone-captured wav files on disk for inspection instead of deleting them after transcription.",
+    )
+    parser.add_argument(
+        "--pre-roll-seconds",
+        type=float,
+        default=0.0,
+        help="Optional delay before microphone capture starts. Useful when the human needs a beat after hearing prompt playback.",
+    )
+    parser.add_argument(
         "--config",
         default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
         help="Config JSON used when --echo-speak is enabled.",
@@ -620,6 +650,8 @@ def main() -> None:
         parser.error("--timeout-seconds must be >= 1")
     if args.initial_silence_seconds <= 0 or args.babble_timeout_seconds <= 0 or args.end_silence_seconds <= 0:
         parser.error("silence timeout arguments must be > 0")
+    if args.pre_roll_seconds < 0:
+        parser.error("--pre-roll-seconds must be >= 0")
 
     try:
         result = listen_once(
@@ -635,6 +667,8 @@ def main() -> None:
             engine=args.engine,
             whisper_model=args.whisper_model,
             mic_device=args.mic_device,
+            keep_recorded_wav=bool(args.keep_recorded_wav),
+            pre_roll_seconds=float(args.pre_roll_seconds),
         )
 
         if args.echo_speak and result.get("ok") and result.get("text"):
