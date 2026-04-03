@@ -261,6 +261,8 @@ _这里记录一些需要记住的小事情_
 - **以后这台机器上传 GitHub，默认优先使用 SSH remote，不走 HTTPS。** 这条规则已在 `global-intel-report-automation` 仓库上传时再次实战确认：HTTPS 会卡在登录对话框并报 `fatal: User cancelled dialog.`，切换到 `git@github.com:...` 后可正常 push。
 - 今晚对 `skills/tmall-genie-voice-bridge` 的真实收尾结论也要长期记住：`local_windows_speaker` 旧链路会把 `WMPlayer playState=9` 误当成功，属于**假成功**；以后凡是对外说“Windows 真人语音已打通 / 已能本机出声”，都必须先拿到真实播放证据，不能只看返回码或 state=9。
 - 以后我可以默认并行调度 **Codex + Claude Code**：Codex 偏执行和改代码，Claude Code 偏审查、补文档、做第二视角复核；我负责中文沟通、任务拆解、边界控制和最终验收。
+- 2026-04-01 大老板进一步明确授权：后续工程任务可以默认由我做**总指挥 / 设计 / 最终验收**，并按需调 `Claude Code` 做代码执行助手；权限上可按“充分执行”口径推进，但仍必须由我控任务边界、真实验收结果和对外表述，不能把执行层输出直接当最终结论。
+- 2026-04-01 晚间，大老板又把 **天猫精灵 / `tmall-genie-voice-bridge` 项目** 的协作方式单独钉死：以后这个项目默认由我做 **总指挥 / 设计 / 最终验收 / 最终口径负责人**，并允许我默认调 **Codex CLI** 作为执行助手参与写代码；但所有对外结论、完成度判断与最终验收，仍必须由我统一负责，不能把 Codex 输出直接当结论。
 - 2026-03-31 对 `skills/tmall-genie-voice-bridge` 的 90 分钟强攻已确认新的长期结论：
   1. 项目已从“会说的半成品骨架”推进到**可演示 MVP**阶段；
   2. 当前最稳闭环不是现场麦克风，而是：`text -> local speak`、`text -> bridge /speak`、`wav -> transcribe -> echo-speak`；
@@ -272,6 +274,19 @@ _这里记录一些需要记住的小事情_
   2. 已新增真实设备播放所需的音频 URL 能力：支持 `http_player.audio_base_url = "auto"` 与 `http_player.public_base_url`，说明“bridge 生成音频 -> 暴露可访问 URL -> 外部控制端驱动真机播放”这条路线已补上关键缺口；
   3. 当前最准确项目状态不是“已完成”，而是：**桥接层基本成形，只差真实设备控制端接最后一跳**；
   4. 下一阶段优先级固定为：**Home Assistant -> 阿里技能/云函数/官方开放平台 -> 第三方控制接口**；原始收音继续视为高风险备选，不当主线。 
+- 2026-04-03 对 `skills/tmall-genie-voice-bridge` 的本地语音闭环攻坚已取得新的长期结论：
+  1. 项目已从“wav 演示闭环”推进到**本机 `mic -> wav -> local whisper -> speak` 可运行 MVP**，说明本地麦克风到本地播报的完整链路已经真实打通；
+  2. 当前稳定替代方案已经明确：**中文 STT 主路线应从 Windows `System.Speech` 转向本地 Whisper**，因为 `System.Speech` 的中文识别长期不稳、易超时、易低置信度；
+  3. `skills/local-whisper` 已在独立 venv 中装通，核心依赖包括 `torch`、`openai-whisper`、`imageio-ffmpeg`，并通过本地 `ffmpeg.exe` 供 Whisper 子进程调用；
+  4. `listen_once.py` 已新增 `local_whisper` 引擎，并已支持两条闭环：
+     - `wav -> whisper -> speak`
+     - `mic -> wav -> whisper -> speak`
+  5. 为后续现场调优，`listen_once.py` 还新增了调试开关：`--keep-recorded-wav` 与 `--pre-roll-seconds`，以后排查抢拍、截断、串音、收音质量时优先用这套参数留样本；
+  6. 模型实测结论不要记错：**`small` 虽已修好并能加载，但在这台机器的现场麦克风短句测试里不如 `base` 稳**；当前更稳的现场默认建议应先回到 `base` 做诊断，而不是盲目认为模型越大越准；
+  7. 因此以后对外更准确的说法应是：
+     - 可以说：**本地 Whisper 语音闭环 MVP 已打通**；
+     - 不能说：**中文语音助手已经稳定可日常使用**；
+     - 当前真实瓶颈已收敛为：录音质量、扬声器串入麦克风、说话节奏，以及现场识别精度调优。 
 
 ---
 
