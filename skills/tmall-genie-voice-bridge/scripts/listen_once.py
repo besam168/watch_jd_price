@@ -7,6 +7,8 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -33,13 +35,7 @@ LOCAL_WHISPER_VENV_PYTHON = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "python.e
 LOCAL_WHISPER_FFMPEG = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "ffmpeg.exe"
 
 
-def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str, Any]:
-    if not wav_path or not wav_path.is_file():
-        raise RuntimeError("Local Whisper requires an existing --wav file")
-
-    if not LOCAL_WHISPER_VENV_PYTHON.is_file():
-        raise RuntimeError(f"Local Whisper venv python not found: {LOCAL_WHISPER_VENV_PYTHON}")
-
+def _resolve_local_whisper_env() -> tuple[dict[str, str], str]:
     env = os.environ.copy()
     ffmpeg_dir = str(LOCAL_WHISPER_FFMPEG.parent)
     env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
@@ -50,6 +46,67 @@ def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str
         raise RuntimeError(
             f"ffmpeg executable not found in PATH for Local Whisper. Expected under: {LOCAL_WHISPER_FFMPEG.parent}"
         )
+
+    return env, ffmpeg_named
+
+
+def _record_microphone_to_wav(*, timeout_seconds: int, mic_device: str | None) -> tuple[Path, str]:
+    env, ffmpeg_named = _resolve_local_whisper_env()
+
+    with tempfile.NamedTemporaryFile(prefix="tmall-mic-", suffix=".wav", delete=False) as tmp:
+        wav_path = Path(tmp.name)
+
+    device_name = str(mic_device or "").strip() or "audio=麦克风 (Logi C270 HD WebCam)"
+    if not device_name.lower().startswith("audio="):
+        device_name = f"audio={device_name}"
+
+    command = [
+        ffmpeg_named,
+        "-y",
+        "-f",
+        "dshow",
+        "-i",
+        device_name,
+        "-t",
+        str(int(timeout_seconds)),
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        str(wav_path),
+    ]
+
+    started_at = time.time()
+    completed = subprocess.run(command, capture_output=True, text=False, check=False, env=env)
+    elapsed_ms = int((time.time() - started_at) * 1000)
+    stdout = (completed.stdout or b"").decode("utf-8", errors="ignore").strip()
+    stderr = (completed.stderr or b"").decode("utf-8", errors="ignore").strip()
+
+    if completed.returncode != 0:
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise RuntimeError(stderr or stdout or f"ffmpeg microphone capture failed with exit code {completed.returncode}")
+
+    if not wav_path.is_file() or wav_path.stat().st_size <= 44:
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise RuntimeError("ffmpeg microphone capture produced an empty wav file")
+
+    return wav_path, device_name
+
+
+def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str, Any]:
+    if not wav_path or not wav_path.is_file():
+        raise RuntimeError("Local Whisper requires an existing --wav file")
+
+    if not LOCAL_WHISPER_VENV_PYTHON.is_file():
+        raise RuntimeError(f"Local Whisper venv python not found: {LOCAL_WHISPER_VENV_PYTHON}")
+
+    env, ffmpeg_named = _resolve_local_whisper_env()
 
     command = [
         str(LOCAL_WHISPER_VENV_PYTHON),
@@ -368,21 +425,46 @@ def listen_once(
     allow_culture_fallback: bool,
     engine: str,
     whisper_model: str,
+    mic_device: str | None,
 ) -> Dict[str, Any]:
     primary_mode = "wav_file" if wav_path else "microphone"
 
     if engine == "local_whisper":
-        if not wav_path:
-            raise RuntimeError("local_whisper currently requires --wav. Microphone -> wav capture can be added next.")
-        result = _run_local_whisper(wav_path=wav_path, language=culture.split("-")[0].lower(), model=whisper_model)
-        result.setdefault("ok", False)
-        result.setdefault("text", "")
-        result.setdefault("culture", culture)
-        result.setdefault("mode", primary_mode)
-        result["result_source"] = "primary"
-        result["attempt_count"] = 1
-        result["warnings"] = [LOCAL_WHISPER_NOTE]
-        return result
+        cleanup_wav: Path | None = None
+        recorded_device: str | None = None
+        try:
+            actual_wav_path = wav_path
+            if not actual_wav_path:
+                cleanup_wav, recorded_device = _record_microphone_to_wav(
+                    timeout_seconds=timeout_seconds,
+                    mic_device=mic_device,
+                )
+                actual_wav_path = cleanup_wav
+
+            result = _run_local_whisper(
+                wav_path=actual_wav_path,
+                language=culture.split("-")[0].lower(),
+                model=whisper_model,
+            )
+            result.setdefault("ok", False)
+            result.setdefault("text", "")
+            result.setdefault("culture", culture)
+            result.setdefault("mode", primary_mode)
+            result["result_source"] = "primary"
+            result["attempt_count"] = 1
+            if cleanup_wav:
+                result["recorded_wav_path"] = str(cleanup_wav)
+            if recorded_device:
+                result["mic_device"] = recorded_device
+                result["mode"] = "microphone"
+            result["warnings"] = [LOCAL_WHISPER_NOTE]
+            return result
+        finally:
+            if cleanup_wav:
+                try:
+                    cleanup_wav.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     attempt_count = 1 if wav_path else max(1, int(attempts))
 
@@ -508,6 +590,10 @@ def main() -> None:
         help="Whisper model name when --engine local_whisper is selected.",
     )
     parser.add_argument(
+        "--mic-device",
+        help="Optional ffmpeg dshow audio device name for microphone capture. Example: '麦克风 (Logi C270 HD WebCam)'.",
+    )
+    parser.add_argument(
         "--config",
         default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
         help="Config JSON used when --echo-speak is enabled.",
@@ -548,6 +634,7 @@ def main() -> None:
             allow_culture_fallback=bool(args.allow_culture_fallback),
             engine=args.engine,
             whisper_model=args.whisper_model,
+            mic_device=args.mic_device,
         )
 
         if args.echo_speak and result.get("ok") and result.get("text"):
