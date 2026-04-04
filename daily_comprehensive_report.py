@@ -13,6 +13,11 @@ from typing import Iterable
 import urllib.request
 import xml.etree.ElementTree as ET
 
+try:
+    from qveris_report_helpers import fetch_news_items as qv_fetch_news_items
+except Exception:
+    qv_fetch_news_items = None
+
 SENDER = "910633260@qq.com"
 AUTH_CODE = "sghqeeeeyuzjbcbb"
 RECEIVERS = ["besam168168@gmail.com", "758622673@qq.com"]
@@ -65,6 +70,15 @@ def is_within_last_hours(pub_date: str, hours: int = 24) -> bool:
 
 
 def fetch_rss_items(limit_per_feed: int = 3, max_age_hours: int = 24) -> list[dict[str, str]]:
+    if qv_fetch_news_items is not None:
+        try:
+            qv_items = qv_fetch_news_items()
+            fresh_qv_items = [x for x in qv_items if x.get("title")]
+            if fresh_qv_items:
+                return fresh_qv_items[: max(6, limit_per_feed * len(RSS_FEEDS))]
+        except Exception:
+            pass
+
     items: list[dict[str, str]] = []
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenClaw/1.0",
