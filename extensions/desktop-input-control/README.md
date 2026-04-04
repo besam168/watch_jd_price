@@ -71,9 +71,9 @@
 
 这比单纯模糊标题匹配更稳，方便后续做“先锁定目标窗口，再操作”；窗口锁开启后，输入动作默认只允许打到被锁定窗口。现在 `desktop_set_window_lock` 还支持 `foreground=true`，可优先直接锁当前前台窗口，避免误锁到同类标题窗口。
 
-进一步地，`desktop_run_locked_input_flow` 可以把“锁窗口 -> 聚焦 -> 输入文字 -> 快捷键”串成一个更稳的一体化流程，减少上层编排时的状态漂移。
+进一步地，`desktop_run_locked_input_flow` 可以把“锁窗口 -> 聚焦 -> 输入文字 -> 快捷键”串成一个更稳的一体化流程，减少上层编排时的状态漂移。现在它也支持 `requireFocusSuccess`，可由上层决定：focus 只是尽力而为，还是失败就直接停。
 
-现在还新增了 `desktop_focus_window_verified`：不是只调用一次聚焦，而是会在聚焦后复核当前前台窗口是否真的切过去；若失败，会明确返回 `focus verification failed` 以及 expected / actual / attempts。
+现在还新增了 `desktop_focus_window_verified`：不是只调用一次聚焦，而是会在聚焦后复核当前前台窗口是否真的切过去；若失败，会明确返回 `focus verification failed` 以及 expected / actual / attempts。返回里现在还会带 `focusStrategy`，每次 attempt 也会记录对应策略，便于知道究竟是哪种前台切换策略成功或失败。
 
 ### 2) 重试机制 + 更完整失败诊断
 `desktop_click_text_on_screen` 现在支持：
@@ -82,6 +82,7 @@
 - 点击前后前台窗口信息
 - 锁状态回传
 - `verifyImagePath`
+- `requireFocusSuccess`（若前置 focus 失败则直接中止，不再继续点击）
 - 更完整的 attempt 记录
 
 当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束；同时失败回包会更适合复盘和回放。
@@ -135,6 +136,7 @@
 - `scripts/desktop-input.ps1`：旧版 PowerShell 原型
 - `scripts/screen-capture-compat.ps1`：截图
 - `scripts/screen-ocr.py`：OCR 与文字定位
+- `scripts/qq-search-helper.py`：QQ 搜索框 / 结果区诊断辅助脚本
 - `safe-config.json`：安全配置
 - `logs/`：动作日志
 - `artifacts/`：截图归档
@@ -165,6 +167,7 @@ powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1
 python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 设置 --top-n 3
 powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
+python scripts/qq-search-helper.py --contact 新干线
 ```
 
 ### OpenClaw 调用建议
