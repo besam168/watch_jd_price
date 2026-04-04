@@ -137,6 +137,7 @@
 - `scripts/screen-capture-compat.ps1`：截图
 - `scripts/screen-ocr.py`：OCR 与文字定位
 - `scripts/qq-search-helper.py`：QQ 搜索框 / 结果区诊断辅助脚本
+- `scripts/qq-search-state-machine.py`：QQ 搜索框聚焦 / 清空 / 输入 / 结果复核状态机
 - `safe-config.json`：安全配置
 - `logs/`：动作日志
 - `artifacts/`：截图归档
@@ -168,6 +169,7 @@ python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 
 powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
 python scripts/qq-search-helper.py --contact 新干线
+python scripts/qq-search-state-machine.py --window-title QQ --contact 新干线
 ```
 
 ### OpenClaw 调用建议
