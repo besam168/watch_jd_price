@@ -28,6 +28,7 @@
 - 文本输入 `desktop_type_text`
 - 剪贴板写入 `desktop_set_clipboard_text`
 - 剪贴板粘贴输入 `desktop_paste_text`
+  - 支持 `@file:<utf8-path>` 载荷，绕过 Windows argv 中文编码坑
 - 快捷键触发 `desktop_press_hotkey`
 - 打开应用 `desktop_open_app`
 - 打开 URL `desktop_open_url`

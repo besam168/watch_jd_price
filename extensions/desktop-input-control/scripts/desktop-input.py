@@ -415,12 +415,22 @@ def set_clipboard_text(text: str):
     return f"Clipboard text set ({len(text)} chars)"
 
 
+def load_text_payload(raw: str):
+    value = raw or ""
+    if value.startswith("@file:"):
+        path = value[len("@file:"):]
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return value
+
+
 def paste_text(text: str):
     if pyperclip is None:
         raise RuntimeError("pyperclip is not installed")
-    pyperclip.copy(text)
+    resolved = load_text_payload(text)
+    pyperclip.copy(resolved)
     press_hotkey("ctrl+v")
-    return f"Pasted text via clipboard: {text}"
+    return f"Pasted text via clipboard: {resolved}"
 
 
 def press_hotkey(keys: str):

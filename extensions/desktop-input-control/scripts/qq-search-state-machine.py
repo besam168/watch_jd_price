@@ -16,6 +16,9 @@ if hasattr(sys.stderr, "reconfigure"):
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_PY = ROOT / "scripts" / "desktop-input.py"
 HELPER_PY = ROOT / "scripts" / "qq-search-helper.py"
+ARTIFACTS = ROOT / "artifacts"
+ARTIFACTS.mkdir(parents=True, exist_ok=True)
+PAYLOAD_PATH = ARTIFACTS / "qq-contact-payload.txt"
 
 
 def run_desktop(args: list[str]) -> Any:
@@ -91,8 +94,9 @@ def main() -> int:
     steps.append({"step": "clear_search_text", "result": backspace_result})
     time.sleep(0.15)
 
-    paste_result = run_desktop(["paste-text", args.contact])
-    steps.append({"step": "paste_contact", "result": paste_result, "contact": args.contact})
+    PAYLOAD_PATH.write_text(args.contact, encoding="utf-8")
+    paste_result = run_desktop(["paste-text", f"@file:{PAYLOAD_PATH}"])
+    steps.append({"step": "paste_contact", "result": paste_result, "contact": args.contact, "payloadPath": str(PAYLOAD_PATH)})
     time.sleep(max(0, args.pause_ms) / 1000.0)
 
     helper_result = run_helper(
