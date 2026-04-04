@@ -137,6 +137,32 @@ function createArtifactPath(prefix: string, suffix: string) {
   return path.join(__dirname, "artifacts", `${stamp}-${prefix}-${suffix}.png`);
 }
 
+function parseJsonObject(text: unknown) {
+  if (typeof text !== "string") {
+    return text ?? null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function buildFocusGuardFailure(params: { query?: string; steps?: any[]; focusResult: unknown; lockState?: unknown }) {
+  return {
+    ok: false,
+    error: "focus required but failed",
+    stopped: true,
+    stoppedAt: "focus",
+    focusRequired: true,
+    inputAttempted: false,
+    query: params.query,
+    steps: params.steps,
+    lockState: params.lockState,
+    focusResult: params.focusResult,
+  };
+}
+
 async function captureScreen(captureScriptPath: string, params: {
   path?: string;
   virtualScreen?: boolean;
@@ -219,6 +245,26 @@ export default function (api) {
     parameters: Type.Object({ text: Type.String() }),
     async execute(_id, params) {
       const text = await runPy(scriptPath, ["type-text", params.text]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_set_clipboard_text",
+    description: "Set Windows clipboard text without typing into the active window.",
+    parameters: Type.Object({ text: Type.String() }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["set-clipboard-text", params.text]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_paste_text",
+    description: "Paste text into the active Windows input focus via clipboard + ctrl+v. Better for Chinese text in some apps.",
+    parameters: Type.Object({ text: Type.String() }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["paste-text", params.text]);
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });
@@ -462,6 +508,7 @@ export default function (api) {
       focusWindowPid: Type.Optional(Type.Number()),
       focusRetries: Type.Optional(Type.Number()),
       focusVerifyDelayMs: Type.Optional(Type.Number()),
+      requireFocusSuccess: Type.Optional(Type.Boolean()),
       lockForeground: Type.Optional(Type.Boolean()),
       lockWindowTitle: Type.Optional(Type.String()),
       lockWindowPid: Type.Optional(Type.Number()),
@@ -480,14 +527,37 @@ export default function (api) {
 
         let focusResult: any = null;
         if (params.focusWindowTitle || params.focusWindowPid) {
-          focusResult = await runPy(scriptPath, [
-            "focus-window-verified",
-            params.focusWindowTitle || "",
-            String(params.focusWindowPid ?? 0),
-            String(params.focusRetries ?? 2),
-            String(params.focusVerifyDelayMs ?? 250),
-            "false",
-          ]);
+          try {
+            focusResult = await runPy(scriptPath, [
+              "focus-window-verified",
+              params.focusWindowTitle || "",
+              String(params.focusWindowPid ?? 0),
+              String(params.focusRetries ?? 2),
+              String(params.focusVerifyDelayMs ?? 250),
+              "false",
+            ]);
+          } catch (error: any) {
+            focusResult = (error?.stdout || error?.stderr || error?.message || "").trim() || null;
+          }
+
+          const parsedFocusResult = parseJsonObject(focusResult);
+          if (parsedFocusResult) {
+            focusResult = parsedFocusResult;
+          }
+
+          if (params.requireFocusSuccess && !parsedFocusResult?.ok) {
+            const lockState = lockApplied ? await runPy(scriptPath, ["get-window-lock"]) : null;
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify(buildFocusGuardFailure({
+                  query: params.query,
+                  focusResult,
+                  lockState,
+                })),
+              }],
+            };
+          }
         }
 
       const retries = Math.max(0, Math.round(params.retries ?? 0));
@@ -657,6 +727,7 @@ export default function (api) {
       focusWindowPid: Type.Optional(Type.Number()),
       focusRetries: Type.Optional(Type.Number()),
       focusVerifyDelayMs: Type.Optional(Type.Number()),
+      requireFocusSuccess: Type.Optional(Type.Boolean()),
       text: Type.Optional(Type.String()),
       hotkey: Type.Optional(Type.String()),
       clearLockAfter: Type.Optional(Type.Boolean()),
@@ -677,15 +748,37 @@ export default function (api) {
         }
 
         if (params.focusWindowTitle || params.focusWindowPid) {
-          const focus = await runPy(scriptPath, [
-            "focus-window-verified",
-            params.focusWindowTitle || "",
-            String(params.focusWindowPid ?? 0),
-            String(params.focusRetries ?? 2),
-            String(params.focusVerifyDelayMs ?? 250),
-            "false",
-          ]);
-          steps.push({ step: "focus", result: focus });
+          let focus: any = null;
+          try {
+            focus = await runPy(scriptPath, [
+              "focus-window-verified",
+              params.focusWindowTitle || "",
+              String(params.focusWindowPid ?? 0),
+              String(params.focusRetries ?? 2),
+              String(params.focusVerifyDelayMs ?? 250),
+              "false",
+            ]);
+          } catch (error: any) {
+            focus = (error?.stdout || error?.stderr || error?.message || "").trim() || null;
+          }
+
+          const parsedFocus = parseJsonObject(focus);
+          const focusResult = parsedFocus || focus;
+          steps.push({ step: "focus", result: focusResult });
+
+          if (params.requireFocusSuccess && !parsedFocus?.ok) {
+            const lockState = await runPy(scriptPath, ["get-window-lock"]);
+            return {
+              content: [{
+                type: "text",
+                text: JSON.stringify(buildFocusGuardFailure({
+                  steps,
+                  lockState,
+                  focusResult,
+                })),
+              }],
+            };
+          }
         }
 
         const settleDelayMs = Math.max(0, Math.round(params.settleDelayMs ?? 250));

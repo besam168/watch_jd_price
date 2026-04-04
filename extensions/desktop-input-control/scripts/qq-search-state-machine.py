@@ -91,8 +91,8 @@ def main() -> int:
     steps.append({"step": "clear_search_text", "result": backspace_result})
     time.sleep(0.15)
 
-    type_result = run_desktop(["type-text", args.contact])
-    steps.append({"step": "type_contact", "result": type_result, "contact": args.contact})
+    paste_result = run_desktop(["paste-text", args.contact])
+    steps.append({"step": "paste_contact", "result": paste_result, "contact": args.contact})
     time.sleep(max(0, args.pause_ms) / 1000.0)
 
     helper_result = run_helper(
