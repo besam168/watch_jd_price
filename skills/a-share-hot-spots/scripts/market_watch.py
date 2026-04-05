@@ -174,6 +174,33 @@ def fetch_hot_stocks() -> list:
     return out
 
 
+def fetch_industry_sectors() -> list:
+    url = (
+        "http://push2.eastmoney.com/api/qt/clist/get"
+        "?pn=1&pz=20&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
+        "&fltt=2&invt=2&fid=f3&fs=m:90+t:3+f:!50"
+        "&fields=f3,f14,f20,f128,f136"
+    )
+    raw = fetch_text(url, referer="https://quote.eastmoney.com")
+    obj = json.loads(raw)
+    diff = ((obj.get("data") or {}).get("diff") or [])
+    out = []
+    for item in diff:
+        out.append({
+            "name": item.get("f14", ""),
+            "change_pct": round(float(item.get("f3", 0) or 0), 2),
+            "leading_stock": item.get("f128", ""),
+            "leading_change_pct": round(float(item.get("f136", 0) or 0), 2),
+            "amount_yi": round(float(item.get("f20", 0) or 0) / 1e8, 2),
+        })
+    return out
+
+
+def fetch_limit_up() -> list:
+    items = fetch_hot_stocks()
+    return [x for x in items if x.get("change_pct", 0) >= 9.8]
+
+
 def fmt_stock(d: dict) -> str:
     if d.get("error"):
         return f"失败：{d['error']}"
@@ -222,6 +249,26 @@ def fmt_hot_stocks(items: list) -> str:
     return "\n".join(lines)
 
 
+def fmt_industry_sectors(items: list) -> str:
+    if not items:
+        return "失败：未拿到行业板块数据"
+    lines = ["A股行业板块（TOP20）"]
+    for i, d in enumerate(items, 1):
+        sign = "+" if d["change_pct"] >= 0 else ""
+        lead_sign = "+" if d["leading_change_pct"] >= 0 else ""
+        lines.append(f"{i:02d}. {d['name']}  {sign}{d['change_pct']}%  龙头：{d['leading_stock']}（{lead_sign}{d['leading_change_pct']}%）  成交额：{d['amount_yi']}亿")
+    return "\n".join(lines)
+
+
+def fmt_limit_up(items: list) -> str:
+    if not items:
+        return "今天未筛到明显涨停/强势股"
+    lines = ["A股涨停/强势股"]
+    for i, d in enumerate(items, 1):
+        lines.append(f"{i:02d}. {d['name']}（{d['symbol'].upper()}） {d['current']}元  +{d['change_pct']}%  成交额 {d['amount_yi']}亿")
+    return "\n".join(lines)
+
+
 def fmt_summary(indexes: list, sectors: list, stocks: list) -> str:
     lines = [fmt_index(indexes), "", "热点前三："]
     for i, d in enumerate(sectors[:3], 1):
@@ -241,6 +288,8 @@ def main():
     parser.add_argument("--index", action="store_true", help="查主要指数")
     parser.add_argument("--hot-sectors", action="store_true", help="查热点板块")
     parser.add_argument("--hot-stocks", action="store_true", help="查热门股")
+    parser.add_argument("--industry-sectors", action="store_true", help="查行业板块")
+    parser.add_argument("--limit-up", action="store_true", help="查涨停/强势股")
     parser.add_argument("--summary", action="store_true", help="查盘面摘要")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
@@ -268,6 +317,16 @@ def main():
     if args.hot_stocks:
         data = fetch_hot_stocks()
         print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_hot_stocks(data))
+        return
+
+    if args.industry_sectors:
+        data = fetch_industry_sectors()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_industry_sectors(data))
+        return
+
+    if args.limit_up:
+        data = fetch_limit_up()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_limit_up(data))
         return
 
     if args.name:
