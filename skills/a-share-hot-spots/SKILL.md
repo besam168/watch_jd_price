@@ -13,6 +13,10 @@ description: 跟踪中国A股实时行情、主要指数、热点板块与龙头
 - 用户要看热点板块：如“今天最强板块”“热点概念有哪些”
 - 用户要快速盯盘摘要：如“给我一个 A 股盘面快照”
 
+## 当前版本
+- V1 已支持：个股、指数、热点板块、盘面摘要
+- V2 新增：常见中文股名直查、热门股榜、扩展盘面摘要
+
 ## 默认做法
 优先调用脚本：
 
@@ -24,6 +28,7 @@ python {baseDir}/scripts/market_watch.py --summary
 
 ```powershell
 python {baseDir}/scripts/market_watch.py --code 600519 000001
+python {baseDir}/scripts/market_watch.py --name 万科A 贵州茅台
 ```
 
 查指数：
@@ -36,6 +41,12 @@ python {baseDir}/scripts/market_watch.py --index
 
 ```powershell
 python {baseDir}/scripts/market_watch.py --hot-sectors
+```
+
+查热门股：
+
+```powershell
+python {baseDir}/scripts/market_watch.py --hot-stocks
 ```
 
 ## 输出原则

@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
 import re
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Referer": "https://finance.sina.com.cn",
     "Accept-Language": "zh-CN,zh;q=0.9",
 }
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+NAME_MAP_PATH = BASE_DIR / "references" / "name_map.csv"
+
+
+def load_name_map() -> dict:
+    mapping = {}
+    if NAME_MAP_PATH.exists():
+        with NAME_MAP_PATH.open("r", encoding="utf-8") as f:
+            for row in csv.reader(f):
+                if len(row) >= 2:
+                    mapping[row[0].strip()] = row[1].strip()
+    return mapping
 
 
 def fetch_text(url: str, referer: str | None = None, timeout: int = 10) -> str:
@@ -35,7 +50,21 @@ def normalize_code(code: str):
     return "sh", digits
 
 
+def resolve_names(names: list[str]) -> list[str]:
+    mapping = load_name_map()
+    resolved = []
+    for name in names:
+        code = mapping.get(name.strip())
+        if code:
+            resolved.append(code)
+        else:
+            resolved.append(f"UNKNOWN:{name}")
+    return resolved
+
+
 def fetch_stock(code: str) -> dict:
+    if code.startswith("UNKNOWN:"):
+        return {"error": f"暂不认识这个股票名：{code.split(':', 1)[1]}", "symbol": code}
     prefix, digits = normalize_code(code)
     symbol = f"{prefix}{digits}"
     raw = fetch_text(f"http://hq.sinajs.cn/list={symbol}")
@@ -119,6 +148,32 @@ def fetch_hot_sectors() -> list:
     return out
 
 
+def fetch_hot_stocks() -> list:
+    url = (
+        "http://push2.eastmoney.com/api/qt/clist/get"
+        "?pn=1&pz=15&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
+        "&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
+        "&fields=f12,f14,f2,f3,f4,f5,f6"
+    )
+    raw = fetch_text(url, referer="https://quote.eastmoney.com")
+    obj = json.loads(raw)
+    diff = ((obj.get("data") or {}).get("diff") or [])
+    out = []
+    for item in diff:
+        code = str(item.get("f12", ""))
+        market = "sh" if code.startswith(("60", "68")) else "sz"
+        out.append({
+            "symbol": f"{market}{code}",
+            "name": item.get("f14", ""),
+            "current": round(float(item.get("f2", 0) or 0), 2),
+            "change_pct": round(float(item.get("f3", 0) or 0), 2),
+            "change": round(float(item.get("f4", 0) or 0), 2),
+            "volume_lot": int(float(item.get("f5", 0) or 0)),
+            "amount_yi": round(float(item.get("f6", 0) or 0) / 1e8, 2),
+        })
+    return out
+
+
 def fmt_stock(d: dict) -> str:
     if d.get("error"):
         return f"失败：{d['error']}"
@@ -157,19 +212,35 @@ def fmt_sectors(items: list) -> str:
     return "\n".join(lines)
 
 
-def fmt_summary(indexes: list, sectors: list) -> str:
+def fmt_hot_stocks(items: list) -> str:
+    if not items:
+        return "失败：未拿到热门股数据"
+    lines = ["A股热门股（按涨幅排序，TOP15）"]
+    for i, d in enumerate(items, 1):
+        sign = "+" if d["change_pct"] >= 0 else ""
+        lines.append(f"{i:02d}. {d['name']}（{d['symbol'].upper()}） {d['current']}元  {sign}{d['change_pct']}%  成交额 {d['amount_yi']}亿")
+    return "\n".join(lines)
+
+
+def fmt_summary(indexes: list, sectors: list, stocks: list) -> str:
     lines = [fmt_index(indexes), "", "热点前三："]
     for i, d in enumerate(sectors[:3], 1):
         sign = "+" if d["change_pct"] >= 0 else ""
         lines.append(f"{i}. {d['name']} {sign}{d['change_pct']}%｜龙头 {d['leading_stock']}")
+    lines += ["", "热门股前三："]
+    for i, d in enumerate(stocks[:3], 1):
+        sign = "+" if d["change_pct"] >= 0 else ""
+        lines.append(f"{i}. {d['name']} {d['current']}元｜{sign}{d['change_pct']}%")
     return "\n".join(lines)
 
 
 def main():
     parser = argparse.ArgumentParser(description="A股实时盯盘")
     parser.add_argument("--code", nargs="+", help="股票代码，可多个")
+    parser.add_argument("--name", nargs="+", help="中文股票名，可多个")
     parser.add_argument("--index", action="store_true", help="查主要指数")
     parser.add_argument("--hot-sectors", action="store_true", help="查热点板块")
+    parser.add_argument("--hot-stocks", action="store_true", help="查热门股")
     parser.add_argument("--summary", action="store_true", help="查盘面摘要")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
@@ -177,10 +248,11 @@ def main():
     if args.summary:
         indexes = fetch_index()
         sectors = fetch_hot_sectors()
+        stocks = fetch_hot_stocks()
         if args.json:
-            print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3]}, ensure_ascii=False, indent=2))
+            print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3], "hot_stocks": stocks[:3]}, ensure_ascii=False, indent=2))
         else:
-            print(fmt_summary(indexes, sectors))
+            print(fmt_summary(indexes, sectors, stocks))
         return
 
     if args.index:
@@ -191,6 +263,22 @@ def main():
     if args.hot_sectors:
         data = fetch_hot_sectors()
         print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_sectors(data))
+        return
+
+    if args.hot_stocks:
+        data = fetch_hot_stocks()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_hot_stocks(data))
+        return
+
+    if args.name:
+        resolved = resolve_names(args.name)
+        data = [fetch_stock(c) for c in resolved]
+        if args.json:
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        else:
+            for item in data:
+                print(fmt_stock(item))
+                print()
         return
 
     if args.code:
