@@ -281,6 +281,41 @@ def fmt_summary(indexes: list, sectors: list, stocks: list) -> str:
     return "\n".join(lines)
 
 
+def fmt_brief(indexes: list, sectors: list, stocks: list) -> str:
+    if not indexes:
+        return "盘面短播报：暂未拿到指数数据"
+    idx = indexes[0]
+    idx_sign = "+" if idx["change_pct"] >= 0 else ""
+    parts = [f"盘面短播报：上证 {idx['current']:.2f}（{idx_sign}{idx['change_pct']}%）"]
+    if sectors:
+        top_sector = sectors[0]
+        sec_sign = "+" if top_sector["change_pct"] >= 0 else ""
+        parts.append(f"最强板块 {top_sector['name']}（{sec_sign}{top_sector['change_pct']}%）")
+        if top_sector.get("leading_stock"):
+            parts.append(f"龙头 {top_sector['leading_stock']}")
+    if stocks:
+        top_stock = stocks[0]
+        stk_sign = "+" if top_stock["change_pct"] >= 0 else ""
+        parts.append(f"强势股 {top_stock['name']}（{stk_sign}{top_stock['change_pct']}%）")
+    return "｜".join(parts)
+
+
+def fmt_sector_brief(sectors: list, industries: list) -> str:
+    lines = ["板块联动摘要"]
+    if sectors:
+        lines.append("概念热点：")
+        for i, d in enumerate(sectors[:5], 1):
+            sign = "+" if d["change_pct"] >= 0 else ""
+            lines.append(f"{i}. {d['name']} {sign}{d['change_pct']}%｜龙头 {d['leading_stock']}")
+    if industries:
+        lines.append("")
+        lines.append("行业热点：")
+        for i, d in enumerate(industries[:5], 1):
+            sign = "+" if d["change_pct"] >= 0 else ""
+            lines.append(f"{i}. {d['name']} {sign}{d['change_pct']}%｜龙头 {d['leading_stock']}")
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="A股实时盯盘")
     parser.add_argument("--code", nargs="+", help="股票代码，可多个")
@@ -291,6 +326,8 @@ def main():
     parser.add_argument("--industry-sectors", action="store_true", help="查行业板块")
     parser.add_argument("--limit-up", action="store_true", help="查涨停/强势股")
     parser.add_argument("--summary", action="store_true", help="查盘面摘要")
+    parser.add_argument("--brief", action="store_true", help="查短播报")
+    parser.add_argument("--sector-brief", action="store_true", help="查板块联动摘要")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
 
@@ -302,6 +339,25 @@ def main():
             print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3], "hot_stocks": stocks[:3]}, ensure_ascii=False, indent=2))
         else:
             print(fmt_summary(indexes, sectors, stocks))
+        return
+
+    if args.brief:
+        indexes = fetch_index()
+        sectors = fetch_hot_sectors()
+        stocks = fetch_hot_stocks()
+        if args.json:
+            print(json.dumps({"indexes": indexes[:1], "hot_sectors": sectors[:1], "hot_stocks": stocks[:1]}, ensure_ascii=False, indent=2))
+        else:
+            print(fmt_brief(indexes, sectors, stocks))
+        return
+
+    if args.sector_brief:
+        sectors = fetch_hot_sectors()
+        industries = fetch_industry_sectors()
+        if args.json:
+            print(json.dumps({"concept_sectors": sectors[:5], "industry_sectors": industries[:5]}, ensure_ascii=False, indent=2))
+        else:
+            print(fmt_sector_brief(sectors, industries))
         return
 
     if args.index:

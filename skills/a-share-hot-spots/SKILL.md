@@ -17,6 +17,7 @@ description: 跟踪中国A股实时行情、主要指数、热点板块与龙头
 - V1 已支持：个股、指数、热点板块、盘面摘要
 - V2 新增：常见中文股名直查、热门股榜、扩展盘面摘要
 - V3 新增：行业板块榜、涨停/强势股榜、扩展中文股名表
+- V4 新增：短播报模式、板块联动摘要、进一步扩充中文股名表
 
 ## 默认做法
 优先调用脚本：
@@ -60,6 +61,18 @@ python {baseDir}/scripts/market_watch.py --industry-sectors
 
 ```powershell
 python {baseDir}/scripts/market_watch.py --limit-up
+```
+
+查短播报：
+
+```powershell
+python {baseDir}/scripts/market_watch.py --brief
+```
+
+查板块联动摘要：
+
+```powershell
+python {baseDir}/scripts/market_watch.py --sector-brief
 ```
 
 ## 输出原则
