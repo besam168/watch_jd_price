@@ -26,9 +26,6 @@
 - 鼠标拖拽 `desktop_mouse_drag`
 - 鼠标滚轮 `desktop_mouse_scroll`
 - 文本输入 `desktop_type_text`
-- 剪贴板写入 `desktop_set_clipboard_text`
-- 剪贴板粘贴输入 `desktop_paste_text`
-  - 支持 `@file:<utf8-path>` 载荷，绕过 Windows argv 中文编码坑
 - 快捷键触发 `desktop_press_hotkey`
 - 打开应用 `desktop_open_app`
 - 打开 URL `desktop_open_url`
@@ -173,8 +170,6 @@ powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
 python scripts/qq-search-helper.py --contact 新干线
 python scripts/qq-search-state-machine.py --window-title QQ --contact 新干线
-python scripts/desktop-input.py set-clipboard-text 新干线
-python scripts/desktop-input.py paste-text 新干线
 ```
 
 ### OpenClaw 调用建议

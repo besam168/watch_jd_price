@@ -250,26 +250,6 @@ export default function (api) {
   }, { optional: true });
 
   api.registerTool({
-    name: "desktop_set_clipboard_text",
-    description: "Set Windows clipboard text without typing into the active window.",
-    parameters: Type.Object({ text: Type.String() }),
-    async execute(_id, params) {
-      const text = await runPy(scriptPath, ["set-clipboard-text", params.text]);
-      return { content: [{ type: "text", text }] };
-    },
-  }, { optional: true });
-
-  api.registerTool({
-    name: "desktop_paste_text",
-    description: "Paste text into the active Windows input focus via clipboard + ctrl+v. Better for Chinese text in some apps.",
-    parameters: Type.Object({ text: Type.String() }),
-    async execute(_id, params) {
-      const text = await runPy(scriptPath, ["paste-text", params.text]);
-      return { content: [{ type: "text", text }] };
-    },
-  }, { optional: true });
-
-  api.registerTool({
     name: "desktop_press_hotkey",
     description: "Press a Windows hotkey combination such as ctrl+s, alt+tab, win+r, or enter.",
     parameters: Type.Object({ keys: Type.String() }),

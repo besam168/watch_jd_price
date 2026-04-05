@@ -8,11 +8,6 @@ import webbrowser
 from ctypes import wintypes
 from typing import List
 
-try:
-    import pyperclip
-except Exception:
-    pyperclip = None
-
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
@@ -408,31 +403,6 @@ def type_text(text: str):
     return f"Typed text: {text}"
 
 
-def set_clipboard_text(text: str):
-    if pyperclip is None:
-        raise RuntimeError("pyperclip is not installed")
-    pyperclip.copy(text)
-    return f"Clipboard text set ({len(text)} chars)"
-
-
-def load_text_payload(raw: str):
-    value = raw or ""
-    if value.startswith("@file:"):
-        path = value[len("@file:"):]
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return value
-
-
-def paste_text(text: str):
-    if pyperclip is None:
-        raise RuntimeError("pyperclip is not installed")
-    resolved = load_text_payload(text)
-    pyperclip.copy(resolved)
-    press_hotkey("ctrl+v")
-    return f"Pasted text via clipboard: {resolved}"
-
-
 def press_hotkey(keys: str):
     raw = (keys or "").strip().lower()
     if not raw:
@@ -787,19 +757,6 @@ def main(argv):
             raise PermissionError("Typing is disabled by safe-config")
         enforce_window_guard(config, action)
         result = type_text(arg1)
-        write_action_log(action, {"text": arg1}, result)
-        emit(result)
-        return 0
-    if action == "set-clipboard-text":
-        result = set_clipboard_text(arg1)
-        write_action_log(action, {"text": arg1}, result)
-        emit(result)
-        return 0
-    if action == "paste-text":
-        if not config.get("allowTyping", True):
-            raise PermissionError("Typing is disabled by safe-config")
-        enforce_window_guard(config, action)
-        result = paste_text(arg1)
         write_action_log(action, {"text": arg1}, result)
         emit(result)
         return 0
