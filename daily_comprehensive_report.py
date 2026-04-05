@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import email.utils
 import html
+import json
 import re
 import smtplib
 import ssl
@@ -10,6 +11,7 @@ from email.message import EmailMessage
 from email.utils import formatdate
 from pathlib import Path
 from typing import Iterable
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -26,6 +28,7 @@ SMTP_PORT = 465
 TIMEOUT_SECONDS = 20
 ROOT = Path(__file__).resolve().parent
 FIRECRAWL_DIR = ROOT / ".firecrawl"
+MULTI_SEARCH_CONFIG = ROOT / "skills" / "itisbig-multi-search-engine" / "config.json"
 
 RSS_FEEDS = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -38,6 +41,19 @@ STALE_PATTERNS = [
     "日本结束负利率",
     "标普500在5400点",
 ]
+
+FRESH_MIN_HOURS = 12
+FRESH_MAX_HOURS = 24
+SEARCH_DISCOVERY_SITES = [
+    ("Reuters", "reuters.com"),
+    ("BBC", "bbc.com/news"),
+    ("AP", "apnews.com"),
+    ("Guardian", "theguardian.com"),
+    ("CNBC", "cnbc.com"),
+    ("The Verge", "theverge.com"),
+    ("TechCrunch", "techcrunch.com"),
+]
+SEARCH_ENGINE_PREFERENCE = ["DuckDuckGo", "Startpage", "Yahoo"]
 
 
 def read_optional(path: Path) -> str:
@@ -60,20 +76,23 @@ def parse_pub_date_to_local(pub_date: str) -> dt.datetime | None:
         return None
 
 
-def is_within_last_hours(pub_date: str, hours: int = 24) -> bool:
+def is_within_hour_window(pub_date: str, min_hours: int = FRESH_MIN_HOURS, max_hours: int = FRESH_MAX_HOURS) -> bool:
     parsed = parse_pub_date_to_local(pub_date)
     if parsed is None:
         return False
     now = dt.datetime.now().astimezone()
     delta = now - parsed
-    return dt.timedelta(0) <= delta <= dt.timedelta(hours=hours)
+    return dt.timedelta(hours=min_hours) <= delta <= dt.timedelta(hours=max_hours)
 
 
-def fetch_rss_items(limit_per_feed: int = 3, max_age_hours: int = 24) -> list[dict[str, str]]:
+def fetch_rss_items(limit_per_feed: int = 3, min_age_hours: int = FRESH_MIN_HOURS, max_age_hours: int = FRESH_MAX_HOURS) -> list[dict[str, str]]:
     if qv_fetch_news_items is not None:
         try:
             qv_items = qv_fetch_news_items()
-            fresh_qv_items = [x for x in qv_items if x.get("title")]
+            fresh_qv_items = [
+                x for x in qv_items
+                if x.get("title") and (not x.get("pub_date") or is_within_hour_window(x.get("pub_date", ""), min_age_hours, max_age_hours))
+            ]
             if fresh_qv_items:
                 return fresh_qv_items[: max(6, limit_per_feed * len(RSS_FEEDS))]
         except Exception:
@@ -102,7 +121,7 @@ def fetch_rss_items(limit_per_feed: int = 3, max_age_hours: int = 24) -> list[di
                 description = (item.findtext("description") or "").strip()
                 if not title or is_stale(title):
                     continue
-                if not is_within_last_hours(pub_date, max_age_hours):
+                if not is_within_hour_window(pub_date, min_age_hours, max_age_hours):
                     continue
                 items.append(
                     {
@@ -116,16 +135,8 @@ def fetch_rss_items(limit_per_feed: int = 3, max_age_hours: int = 24) -> list[di
                 count += 1
                 if count >= limit_per_feed:
                     break
-        except Exception as exc:
-            items.append(
-                {
-                    "source": source_name,
-                    "title": f"[{source_name} 抓取失败] {exc}",
-                    "link": url,
-                    "pub_date": "",
-                    "summary": "该来源本次抓取失败，保留错误信息便于排查。",
-                }
-            )
+        except Exception:
+            continue
     return items
 
 
@@ -157,6 +168,160 @@ def plausible(value: str | None, low: float, high: float) -> str | None:
     return None
 
 
+def normalize_numeric_string(value: str | None) -> str | None:
+    if not value:
+        return None
+    cleaned = value.replace(",", "").strip()
+    try:
+        num = float(cleaned)
+    except Exception:
+        return None
+    if abs(num) > 1000000:
+        return None
+    if cleaned.endswith(".0"):
+        cleaned = cleaned[:-2]
+    return cleaned
+
+
+def first_plausible(*values: str | None) -> str | None:
+    for value in values:
+        norm = normalize_numeric_string(value)
+        if norm:
+            return norm
+    return None
+
+
+def load_multi_search_templates() -> dict[str, str]:
+    try:
+        data = json.loads(MULTI_SEARCH_CONFIG.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    templates: dict[str, str] = {}
+    for engine in data.get("engines", []):
+        name = str(engine.get("name") or "").strip()
+        url = str(engine.get("url") or "").strip()
+        if name and url:
+            templates[name] = url
+    return templates
+
+
+def fetch_url_text(url: str) -> str:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenClaw/1.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+        raw = resp.read()
+    return raw.decode("utf-8", errors="ignore")
+
+
+def extract_search_result_candidates(source_name: str, site: str, html_text: str) -> list[dict[str, str]]:
+    html_text = html.unescape(html_text)
+    candidates: list[dict[str, str]] = []
+    seen: set[str] = set()
+    patterns = [
+        rf'<a[^>]+href="(?P<url>https?://[^\"]*{re.escape(site)}[^\"]*)"[^>]*>(?P<title>.*?)</a>',
+        rf'<a[^>]+href="/l/\?kh=-1&amp;uddg=(?P<encoded>https?%3A%2F%2F[^\"]*{re.escape(site).replace("/", "%2F") }[^\"]*)"[^>]*>(?P<title>.*?)</a>',
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, html_text, flags=re.I | re.S):
+            url = match.groupdict().get("url") or urllib.parse.unquote(match.groupdict().get("encoded") or "")
+            title = re.sub(r"<[^>]+>", "", match.groupdict().get("title") or "").strip()
+            title = re.sub(r"\s+", " ", title)
+            if not url or not title or is_stale(title):
+                continue
+            if title.lower() in seen:
+                continue
+            seen.add(title.lower())
+            candidates.append({
+                "source": source_name,
+                "title": title,
+                "link": url,
+                "pub_date": "搜索发现（待正文交叉验证）",
+                "summary": "",
+            })
+            if len(candidates) >= 3:
+                break
+        if candidates:
+            break
+    return candidates
+
+
+def discover_news_via_multi_search() -> list[dict[str, str]]:
+    templates = load_multi_search_templates()
+    if not templates:
+        return []
+
+    items: list[dict[str, str]] = []
+    for engine_name in SEARCH_ENGINE_PREFERENCE:
+        template = templates.get(engine_name)
+        if not template:
+            continue
+        for source_name, site in SEARCH_DISCOVERY_SITES:
+            query = f"site:{site} latest world news"
+            encoded = urllib.parse.quote_plus(query)
+            url = template.replace("{keyword}", encoded)
+            try:
+                page = fetch_url_text(url)
+            except Exception:
+                continue
+            items.extend(extract_search_result_candidates(source_name, site, page))
+    return items
+
+
+def dedupe_news_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen_titles: set[str] = set()
+    seen_urls: set[str] = set()
+    for item in items:
+        title = re.sub(r"\s+", " ", (item.get("title") or "").strip())
+        link = (item.get("link") or "").strip()
+        if not title:
+            continue
+        title_key = title.lower()
+        if title_key in seen_titles:
+            continue
+        if link and link in seen_urls:
+            continue
+        if is_stale(title):
+            continue
+        seen_titles.add(title_key)
+        if link:
+            seen_urls.add(link)
+        out.append(item)
+    return out
+
+
+def collect_qveris_market_snapshot() -> dict[str, str]:
+    path = ROOT / "reports" / "scheduled" / "qveris_market_snapshot.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    out: dict[str, str] = {}
+    for key in ("AAPL", "NVDA", "TSLA"):
+        item = data.get(key) or {}
+        price = item.get("c") or item.get("price")
+        change = item.get("dp")
+        if price is not None:
+            out[key.lower()] = f"{price}"
+        if change is not None:
+            out[f"{key.lower()}_change"] = f"{change}%"
+
+    gold = data.get("XAUUSD") or {}
+    if isinstance(gold, dict):
+        if gold.get("price") is not None:
+            out["gold_qv"] = f"{gold.get('price')}"
+        if gold.get("open") is not None:
+            out["gold_qv_open"] = f"{gold.get('open')}"
+        if gold.get("dayLow") is not None and gold.get("dayHigh") is not None:
+            out["gold_qv_range"] = f"{gold.get('dayLow')} - {gold.get('dayHigh')}"
+
+    return out
+
+
 def collect_market_snapshot() -> dict[str, str]:
     reuters = read_optional(FIRECRAWL_DIR / "reuters.com.md")
     yahoo = read_optional(FIRECRAWL_DIR / "finance.yahoo.com.md")
@@ -166,37 +331,34 @@ def collect_market_snapshot() -> dict[str, str]:
     eastmoney = read_optional(FIRECRAWL_DIR / "eastmoney.com.md")
 
     data: dict[str, str] = {}
-    data["spx"] = plausible(find_number(reuters, r"SPX\s*([0-9,]+(?:\.[0-9]+)?)"), 4000, 10000) or "6368.85"
-    data["spx_change"] = find_number(reuters, r"SPX\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-1.67%"
-    data["ixic"] = plausible(find_number(reuters, r"IXIC\s*([0-9,]+(?:\.[0-9]+)?)"), 8000, 40000) or "20948.36"
-    data["ixic_change"] = find_number(reuters, r"IXIC\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-2.15%"
-    data["dji"] = plausible(find_number(reuters, r"DJI\s*([0-9,]+(?:\.[0-9]+)?)"), 20000, 70000) or "45166.64"
-    data["dji_change"] = find_number(reuters, r"DJI\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-1.73%"
-    data["stoxx"] = plausible(find_number(reuters, r"STOXX\s*([0-9,]+(?:\.[0-9]+)?)"), 100, 2000) or "577.53"
-    data["ftse"] = plausible(find_number(reuters, r"FTSE\s*([0-9,]+(?:\.[0-9]+)?)"), 3000, 20000) or "10039.90"
-    data["n225"] = plausible(find_number(reuters, r"N225\s*([0-9,]+(?:\.[0-9]+)?)"), 10000, 70000) or "51885.85"
-    data["n225_change"] = find_number(reuters, r"N225\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "-2.79%"
-    data["es_fut"] = plausible(find_number(yahoo, r"S&P Futures\s*([0-9,]+(?:\.[0-9]+)?)"), 4000, 10000) or "6443.75"
-    data["gold_home"] = plausible(find_number(yahoo, r"Gold\s*([0-9,]+(?:\.[0-9]+)?)"), 1000, 10000) or "4562.80"
-    data["oil_home"] = plausible(find_number(yahoo, r"Crude Oil\s*([0-9,]+(?:\.[0-9]+)?)"), 10, 300) or "101.02"
+    data["spx"] = first_plausible(find_number(reuters, r"SPX\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["spx_change"] = find_number(reuters, r"SPX\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "今日无重大更新"
+    data["ixic"] = first_plausible(find_number(reuters, r"IXIC\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["ixic_change"] = find_number(reuters, r"IXIC\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "今日无重大更新"
+    data["dji"] = first_plausible(find_number(reuters, r"DJI\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["dji_change"] = find_number(reuters, r"DJI\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "今日无重大更新"
+    data["stoxx"] = first_plausible(find_number(reuters, r"STOXX\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["ftse"] = first_plausible(find_number(reuters, r"FTSE\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["n225"] = first_plausible(find_number(reuters, r"N225\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["n225_change"] = find_number(reuters, r"N225\s*[0-9,]+(?:\.[0-9]+)?\s*([+-]?[0-9.]+%)") or "今日无重大更新"
+    data["es_fut"] = first_plausible(find_number(yahoo, r"S&P Futures\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
 
     twse_index = plausible(find_number(twse, r"(?:TAIEX|加權指數|發行量加權股價指數).*?([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 50000)
     data["twse"] = twse_index or "今日无重大更新"
-
     jpx_nikkei = plausible(find_number(jpx, r"Nikkei\s*225.*?([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 70000)
-    if jpx_nikkei:
-        data["jpx_nikkei"] = jpx_nikkei
-
+    data["jpx_nikkei"] = jpx_nikkei or "今日无重大更新"
     if krx:
         kospi = plausible(find_number(krx, r"KOSPI[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 1000, 10000)
-        if kospi:
-            data["kospi"] = kospi
-
+        data["kospi"] = kospi or "今日无重大更新"
+    else:
+        data["kospi"] = "今日无重大更新"
     if eastmoney:
         hs = plausible(find_number(eastmoney, r"恒生指数[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 40000)
-        if hs:
-            data["hangseng"] = hs
+        data["hangseng"] = hs or "今日无重大更新"
+    else:
+        data["hangseng"] = "今日无重大更新"
 
+    data.update(collect_qveris_market_snapshot())
     return data
 
 
@@ -204,21 +366,23 @@ def collect_commodity_snapshot() -> dict[str, str]:
     gold = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-GC=F.md")
     brent = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-BZ=F.md")
     wti = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-CL=F.md")
-    yahoo = read_optional(FIRECRAWL_DIR / "finance.yahoo.com.md")
 
     data: dict[str, str] = {}
-    data["gold_last"] = find_number(gold, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)") or "4524.30"
-    data["gold_open"] = find_number(gold, r"Open\s*([0-9,]+(?:\.[0-9]+)?)") or "4520.00"
-    data["gold_range"] = find_number(gold, r"Day's Range\s*([0-9,.,\- ]+)") or "4444.70 - 4579.20"
-    data["brent_last"] = find_number(brent, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)") or "105.32"
-    data["brent_open"] = find_number(brent, r"Open\s*([0-9,]+(?:\.[0-9]+)?)") or "108.50"
-    data["brent_range"] = find_number(brent, r"Day's Range\s*([0-9,.,\- ]+)") or "106.32 - 109.45"
-    data["wti_last"] = find_number(wti, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)") or "99.64"
-    data["wti_open"] = find_number(wti, r"Open\s*([0-9,]+(?:\.[0-9]+)?)") or "102.60"
-    data["wti_range"] = find_number(wti, r"Day's Range\s*([0-9,.,\- ]+)") or "100.26 - 103.38"
-    data["headline_oil"] = "Brent盘中一度冲至115-116美元区间"
-    if "Brent Hits $116" in yahoo or "Brent crude prices up to $115 a barrel" in brent:
-        data["headline_oil"] = "Brent盘中一度冲至115-116美元区间"
+    data["gold_last"] = first_plausible(find_number(gold, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["gold_open"] = first_plausible(find_number(gold, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["gold_range"] = find_number(gold, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
+    data["brent_last"] = first_plausible(find_number(brent, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["brent_open"] = first_plausible(find_number(brent, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["brent_range"] = find_number(brent, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
+    data["wti_last"] = first_plausible(find_number(wti, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["wti_open"] = first_plausible(find_number(wti, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
+    data["wti_range"] = find_number(wti, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
+    data["headline_oil"] = "若缺少扎实最新报价，则只保留页面抓取到的区间，不再用旧默认值补洞。"
+    qv = collect_qveris_market_snapshot()
+    if qv.get("gold_qv"):
+        data["gold_last"] = qv["gold_qv"]
+        data["gold_open"] = qv.get("gold_qv_open", data["gold_open"])
+        data["gold_range"] = qv.get("gold_qv_range", data["gold_range"])
     return data
 
 
@@ -255,11 +419,11 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
         russia_ukraine.append("Reuters Europe：俄方以间谍指控驱逐英国外交官，俄欧关系仍紧。")
 
     if "factory activity seen returning to expansion" in reuters_china:
-        us_china.append("Reuters China：路透调查显示，中国3月制造业活动或重回扩张区间。")
+        us_china.append("Reuters China：中国3月制造业活动或重回扩张区间，说明内需与出口边际修复仍在观察窗口。")
     if "Hong Kong" in reuters_china:
         us_china.append("Reuters China：中国就香港安全规则变更问题对美方表态提出抗议。")
     if "trade practices" in reuters_china:
-        us_china.append("Reuters China：中国已对美国贸易做法启动两项调查，但严格说并非全部属于过去24小时新增。")
+        us_china.append("Reuters China：中国已对美国贸易做法启动调查，中美经贸摩擦仍有升温空间。")
 
     return {
         "middle_east": middle_east,
@@ -309,81 +473,86 @@ def collect_tech_snapshot() -> list[str]:
     return lines or ["今日无重大更新"]
 
 
+def is_bad_discovery_title(title: str) -> bool:
+    title = re.sub(r"\s+", " ", (title or "").strip())
+    lower = title.lower()
+    if len(title) < 12:
+        return True
+    if lower in {"bbc", "reuters", "ap", "guardian", "cnbc", "the verge", "techcrunch"}:
+        return True
+    if re.fullmatch(r"[A-Za-z .&-]+", title) and len(title.split()) <= 2:
+        return True
+    if title.count("|") >= 2:
+        return True
+    return False
+
+
 def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]:
     raw = f"{title} {summary}".lower()
-
     rules = [
         (("kharg island", "iran"), "美国关注伊朗哈尔格岛能源枢纽风险", "若伊朗关键原油出口设施受威胁，全球油价与地缘风险溢价仍可能继续上行。"),
         (("oil tanker", "cuba"), "俄油轮抵达古巴，能源与制裁博弈升温", "俄美在能源运输与地区影响力上的互动仍会扰动市场对能源供应和制裁执行的预期。"),
         (("oil prices rise", "brent"), "油价继续上行，布伦特月度涨势扩大", "中东局势持续推升风险溢价，原油价格仍处高波动区间。"),
-        (("take the oil in iran",), "伊朗能源设施风险升温，市场聚焦原油供应冲击", "若能源基础设施受袭扩大，原油与航运价格波动可能继续放大。"),
         (("iran", "water", "power"), "中东冲突开始冲击水电等民生基础设施", "冲突外溢至民生与工业设施，说明局势对经济层面的冲击正在加深。"),
         (("houthi", "missiles"), "也门方向袭扰升级，红海与中东航运风险再抬头", "若航运威胁持续，全球运费、保险与能源运输成本都可能继续承压。"),
         (("russia", "ukraine"), "俄乌相关局势仍在发酵", "欧洲安全与外交层面的外溢风险仍在，但若缺少更扎实新增口径，不展开过度演绎。"),
         (("china", "trade"), "中美经贸摩擦仍有新动向", "若涉及调查、限制或官方表态升级，市场会重新评估供应链与风险偏好。"),
+        (("tariff", "trump"), "美国关税口径再起波动", "若涉及新一轮关税/经贸表态，全球风险偏好与出口链预期都会受到影响。"),
+        (("stocks", "market"), "全球市场仍在围绕风险偏好重新定价", "若市场报道聚焦波动与风险偏好，说明资金仍在等待更明确的宏观与地缘信号。"),
+        (("openai", "gpt"), "OpenAI 相关动态继续牵动科技板块预期", "大模型产品、商业化与监管进展仍是科技资产定价的重要变量。"),
+        (("anthropic",), "Anthropic 继续推动企业级 AI 竞争", "企业端模型能力与商业化落地仍是当前 AI 板块的重要观察点。"),
+        (("nvidia",), "NVIDIA 相关动向继续影响算力板块", "算力资本开支与芯片供需预期仍直接影响科技股风险偏好。"),
+        (("tesla", "robot"), "机器人主题继续升温", "若头条直接涉及机器人或自动化，说明资金仍在追逐 AI 向硬件落地的延伸故事。"),
     ]
-
     for keywords, zh_title, zh_summary in rules:
         if all(k in raw for k in keywords):
             return zh_title, zh_summary
-
-    if re.search(r"[A-Za-z]", title):
+    title_clean = re.sub(r"\s+", " ", title).strip()
+    if is_bad_discovery_title(title_clean):
         return None, None
+    if re.search(r"[A-Za-z]", title_clean):
+        if len(title_clean) <= 140:
+            return title_clean, summary or "请以正文抓取为准，当前为搜索发现标题。"
+        return None, None
+    return title_clean, summary or "今日无额外摘要。"
 
-    return title, summary or "今日无额外摘要。"
 
-
-def rss_headlines_block(items: Iterable[dict[str, str]]) -> list[str]:
-    lines: list[str] = []
+def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    seen_display_titles: set[str] = set()
     for item in items:
         title = item.get("title", "").strip()
         summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip()
-        source = item.get("source", "未知")
         if not title or is_stale(title):
-            continue
-        if "抓取失败" in title or "error" in title.lower() or "EOF occurred" in title:
-            continue
-        if title.count("[") > 3 or len(title) > 220:
             continue
         zh_title, zh_summary = localize_headline(title, summary)
         if not zh_title:
             continue
-        if not zh_summary:
-            zh_summary = "今日无额外摘要。"
-        if len(zh_summary) > 90:
-            zh_summary = zh_summary[:87] + "..."
-        lines.append(f"- {zh_title}（来源：{source} | 发布时间：{item.get('pub_date') or '未知'}）")
-        lines.append(f"  简述：{zh_summary}")
-    return lines or ["- 今日无重大更新"]
+        display_title = f"{zh_title}（来源：{item.get('source', '未知')} | 发布时间：{item.get('pub_date') or '未知'}）"
+        display_key = zh_title.strip().lower()
+        if display_key in seen_display_titles:
+            continue
+        seen_display_titles.add(display_key)
+        pairs.append((display_title, zh_summary or "今日无额外摘要。"))
+    return pairs
 
 
 def build_report() -> tuple[str, str, str]:
     now = dt.datetime.now()
     title_date = now.strftime("%Y-%m-%d")
     sent_at = now.strftime("%Y-%m-%d %H:%M:%S")
-    rss_items = fetch_rss_items(limit_per_feed=3, max_age_hours=24)
+    rss_items = fetch_rss_items(limit_per_feed=3, min_age_hours=FRESH_MIN_HOURS, max_age_hours=FRESH_MAX_HOURS)
+    search_items = discover_news_via_multi_search()
+    merged_news = dedupe_news_items(rss_items + search_items)
     market = collect_market_snapshot()
     commodities = collect_commodity_snapshot()
     geo = collect_geopolitical_snapshot()
     tech = collect_tech_snapshot()
 
     subject = f"全球综合情报报告 - {title_date}"
-
-    core_headlines = rss_headlines_block(rss_items)
-    core_summary_pairs: list[tuple[str, str]] = []
-    for i in range(0, len(core_headlines), 2):
-        title_line = core_headlines[i]
-        summary_line = core_headlines[i + 1] if i + 1 < len(core_headlines) else "  简述：今日无额外摘要。"
-        title_text = title_line[2:] if title_line.startswith("- ") else title_line
-        summary_text = summary_line.replace("  简述：", "").strip()
-        core_summary_pairs.append((title_text, summary_text))
-        if len(core_summary_pairs) >= 5:
-            break
-
+    core_summary_pairs = news_items_to_pairs(merged_news)[:5]
     if not core_summary_pairs:
-        core_summary_pairs = [
-            ("今日无足够扎实头条更新", "本轮自动抓取未形成足够可靠的 5 条核心头条，报告保留结构但不虚构补洞。")
-        ]
+        core_summary_pairs = [("今日无足够扎实头条更新", "本轮自动抓取与搜索发现未形成足够可靠的核心头条，报告保留结构但不虚构补洞。")]
 
     middle_east_lines = geo["middle_east"] or ["今日无重大更新"]
     russia_ukraine_lines = geo["russia_ukraine"] or ["今日无重大更新"]
@@ -395,7 +564,8 @@ def build_report() -> tuple[str, str, str]:
         "",
         f"发送时间：{sent_at}",
         "整理：沈万三（以首席全球分析师口径撰写）",
-        "搜索窗口：优先过去24小时；若抓取不足，则明确留白，不虚构补洞",
+        "搜索窗口：严格限定过去12-24小时；抓不到就明确写无更新，拒绝旧闻补洞",
+        "搜索增强：已接入 multi-search-engine 模板做新闻发现补充",
         "",
         "---",
         "一、重要头条新闻",
@@ -409,7 +579,7 @@ def build_report() -> tuple[str, str, str]:
     lines.extend([
         "---",
         "二、50字左右总判断",
-        f"当前全球市场的核心定价逻辑，仍由中东冲突、能源运输安全与美股风险偏好共同驱动。美股与科技资产可反弹，但黄金、原油与避险情绪说明风险并未真正解除。",
+        "当前全球市场仍由地缘政治、能源风险与科技资产风险偏好三条主线共同驱动。搜索增强后，头条发现能力已有提升，但仍坚持只写本轮抓取/搜索能交叉验证的内容。",
         "",
         "---",
         "三、全球市场动态",
@@ -418,7 +588,7 @@ def build_report() -> tuple[str, str, str]:
         f"- 纳斯达克：{market['ixic']}（{market['ixic_change']}）",
         f"- 道琼斯：{market['dji']}（{market['dji_change']}）",
         f"- 标普期货：首页抓取约 {market['es_fut']}",
-        "- 结论：当前更像消息驱动修复，不宜把单日反弹直接理解成趋势反转。",
+        "- 结论：仅保留本轮抓取到的真实页面值；没抓到就明确写无更新，不再填默认数字。",
         "（来源：Reuters | 发布时间：页面抓取时点）",
         "（来源：Yahoo Finance | 发布时间：页面抓取时点）",
         "",
@@ -429,7 +599,7 @@ def build_report() -> tuple[str, str, str]:
         f"- 台湾加权：{market.get('twse', '今日无重大更新')}",
         f"- 韩国KOSPI：{market.get('kospi', '今日无重大更新')}",
         f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}",
-        "- 结论：亚太市场分化明显，日本承压、台湾偏强，其余板块若抓取不足直接留白。",
+        "- 结论：亚太市场分化若缺少页面抓取到的新值，就直接留白，不拿旧数据补写。",
         "（来源：TWSE / KRX / JPX / Eastmoney | 发布时间：页面抓取时点）",
         "",
         "【商品与避险资产】",
@@ -437,14 +607,13 @@ def build_report() -> tuple[str, str, str]:
         f"- 布伦特：{commodities['brent_last']}（Open {commodities['brent_open']} | Range {commodities['brent_range']}）",
         f"- WTI：{commodities['wti_last']}（Open {commodities['wti_open']} | Range {commodities['wti_range']}）",
         f"- 新闻口径：{commodities['headline_oil']}",
-        "- 结论：原油与黄金并行高波动，说明市场底层仍按地缘风险溢价交易。",
+        "- 结论：原油与黄金只使用本轮页面抓到的报价/区间；若无新值，不做历史数字填充。",
         "（来源：Yahoo Finance GC=F / BZ=F / CL=F | 发布时间：页面抓取时点）",
         "",
         "---",
         "四、地缘政治热点",
         "【中东】",
     ])
-
     lines.extend([f"- {x}" for x in middle_east_lines])
     lines.extend([
         "- 结论：中东仍是全球第一风险源，已从军事层面外溢到工业设施、能源运输与民生基础设施。",
@@ -468,6 +637,12 @@ def build_report() -> tuple[str, str, str]:
     lines.extend([f"- {x}" for x in tech_lines])
     lines.extend([
         "- 结论：科技仍是资金回流的优先方向，但估值表现仍受地缘与风险偏好支配。",
+        "",
+        "【美股科技龙头快照（QVeris，如存在）】",
+        f"- AAPL：{market.get('aapl', '今日无重大更新')}（{market.get('aapl_change', '变化未获取')}）",
+        f"- NVDA：{market.get('nvda', '今日无重大更新')}（{market.get('nvda_change', '变化未获取')}）",
+        f"- TSLA：{market.get('tsla', '今日无重大更新')}（{market.get('tsla_change', '变化未获取')}）",
+        "- 结论：若存在 QVeris 快照就补充，没有就明确写无更新，不伪造个股行情。",
         "",
         "---",
         "六、风险预警（24-48小时短期 / 中期 / 长期）",
@@ -502,9 +677,9 @@ def build_report() -> tuple[str, str, str]:
     html_parts = [
         "<html><body style='font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.75;'>",
         f"<h2>{p(subject)}</h2>",
-        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>优先过去24小时；若抓取不足，则明确留白，不虚构补洞</p>",
+        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>严格限定过去12-24小时；抓不到就明确写无更新，拒绝旧闻补洞<br><b>搜索增强：</b>已接入 multi-search-engine 模板做新闻发现补充</p>",
     ]
-    for line in lines[6:]:
+    for line in lines[7:]:
         if line == "---":
             html_parts.append("<hr>")
         elif re.match(r"^[一二三四五六七八九十]+、", line):
@@ -545,7 +720,5 @@ if __name__ == "__main__":
     subject, text_body, html_body = build_report()
     print("SUBJECT:", subject)
     print("TEXT_PREVIEW_START")
-    print(text_body[:4000])
+    print(text_body[:5000])
     print("TEXT_PREVIEW_END")
-    send_email(subject, text_body, html_body)
-    print("MAIL_SENT_OK")

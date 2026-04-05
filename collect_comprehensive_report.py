@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import shutil
 import subprocess
@@ -17,10 +18,15 @@ SCRAPE_GROUPS = [
         "name": "news_core",
         "urls": [
             "https://www.bbc.com/news",
+            "https://www.theguardian.com/international",
             "https://www.reuters.com/",
             "https://apnews.com/",
+            "https://www.npr.org/",
             "https://www.aljazeera.com/",
+            "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
+            "https://www.france24.com/en/",
             "https://www.cnbc.com/world/?region=world",
+            "https://www.usatoday.com/",
             "https://finance.yahoo.com/",
         ],
     },
@@ -28,12 +34,13 @@ SCRAPE_GROUPS = [
         "name": "markets_global",
         "urls": [
             "https://www.nyse.com/index",
-            "https://www.twse.com.tw/zh/index.html",
-            "https://www.sse.com.cn/",
             "https://www.jpx.co.jp/english/",
             "https://global.krx.co.kr/main/main.jsp",
-            "https://jp.investing.com/",
             "https://finance.naver.com/",
+            "https://www.twse.com.tw/zh/index.html",
+            "https://tw.stock.yahoo.com/",
+            "https://www.sse.com.cn/",
+            "https://jp.investing.com/",
             "https://www.eastmoney.com/",
         ],
     },
@@ -108,6 +115,8 @@ subject, text_body, html_body = build_report()
 ok_groups = [r["group"] for r in results if r["ok"]]
 failed_groups = [r["group"] for r in results if not r["ok"]]
 collect_status = {
+    "generatedAt": dt.datetime.now().isoformat(),
+    "freshnessWindowHours": {"min": 12, "max": 24},
     "firecrawl_bin": FIRECRAWL_BIN,
     "ok_groups": ok_groups,
     "failed_groups": failed_groups,

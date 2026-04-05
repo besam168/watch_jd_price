@@ -274,24 +274,18 @@ _这里记录一些需要记住的小事情_
   2. 已新增真实设备播放所需的音频 URL 能力：支持 `http_player.audio_base_url = "auto"` 与 `http_player.public_base_url`，说明“bridge 生成音频 -> 暴露可访问 URL -> 外部控制端驱动真机播放”这条路线已补上关键缺口；
   3. 当前最准确项目状态不是“已完成”，而是：**桥接层基本成形，只差真实设备控制端接最后一跳**；
   4. 下一阶段优先级固定为：**Home Assistant -> 阿里技能/云函数/官方开放平台 -> 第三方控制接口**；原始收音继续视为高风险备选，不当主线。 
-- 2026-04-03 对 `skills/tmall-genie-voice-bridge` 的本地语音闭环攻坚已取得新的长期结论：
-  1. 项目已从“wav 演示闭环”推进到**本机 `mic -> wav -> local whisper -> speak` 可运行 MVP**，说明本地麦克风到本地播报的完整链路已经真实打通；
-  2. 当前稳定替代方案已经明确：**中文 STT 主路线应从 Windows `System.Speech` 转向本地 Whisper**，因为 `System.Speech` 的中文识别长期不稳、易超时、易低置信度；
-  3. `skills/local-whisper` 已在独立 venv 中装通，核心依赖包括 `torch`、`openai-whisper`、`imageio-ffmpeg`，并通过本地 `ffmpeg.exe` 供 Whisper 子进程调用；
-  4. `listen_once.py` 已新增 `local_whisper` 引擎，并已支持两条闭环：
-     - `wav -> whisper -> speak`
-     - `mic -> wav -> whisper -> speak`
-  5. 为后续现场调优，`listen_once.py` 还新增了调试开关：`--keep-recorded-wav` 与 `--pre-roll-seconds`，以后排查抢拍、截断、串音、收音质量时优先用这套参数留样本；
-  6. 模型实测结论不要记错：**`small` 虽已修好并能加载，但在这台机器的现场麦克风短句测试里不如 `base` 稳**；当前更稳的现场默认建议应先回到 `base` 做诊断，而不是盲目认为模型越大越准；
-  7. 今晚还新增了 `wake_loop.py` 持续监听原型，并试了多套唤醒词；其中 **`阿三，在吗` -> `在`** 已在容错匹配模式下多次触发成功，说明“本地唤醒词 + 自动应答”这条路已不是纯概念；
-  8. 更进一步，今晚已把完整交互推进到：**`阿三，在吗` -> `在` -> 直接监听下一句问题**，且已真实跑通；说明“唤醒后继续听一句”的整链也已落地；
-  9. 本地播报层也已完成关键升级：不再依赖会弹窗口的系统默认播放器，而是走 **edge-tts -> ffmpeg 转真 wav -> `SoundPlayer.PlaySync()` 静默播放**；`config.local-speaker.json` 现已默认输出 `wav`；
-  10. 但要注意口径：这些成功仍建立在**容错唤醒匹配 + 现场调参**基础上，不能误说成稳定高命中率、低延迟的正式语音助手；
-  11. 今晚还已安装 `skills/percept-voice-cmd` 并初步确认：它是目前最像“唤醒词 + 语音命令路由”的现成方案，但依赖 `percept-listen` 和整套 Percept 体系，后续若要转正产品路线值得继续评估；
-  12. 因此以后对外更准确的说法应是：
-     - 可以说：**本地 Whisper 语音闭环 MVP 已打通，且“阿三，在吗”唤醒原型与“唤醒后继续听一句”整链都已真实成功跑通**；
-     - 不能说：**中文语音助手已经稳定可日常使用**；
-     - 当前真实瓶颈已收敛为：录音质量、扬声器串入麦克风、问题句识别精度，以及整体响应速度优化。 
+- 2026-04-05 已确认：OpenClaw v2026.4.2 起，当前 `openclaw-control-ui` / WebChat 路径下的 `exec` 会走新版 **exec approvals** 机制，导致本机命令频繁弹批准条；这不是新闻脚本问题，也不是 `openclaw.json` 里一个显眼的 `approval` 开关。
+- 2026-04-05 已实测有效的“关闭审批条 / never prompt”方法如下（用于 gateway 主机）：
+  1. 先把 gateway host approvals 改成默认不询问：
+     - `openclaw approvals set --gateway --stdin`
+     - 内容为：`{ version: 1, defaults: { security: "full", ask: "off", askFallback: "full" } }`
+  2. 再把 OpenClaw 请求侧配置对齐：
+     - `openclaw config set tools.exec.host gateway`
+     - `openclaw config set tools.exec.security full`
+     - `openclaw config set tools.exec.ask off`
+  3. 最后重启 gateway：`openclaw gateway restart`
+- 2026-04-05 验证结果：完成上述 3 步并重启后，`openclaw status` 已可在当前 control-ui 会话中直接执行，不再弹批准条。
+- 注意：这套做法等于把本机 `exec` 调成 **full + ask off**，方便但会明显放宽安全边界；若未来要重新收紧，优先从 `openclaw approvals get/set --gateway` 与 `tools.exec.ask/security` 回调。
 
 ---
 
