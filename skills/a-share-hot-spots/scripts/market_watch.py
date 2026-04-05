@@ -7,6 +7,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+import akshare as ak
+import pandas as pd
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Referer": "https://finance.sina.com.cn",
@@ -31,11 +34,17 @@ def fetch_text(url: str, referer: str | None = None, timeout: int = 10) -> str:
     headers = dict(HEADERS)
     if referer:
         headers["Referer"] = referer
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = resp.read()
-        charset = "gbk" if "sina" in url or "sinajs" in url else "utf-8"
-        return raw.decode(charset, errors="replace")
+    last_error = None
+    for _ in range(3):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                charset = "gbk" if "sina" in url or "sinajs" in url else "utf-8"
+                return raw.decode(charset, errors="replace")
+        except Exception as e:
+            last_error = e
+    raise last_error
 
 
 def normalize_code(code: str):
@@ -80,6 +89,7 @@ def fetch_stock(code: str) -> dict:
     change_pct = (change / prev_close * 100) if prev_close else 0
     return {
         "symbol": symbol,
+        "code": digits,
         "name": parts[0],
         "current": round(current, 2),
         "change": round(change, 2),
@@ -94,6 +104,133 @@ def fetch_stock(code: str) -> dict:
         "time": parts[31],
         "source": "新浪财经",
         "fetch_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+def fetch_monthly_klines(code: str, months: int = 48) -> list:
+    prefix, digits = normalize_code(code)
+    symbol = f"{prefix}{digits}"
+    try:
+        df = ak.stock_zh_a_hist_tx(symbol=symbol, start_date="20190101", end_date="20500101", adjust="")
+    except Exception as e:
+        raise RuntimeError(f"腾讯历史接口失败: {e}")
+
+    if df is None or df.empty:
+        return []
+
+    rename_map = {}
+    for col in df.columns:
+        c = str(col).strip()
+        if c in ["date", "日期"]:
+            rename_map[col] = "date"
+        elif c in ["open", "开盘"]:
+            rename_map[col] = "open"
+        elif c in ["close", "收盘"]:
+            rename_map[col] = "close"
+        elif c in ["high", "最高"]:
+            rename_map[col] = "high"
+        elif c in ["low", "最低"]:
+            rename_map[col] = "low"
+        elif c in ["amount", "成交量", "volume"]:
+            rename_map[col] = "amount"
+    df = df.rename(columns=rename_map)
+
+    required = ["date", "open", "close", "high", "low", "amount"]
+    if not all(col in df.columns for col in required):
+        raise RuntimeError(f"腾讯历史接口字段异常: {list(df.columns)}")
+
+    df = df[required].copy()
+    df["date"] = pd.to_datetime(df["date"])
+    for col in ["open", "close", "high", "low", "amount"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    df = df.dropna().sort_values("date")
+    if df.empty:
+        return []
+
+    monthly_df = (
+        df.set_index("date")
+          .resample("ME")
+          .agg({
+              "open": "first",
+              "close": "last",
+              "high": "max",
+              "low": "min",
+              "amount": "sum",
+          })
+          .dropna()
+          .reset_index()
+    )
+
+    out = []
+    for _, row in monthly_df.tail(months).iterrows():
+        out.append({
+            "date": row["date"].strftime("%Y-%m-%d"),
+            "open": float(row["open"]),
+            "close": float(row["close"]),
+            "high": float(row["high"]),
+            "low": float(row["low"]),
+            "volume": float(row["amount"]),
+        })
+    return out
+
+
+def analyze_strategy(code: str) -> dict:
+    stock = fetch_stock(code)
+    if stock.get("error"):
+        return {"error": stock["error"]}
+    try:
+        monthly = fetch_monthly_klines(code, 48)
+    except Exception as e:
+        return {"error": f"月线接口暂时失败：{e}"}
+    if len(monthly) < 24:
+        return {"error": "月线数据不足，无法做策略判断"}
+
+    recent4 = monthly[-4:]
+    prev24 = monthly[-28:-4] if len(monthly) >= 28 else monthly[:-4]
+    base_vol_avg = sum(x["volume"] for x in prev24) / len(prev24) if prev24 else 0
+    recent_vol_flags = [x["volume"] > base_vol_avg * 1.3 for x in recent4] if base_vol_avg else [False] * len(recent4)
+    volume_pass = sum(recent_vol_flags) >= 2
+
+    closes = [x["close"] for x in monthly]
+    min_close = min(closes)
+    max_close = max(closes)
+    current_close = closes[-1]
+    position = (current_close - min_close) / (max_close - min_close) if max_close > min_close else 0
+    bottom_zone_pass = position <= 0.40
+
+    trend_up_pass = recent4[-1]["close"] > recent4[0]["close"]
+
+    width_ratio = (max_close - min_close) / min_close if min_close > 0 else 999
+    sideways_pass = width_ratio <= 1.5 and position <= 0.5
+
+    score = sum([volume_pass, bottom_zone_pass, trend_up_pass, sideways_pass])
+    verdict = "符合" if score >= 4 else ("部分符合" if score >= 2 else "不符合")
+
+    reason = []
+    reason.append("最近4个月出现底部放量" if volume_pass else "最近4个月放量不够明显")
+    reason.append("当前仍处长期区间下部" if bottom_zone_pass else "当前价格已不算明显底部区")
+    reason.append("最近4个月收盘重心上移" if trend_up_pass else "最近4个月尚未走出明显抬升")
+    reason.append("近4年更像横盘吸筹结构" if sideways_pass else "近4年波动区间偏大，未必是典型底部横盘")
+
+    return {
+        "name": stock["name"],
+        "symbol": stock["symbol"],
+        "verdict": verdict,
+        "score": score,
+        "rules": {
+            "volume_pass": volume_pass,
+            "bottom_zone_pass": bottom_zone_pass,
+            "trend_up_pass": trend_up_pass,
+            "sideways_pass": sideways_pass,
+        },
+        "metrics": {
+            "base_vol_avg": round(base_vol_avg, 2),
+            "recent_4m_volumes": [round(x["volume"], 2) for x in recent4],
+            "position_in_4y_range": round(position, 3),
+            "range_width_ratio": round(width_ratio, 3),
+            "recent_4m_close": [x["close"] for x in recent4],
+        },
+        "summary": "；".join(reason),
     }
 
 
@@ -316,6 +453,25 @@ def fmt_sector_brief(sectors: list, industries: list) -> str:
     return "\n".join(lines)
 
 
+def fmt_strategy(result: dict) -> str:
+    if result.get("error"):
+        return f"策略检测失败：{result['error']}"
+    lines = [
+        f"策略检测：{result['name']}（{result['symbol'].upper()}）",
+        f"结论：{result['verdict']}（评分 {result['score']}/4）",
+        f"- 最近4个月放量：{'通过' if result['rules']['volume_pass'] else '未通过'}",
+        f"- 当前位于4年区间底部：{'通过' if result['rules']['bottom_zone_pass'] else '未通过'}",
+        f"- 最近4个月收盘抬升：{'通过' if result['rules']['trend_up_pass'] else '未通过'}",
+        f"- 近4年横盘吸筹特征：{'通过' if result['rules']['sideways_pass'] else '未通过'}",
+        f"区间位置：{result['metrics']['position_in_4y_range']}",
+        f"区间宽度比：{result['metrics']['range_width_ratio']}",
+        f"最近4个月收盘：{result['metrics']['recent_4m_close']}",
+        f"最近4个月量能：{result['metrics']['recent_4m_volumes']}",
+        f"说明：{result['summary']}",
+    ]
+    return '\n'.join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="A股实时盯盘")
     parser.add_argument("--code", nargs="+", help="股票代码，可多个")
@@ -328,6 +484,8 @@ def main():
     parser.add_argument("--summary", action="store_true", help="查盘面摘要")
     parser.add_argument("--brief", action="store_true", help="查短播报")
     parser.add_argument("--sector-brief", action="store_true", help="查板块联动摘要")
+    parser.add_argument("--strategy-check", help="按 V5 策略检测单只股票代码")
+    parser.add_argument("--strategy-name", help="按 V5 策略检测单只中文股票名")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
 
@@ -339,6 +497,17 @@ def main():
             print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3], "hot_stocks": stocks[:3]}, ensure_ascii=False, indent=2))
         else:
             print(fmt_summary(indexes, sectors, stocks))
+        return
+
+    if args.strategy_check:
+        result = analyze_strategy(args.strategy_check)
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy(result))
+        return
+
+    if args.strategy_name:
+        resolved = resolve_names([args.strategy_name])
+        result = analyze_strategy(resolved[0])
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy(result))
         return
 
     if args.brief:

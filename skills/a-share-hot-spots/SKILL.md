@@ -18,6 +18,7 @@ description: 跟踪中国A股实时行情、主要指数、热点板块与龙头
 - V2 新增：常见中文股名直查、热门股榜、扩展盘面摘要
 - V3 新增：行业板块榜、涨停/强势股榜、扩展中文股名表
 - V4 新增：短播报模式、板块联动摘要、进一步扩充中文股名表
+- V5 新增：月线底部放量吸筹策略单股检测
 
 ## 默认做法
 优先调用脚本：
@@ -73,6 +74,13 @@ python {baseDir}/scripts/market_watch.py --brief
 
 ```powershell
 python {baseDir}/scripts/market_watch.py --sector-brief
+```
+
+做底部放量吸筹策略检测：
+
+```powershell
+python {baseDir}/scripts/market_watch.py --strategy-check 600726
+python {baseDir}/scripts/market_watch.py --strategy-name 万科A
 ```
 
 ## 输出原则
