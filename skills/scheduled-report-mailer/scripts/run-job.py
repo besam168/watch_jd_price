@@ -1,0 +1,98 @@
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+CONFIG_PATH = SKILL_ROOT / "config" / "report-config.json"
+STATE_DIR = SKILL_ROOT / "state"
+LOG_DIR = SKILL_ROOT / "logs"
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_config() -> dict:
+    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def run_step(python_exe: str, script_name: str) -> tuple[int, str, str]:
+    script_path = ROOT / script_name
+    completed = subprocess.run(
+        [python_exe, str(script_path)],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    return completed.returncode, completed.stdout, completed.stderr
+
+
+def save_state(job: str, data: dict) -> None:
+    out = STATE_DIR / f"last-{job}.json"
+    out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def append_log(job: str, text: str) -> None:
+    path = LOG_DIR / f"{job}.log"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(text.rstrip() + "\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--job", required=True)
+    parser.add_argument("--collect-only", action="store_true")
+    args = parser.parse_args()
+
+    cfg = load_config()
+    jobs = cfg.get("jobs", {})
+    job = jobs.get(args.job)
+    if not job:
+        print(f"Unknown job: {args.job}", file=sys.stderr)
+        return 2
+
+    python_exe = cfg["python"]
+    started = datetime.now().isoformat()
+    state: dict = {"job": args.job, "startedAt": started, "collect": None, "send": None}
+
+    rc, stdout, stderr = run_step(python_exe, job["collect_script"])
+    state["collect"] = {"rc": rc, "stdout": stdout, "stderr": stderr}
+    append_log(args.job, f"===== COLLECT {started} rc={rc} =====")
+    append_log(args.job, stdout or "(no stdout)")
+    if stderr:
+        append_log(args.job, "[stderr]")
+        append_log(args.job, stderr)
+    if rc != 0:
+        state["finishedAt"] = datetime.now().isoformat()
+        save_state(args.job, state)
+        print("JOB_FAILED_AT_COLLECT")
+        return rc
+
+    if not args.collect_only:
+        rc, stdout, stderr = run_step(python_exe, job["send_script"])
+        state["send"] = {"rc": rc, "stdout": stdout, "stderr": stderr}
+        append_log(args.job, f"===== SEND {datetime.now().isoformat()} rc={rc} =====")
+        append_log(args.job, stdout or "(no stdout)")
+        if stderr:
+            append_log(args.job, "[stderr]")
+            append_log(args.job, stderr)
+        if rc != 0:
+            state["finishedAt"] = datetime.now().isoformat()
+            save_state(args.job, state)
+            print("JOB_FAILED_AT_SEND")
+            return rc
+
+    state["finishedAt"] = datetime.now().isoformat()
+    save_state(args.job, state)
+    print("JOB_OK")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

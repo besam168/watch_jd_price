@@ -1,0 +1,28 @@
+{
+  "python": "C:/Users/besam/AppData/Local/Programs/Python/Python312/python.exe",
+  "workspace": "C:/Users/besam/.openclaw/workspace",
+  "email": {
+    "smtp_server": "smtp.qq.com",
+    "smtp_port": 465,
+    "username": "910633260@qq.com",
+    "password": "sghqeeeeyuzjbcbb",
+    "recipients": [
+      "besam168168@gmail.com",
+      "758622673@qq.com"
+    ]
+  },
+  "jobs": {
+    "comprehensive-morning": {
+      "collect_script": "collect_comprehensive_report.py",
+      "send_script": "send_collected_comprehensive_report.py",
+      "schedule_collect": "08:00",
+      "schedule_send": "08:30"
+    },
+    "comprehensive-evening": {
+      "collect_script": "collect_comprehensive_report.py",
+      "send_script": "send_collected_comprehensive_report.py",
+      "schedule_collect": "20:30",
+      "schedule_send": "21:00"
+    }
+  }
+}
