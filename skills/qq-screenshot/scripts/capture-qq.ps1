@@ -1,8 +1,8 @@
 param(
     [string]$OutputDir = "C:\Users\besam\.openclaw\workspace\qq-screenshots",
     [switch]$NoMedia,
-    [ValidateSet('system','pil')]
-    [string]$Method = 'pil',
+    [ValidateSet('system','pil','gdi')]
+    [string]$Method = 'gdi',
     [ValidateSet('primary','secondary','all')]
     [string]$Screen = 'primary',
     [int]$KeepCount = 50
@@ -17,22 +17,20 @@ $outputPath = Join-Path $OutputDir "qq-screenshot_$timestamp.png"
 $telegramCaptureScript = "C:\Users\besam\.openclaw\workspace\skills\telegram-image-sender\scripts\capture-screen.ps1"
 $pythonScript = @"
 from PIL import ImageGrab
-import os
 import sys
+import ctypes
+
 
 def choose_bbox(all_screens=False, screen='primary'):
     if all_screens:
         return None
     try:
-        import ctypes
         user32 = ctypes.windll.user32
         screens = user32.GetSystemMetrics(80)
         if screens <= 1:
             return None
         virtual_left = user32.GetSystemMetrics(76)
-        virtual_top = user32.GetSystemMetrics(77)
         virtual_width = user32.GetSystemMetrics(78)
-        virtual_height = user32.GetSystemMetrics(79)
         primary_width = user32.GetSystemMetrics(0)
         primary_height = user32.GetSystemMetrics(1)
         if screen == 'primary':
@@ -65,6 +63,43 @@ function Invoke-PilCapture {
         python $tempPy $outputPath $Screen | Out-Null
     } finally {
         Remove-Item -LiteralPath $tempPy -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-GdiCapture {
+    Add-Type -AssemblyName System.Drawing
+    Add-Type -AssemblyName System.Windows.Forms
+
+    function Get-VirtualBounds {
+        return [System.Windows.Forms.SystemInformation]::VirtualScreen
+    }
+
+    function Get-PrimaryBounds {
+        return [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    }
+
+    function Get-SecondaryBounds {
+        $screens = [System.Windows.Forms.Screen]::AllScreens
+        foreach ($s in $screens) {
+            if (-not $s.Primary) { return $s.Bounds }
+        }
+        return [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    }
+
+    switch ($Screen) {
+        'all' { $bounds = Get-VirtualBounds }
+        'secondary' { $bounds = Get-SecondaryBounds }
+        default { $bounds = Get-PrimaryBounds }
+    }
+
+    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $graphics.CopyFromScreen($bounds.X, $bounds.Y, 0, 0, $bounds.Size)
+        $bmp.Save($outputPath, [System.Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        $graphics.Dispose()
+        $bmp.Dispose()
     }
 }
 
@@ -103,14 +138,14 @@ function Invoke-SystemCapture {
         if (Test-Path $outputPath) {
             Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
         }
-        Invoke-PilCapture
+        Invoke-GdiCapture
     }
 }
 
-if ($Method -eq 'system') {
-    Invoke-SystemCapture
-} else {
-    Invoke-PilCapture
+switch ($Method) {
+    'system' { Invoke-SystemCapture }
+    'pil' { Invoke-PilCapture }
+    default { Invoke-GdiCapture }
 }
 
 if (-not (Test-Path $outputPath)) {
