@@ -2,7 +2,10 @@ param(
     [string]$OutputDir = "C:\Users\besam\.openclaw\workspace\qq-screenshots",
     [switch]$NoMedia,
     [ValidateSet('system','pil')]
-    [string]$Method = 'pil'
+    [string]$Method = 'pil',
+    [ValidateSet('primary','secondary','all')]
+    [string]$Screen = 'primary',
+    [int]$KeepCount = 50
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,20 +15,60 @@ $timestamp = Get-Date -Format "yyyyMMdd_HHmmss_fff"
 $outputPath = Join-Path $OutputDir "qq-screenshot_$timestamp.png"
 
 $telegramCaptureScript = "C:\Users\besam\.openclaw\workspace\skills\telegram-image-sender\scripts\capture-screen.ps1"
-$liveCaptureScript = "C:\Users\besam\.openclaw\workspace\skills\telegram-live-screenshot\scripts\capture-live.ps1"
+$pythonScript = @"
+from PIL import ImageGrab
+import os
+import sys
 
-function Invoke-PilFallback {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $liveCaptureScript -Method pil -OutputDir $OutputDir -NoMedia | Out-Null
-    $latest = Get-ChildItem -Path $OutputDir -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($null -eq $latest) {
-        throw "PIL screenshot did not produce an output file."
-    }
-    if ($latest.FullName -ne $outputPath) {
-        Copy-Item -LiteralPath $latest.FullName -Destination $outputPath -Force
+def choose_bbox(all_screens=False, screen='primary'):
+    if all_screens:
+        return None
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        screens = user32.GetSystemMetrics(80)
+        if screens <= 1:
+            return None
+        virtual_left = user32.GetSystemMetrics(76)
+        virtual_top = user32.GetSystemMetrics(77)
+        virtual_width = user32.GetSystemMetrics(78)
+        virtual_height = user32.GetSystemMetrics(79)
+        primary_width = user32.GetSystemMetrics(0)
+        primary_height = user32.GetSystemMetrics(1)
+        if screen == 'primary':
+            return (0, 0, primary_width, primary_height)
+        if screen == 'secondary':
+            if virtual_left < 0:
+                return (virtual_left, 0, 0, primary_height)
+            if virtual_width > primary_width:
+                return (primary_width, 0, virtual_left + virtual_width, primary_height)
+            return None
+    except Exception:
+        return None
+    return None
+
+output = sys.argv[1]
+screen = sys.argv[2]
+all_screens = screen == 'all'
+bbox = choose_bbox(all_screens=all_screens, screen=screen)
+img = ImageGrab.grab(all_screens=all_screens, bbox=bbox)
+img.save(output)
+print(output)
+"@
+
+function Invoke-PilCapture {
+    $tempDir = Join-Path $OutputDir ".tmp"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    $tempPy = Join-Path $tempDir ("qq-screenshot-capture-" + [guid]::NewGuid().ToString() + ".py")
+    Set-Content -LiteralPath $tempPy -Value $pythonScript -Encoding UTF8
+    try {
+        python $tempPy $outputPath $Screen | Out-Null
+    } finally {
+        Remove-Item -LiteralPath $tempPy -Force -ErrorAction SilentlyContinue
     }
 }
 
-if ($Method -eq 'system') {
+function Invoke-SystemCapture {
     $screenshotsDir = Join-Path $env:USERPROFILE "Pictures\Screenshots"
     $baselineTicks = 0
     if (Test-Path $screenshotsDir) {
@@ -60,14 +103,28 @@ if ($Method -eq 'system') {
         if (Test-Path $outputPath) {
             Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
         }
-        Invoke-PilFallback
+        Invoke-PilCapture
     }
+}
+
+if ($Method -eq 'system') {
+    Invoke-SystemCapture
 } else {
-    Invoke-PilFallback
+    Invoke-PilCapture
 }
 
 if (-not (Test-Path $outputPath)) {
     throw "Screenshot file was not created: $outputPath"
+}
+
+if ($KeepCount -gt 0) {
+    $allShots = Get-ChildItem -Path $OutputDir -File -Filter "qq-screenshot_*.png" | Sort-Object LastWriteTime -Descending
+    if ($allShots.Count -gt $KeepCount) {
+        $toRemove = $allShots | Select-Object -Skip $KeepCount
+        foreach ($item in $toRemove) {
+            Remove-Item -LiteralPath $item.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 if ($NoMedia) {
