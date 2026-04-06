@@ -431,11 +431,11 @@ def listen_once(
     babble_timeout_seconds: float,
     end_silence_seconds: float,
     allow_culture_fallback: bool,
-    engine: str,
-    whisper_model: str,
-    mic_device: str | None,
-    keep_recorded_wav: bool,
-    pre_roll_seconds: float,
+    engine: str = "system_speech",
+    whisper_model: str = "small",
+    mic_device: str | None = None,
+    keep_recorded_wav: bool = False,
+    pre_roll_seconds: float = 0.0,
 ) -> Dict[str, Any]:
     primary_mode = "wav_file" if wav_path else "microphone"
 

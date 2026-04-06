@@ -4,7 +4,7 @@ A local MVP bridge for text-to-speech and playback routing.
 
 This project does **not** directly capture microphone audio from a real Tmall Genie device and does **not** directly push audio to Tmall Genie hardware in this repository state.
 
-## Honest Status (2026-04-01)
+## Honest Status (2026-04-06)
 
 Implemented:
 - HTTP bridge server with `/health`, `/speak`, `/callback/text`, `/webhook/text`, `/audio/<filename>`.
@@ -13,23 +13,48 @@ Implemented:
   - `mock_tmall_genie` (mock only)
   - `local_http_player` (HTTP dispatch to external player service)
   - `local_windows_speaker` (PowerShell local playback)
-- Demo scripts for local text roundtrip, callback roundtrip, and WAV roundtrip.
+- Demo scripts for local text roundtrip, callback roundtrip, WAV roundtrip, and HTTP-player rehearsal.
+- Preflight + rehearsal + acceptance-record tooling for real HTTP playback bring-up.
 - Lightweight smoke tests for request handling and core audio flow.
 
 Locally tested in this environment:
 - Python unit smoke tests with `unittest` (Flask test client + mock provider/backend).
 - `scripts/speak.py` CLI with `config.example.json`.
+- Local Windows speaker path restored to **silent/background playback** through `local_windows_speaker.player_script` + `WMPlayer COM`.
+- Emergency shell-open fallback exists for recovery, but it is not the preferred steady-state path because it may open a visible player window.
 
 Mocked / not verified here:
 - Real Tmall Genie hardware playback.
 - Production deployment behavior.
 - Real microphone capture quality and device compatibility on every machine.
+- Home Assistant -> target device -> audible playback proof in a real home environment.
+
+## Claim Boundary
+
+You may honestly claim:
+- "Local bridge flow works."
+- "HTTP handoff to a playback target is implemented."
+- "Preflight and rehearsal tooling exist for real-player bring-up."
+- "Integration evidence can be recorded with a timestamped artifact."
+- "Local silent/background playback is currently available on this Windows machine."
+
+You may **not** honestly claim unless a human confirmed it:
+- "Real Tmall Genie playback is verified."
+- "Hardware playback is complete."
+- "The device definitely played audio."
+- "The microphone / callback path is production-ready on real hardware."
+
+If a run only proves bridge behavior or HTTP acceptance, describe it as:
+- bridge handoff verified
+- rehearsal passed
+- target accepted the request
+- playback still needs human confirmation
 
 ## Repository Layout
 
 - `scripts/bridge_server.py`: Flask bridge server.
 - `scripts/speak.py`: text-to-audio generation and backend dispatch.
-- `scripts/listen_once.py`: one-shot speech recognition (Windows System.Speech).
+- `scripts/listen_once.py`: one-shot speech recognition (Windows System.Speech / local Whisper path).
 - `scripts/backends/`: playback adapters.
 - `scripts/providers/`: TTS providers.
 - `config.example.json`: baseline config template.
@@ -67,7 +92,7 @@ python scripts/bridge_server.py --config config.example.json
 Or:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\\run-bridge.ps1 -Config .\\config.example.json
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run-bridge.ps1 -Config .\config.example.json
 ```
 
 3. In another terminal, call `/speak`:
@@ -90,7 +115,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-text-roundtrip.ps1 -T
 
 ## Microphone / STT Local Testing (Windows)
 
-The local STT path uses Windows `System.Speech` via PowerShell.
+The local STT path uses Windows `System.Speech` via PowerShell, with optional local Whisper integration for richer fallback.
 Microphone access can be healthy while recognition quality is still unstable, especially for `zh-CN`.
 
 Preflight recognizer + microphone access:
@@ -111,8 +136,8 @@ If microphone results are unstable, use deterministic WAV fallback in the same c
 python scripts/listen_once.py --culture zh-CN --timeout-seconds 8 --attempts 2 --fallback-wav .\tmp_audio\listen-once-test.wav
 ```
 
-`listen_once.py` keeps returning JSON and now includes richer diagnostics (`installed_recognizers`, `elapsed_ms`, per-attempt results, and warnings).  
-Do not treat this as proof of real hardware playback.
+`listen_once.py` returns JSON and includes diagnostics such as `installed_recognizers`, `elapsed_ms`, per-attempt results, and warnings.  
+Do not treat STT success as proof of real hardware playback.
 
 ## Endpoint Contract
 
@@ -165,6 +190,18 @@ Serves generated audio files from `tts.output_dir`.
   - `auto`: derive from request host/proto (supports `X-Forwarded-*` headers)
   - explicit URL: fixed base for audio URLs
 - `http_player.public_base_url`: if set, used as authoritative public base URL for `/audio/...` links.
+
+## Local Windows Speaker Notes
+
+Current preferred local playback path:
+- `local_windows_speaker.py` should invoke the configured `local_windows_speaker.player_script`
+- `play-local-audio.ps1` should try `WMPlayer COM` first for silent/background playback
+- shell-open fallback is recovery-only and may open a visible player window
+
+Important nuance:
+- short MP3 clips may transition too quickly for rigid `playState=3 -> end` checks
+- do not treat a missed `playState=3` as proof that playback failed
+- `WMPlayer` state alone is not the same as human-heard confirmation
 
 ## Home Assistant / Real HTTP Player Integration Notes
 
@@ -228,6 +265,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\record-acceptance-
 You can also pass inline JSON with `-PreflightJsonInline` / `-RehearsalJsonInline`.
 This recorder is for integration evidence keeping and does not claim hardware playback unless `-HumanHeard` is set by a human.
 When output filenames collide in the same second, recorder files are auto-suffixed (`-2`, `-3`, ...) instead of being overwritten.
+
+## Acceptance Rule of Thumb
+
+Treat these as different levels of proof:
+1. **Local bridge success**: the bridge accepted input and generated audio.
+2. **HTTP handoff success**: the playback target returned HTTP 2xx.
+3. **Fetch-path success**: the target could actually reach the generated `audio_url`.
+4. **Real playback success**: a human heard the target device play audio.
+
+Only level 4 justifies saying real playback is verified.
+Levels 1-3 are useful progress, but they are not the same thing.
 
 The preflight script checks:
 - whether `backend.type` is `local_http_player`

@@ -176,6 +176,14 @@ def speak(
 
 
 def main() -> None:
+    # 设置控制台输出编码为UTF-8，解决中文乱码问题
+    if sys.platform == "win32":
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        kernel32.SetConsoleOutputCP(65001)
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+
     parser = argparse.ArgumentParser(
         description="Generate audio from text and dispatch playback through the configured backend."
     )

@@ -6,7 +6,7 @@
     "voice": "zh-CN-XiaoxiaoNeural",
     "rate": "+0%",
     "output_dir": "./tmp_audio",
-    "output_ext": "wav",
+    "output_ext": "mp3",
     "max_text_length": 4000
   },
   "backend": {

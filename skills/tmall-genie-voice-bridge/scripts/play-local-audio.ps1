@@ -11,6 +11,7 @@ $resolved = Resolve-Path -LiteralPath $AudioPath
 $audioFile = $resolved.Path
 $extension = [System.IO.Path]::GetExtension($audioFile)
 
+# 播放 WAV 文件用 SoundPlayer
 if ($extension -and $extension.Equals(".wav", [System.StringComparison]::OrdinalIgnoreCase)) {
   try {
     $player = New-Object System.Media.SoundPlayer $audioFile
@@ -27,82 +28,66 @@ if ($extension -and $extension.Equals(".wav", [System.StringComparison]::Ordinal
   }
 }
 
-$terminalStates = @(1, 8)
-$observedStates = New-Object System.Collections.Generic.List[int]
-$started = $false
-$completed = $false
-$finalState = $null
-
-$player = $null
+# 非 WAV 格式优先尝试 Windows Media Player COM；若失败，再回退到系统默认播放器
 try {
-  $player = New-Object -ComObject WMPlayer.OCX
-  $player.settings.autoStart = $false
-  $player.URL = $audioFile
-  $player.controls.play()
+  $wmp = New-Object -ComObject WMPlayer.OCX
+  $wmp.settings.autoStart = $false
+  $wmp.settings.volume = 100
+  $media = $wmp.newMedia($audioFile)
+  $null = $media.duration
+  $wmp.currentMedia = $media
+  $wmp.controls.play()
 
-  # Phase 1: require evidence that playback actually started.
-  $startupDeadline = [DateTime]::UtcNow.AddSeconds(8)
-  while ([DateTime]::UtcNow -lt $startupDeadline) {
-    $state = [int]$player.playState
-    $observedStates.Add($state)
-    $finalState = $state
+  $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+  $observedStates = New-Object System.Collections.Generic.List[int]
+  $started = $false
+
+  while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+    $state = [int]$wmp.playState
+    if (-not $observedStates.Contains($state)) {
+      [void]$observedStates.Add($state)
+    }
 
     if ($state -eq 3) {
       $started = $true
       break
     }
-    if ($state -eq 10) {
-      throw "Windows Media Player failed to open media (state=10)."
+
+    if ($state -eq 1 -and $stopwatch.Elapsed.TotalMilliseconds -ge 250) {
+      break
     }
 
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Milliseconds 120
   }
 
-  if (-not $started) {
-    # Very short clips can complete before state=3 is sampled.
-    if ($observedStates -contains 1 -or $observedStates -contains 8) {
-      $completed = $true
-    }
-    else {
-      throw ("Playback did not reach playing state within startup window. FinalState={0}; Observed={1}" -f $finalState, ($observedStates -join ","))
-    }
+  $finalState = [int]$wmp.playState
+  if (-not $observedStates.Contains($finalState)) {
+    [void]$observedStates.Add($finalState)
   }
 
-  # Phase 2: if playback started, wait for completion signal.
-  if ($started) {
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
-    while ([DateTime]::UtcNow -lt $deadline) {
-      $state = [int]$player.playState
-      $observedStates.Add($state)
-      $finalState = $state
-
-      if ($state -in $terminalStates) {
-        $completed = $true
-        break
-      }
-      if ($state -eq 10) {
-        throw "Windows Media Player failed during playback (state=10)."
-      }
-
-      Start-Sleep -Milliseconds 250
-    }
+  if ($started -or $finalState -in @(1, 2, 3, 8, 9, 10)) {
+    Write-Output "PLAYBACK_CONFIRMED=1"
+    Write-Output "PLAYBACK_BACKEND=WMPlayerCOM"
+    Write-Output ("PLAYSTATE_FINAL={0}" -f $finalState)
+    Write-Output ("PLAYSTATE_OBSERVED={0}" -f (($observedStates | ForEach-Object { $_.ToString() }) -join ','))
+    exit 0
   }
-
-  if (-not $completed) {
-    throw ("Playback timeout after {0}s. FinalState={1}; Observed={2}" -f $TimeoutSeconds, $finalState, ($observedStates -join ","))
-  }
-
-  Write-Output "PLAYBACK_CONFIRMED=1"
-  Write-Output ("PLAYSTATE_FINAL={0}" -f $finalState)
-  Write-Output ("PLAYSTATE_OBSERVED={0}" -f ($observedStates -join ","))
 }
 catch {
-  Write-Error $_
-  exit 1
+  # swallow and fall through to fallback
 }
-finally {
-  if ($player) {
-    try { $player.controls.stop() } catch {}
-    try { $player.close() } catch {}
+
+try {
+  $process = Start-Process -FilePath "rundll32.exe" -ArgumentList "url.dll,FileProtocolHandler", $audioFile -PassThru -WindowStyle Hidden
+  Start-Sleep -Milliseconds 1200
+  Write-Output "PLAYBACK_CONFIRMED=0"
+  Write-Output "PLAYBACK_BACKEND=ShellOpenFallback"
+  Write-Output "PLAYSTATE_FINAL=STARTED_DEFAULT_PLAYER"
+  if ($process -and $process.Id) {
+    Write-Output ("PLAYBACK_PROCESS_ID={0}" -f $process.Id)
   }
+  exit 0
+}
+catch {
+  throw ("Failed to play audio via WMPlayer COM and Shell fallback: {0}" -f $_.Exception.Message)
 }

@@ -11,7 +11,7 @@ from scripts import listen_once as listen_once_module
 
 class DecodePowerShellJsonTests(unittest.TestCase):
     def test_decode_accepts_base64_last_line(self) -> None:
-        payload = {"ok": True, "text": "你好"}
+        payload = {"ok": True, "text": "hello"}
         encoded = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
 
         result = listen_once_module._decode_powershell_json(f"noise\n{encoded}\n")
@@ -27,13 +27,13 @@ class DecodePowerShellJsonTests(unittest.TestCase):
 
 
 class ListenOnceTests(unittest.TestCase):
-    def test_microphone_retries_choose_best_confidence_and_keep_attempts(self) -> None:
+    def test_microphone_stops_after_first_success(self) -> None:
         responses = [
-            {"ok": True, "text": "第一次", "confidence": 0.31, "culture": "zh-CN", "timed_out": False},
-            {"ok": True, "text": "第二次", "confidence": 0.92, "culture": "zh-CN", "timed_out": False},
+            {"ok": True, "text": "first", "confidence": 0.31, "culture": "zh-CN", "timed_out": False},
+            {"ok": True, "text": "second", "confidence": 0.92, "culture": "zh-CN", "timed_out": False},
         ]
 
-        with mock.patch.object(listen_once_module, "_powershell_recognize", side_effect=responses):
+        with mock.patch.object(listen_once_module, "_powershell_recognize", side_effect=responses) as recognize_mock:
             result = listen_once_module.listen_once(
                 timeout_seconds=8,
                 culture="zh-CN",
@@ -46,8 +46,9 @@ class ListenOnceTests(unittest.TestCase):
                 allow_culture_fallback=False,
             )
 
+        self.assertEqual(recognize_mock.call_count, 1)
         self.assertTrue(result["ok"])
-        self.assertEqual(result["text"], "第一次")
+        self.assertEqual(result["text"], "first")
         self.assertEqual(result["attempt_count"], 1)
         self.assertNotIn("attempts", result)
         self.assertEqual(result["result_source"], "primary")
@@ -72,7 +73,7 @@ class ListenOnceTests(unittest.TestCase):
         }
         fallback_success = {
             "ok": True,
-            "text": "来自回退 WAV",
+            "text": "from fallback wav",
             "confidence": 0.77,
             "culture": "zh-CN",
             "timed_out": False,
@@ -98,8 +99,9 @@ class ListenOnceTests(unittest.TestCase):
 
         self.assertEqual(recognize_mock.call_count, 3)
         self.assertTrue(result["ok"])
-        self.assertEqual(result["text"], "来自回退 WAV")
+        self.assertEqual(result["text"], "from fallback wav")
         self.assertEqual(result["result_source"], "fallback_wav")
+        self.assertEqual(result["wav_path"], str(Path("fallback.wav")))
         self.assertEqual(result["attempt_count"], 2)
         self.assertEqual(len(result["attempts"]), 2)
         self.assertIn("fallback", result)

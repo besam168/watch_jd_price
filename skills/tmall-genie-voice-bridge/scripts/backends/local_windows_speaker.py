@@ -9,21 +9,85 @@ from .base import PlaybackBackend
 
 class LocalWindowsSpeakerBackend(PlaybackBackend):
     def play(self, *, text: str, audio_path: Path, audio_url: str | None = None) -> Dict[str, Any]:
-        script_path = self._resolve_script_path()
-        timeout_seconds = int(self.options.get("timeout_seconds", 20))
+        del text
 
-        command = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script_path),
-            "-AudioPath",
-            str(audio_path),
-            "-TimeoutSeconds",
-            str(timeout_seconds),
-        ]
+        timeout_seconds = int(self.options.get("timeout_seconds", 20))
+        config_dir = Path(str(self.options.get("config_dir") or ".")).resolve()
+        player_script = str(self.options.get("player_script") or "").strip()
+
+        if player_script:
+            script_path = Path(player_script)
+            if not script_path.is_absolute():
+                script_path = (config_dir / script_path).resolve()
+
+            if not script_path.is_file():
+                raise RuntimeError(f"Configured local_windows_speaker.player_script not found: {script_path}")
+
+            command = [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(script_path),
+                "-AudioPath",
+                str(audio_path),
+                "-TimeoutSeconds",
+                str(timeout_seconds),
+            ]
+        else:
+            extension = audio_path.suffix.lower()
+            if extension == ".wav":
+                command_text = f"""
+$ErrorActionPreference = 'Stop'
+$audioFile = {str(audio_path)!r}
+$player = New-Object System.Media.SoundPlayer $audioFile
+$player.Load()
+$player.PlaySync()
+Write-Output 'PLAYBACK_CONFIRMED=1'
+Write-Output 'PLAYBACK_BACKEND=SoundPlayer'
+Write-Output 'PLAYSTATE_FINAL=WAV_SYNC_OK'
+"""
+            else:
+                command_text = f"""
+$ErrorActionPreference = 'Stop'
+$audioFile = {str(audio_path)!r}
+$TimeoutSeconds = {timeout_seconds}
+$wmp = New-Object -ComObject WMPlayer.OCX
+$wmp.settings.autoStart = $false
+$wmp.settings.volume = 100
+$wmp.URL = $audioFile
+$wmp.controls.play()
+$stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$started = $false
+while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {{
+  $state = [int]$wmp.playState
+  if ($state -eq 3) {{ $started = $true }}
+  if ($started -and ($state -eq 1 -or $state -eq 8)) {{
+    Write-Output 'PLAYBACK_CONFIRMED=1'
+    Write-Output 'PLAYBACK_BACKEND=WMPlayerCOM'
+    Write-Output 'PLAYSTATE_FINAL=OK'
+    exit 0
+  }}
+  Start-Sleep -Milliseconds 150
+}}
+if ($started) {{
+  Write-Output 'PLAYBACK_CONFIRMED=1'
+  Write-Output 'PLAYBACK_BACKEND=WMPlayerCOM'
+  Write-Output 'PLAYSTATE_FINAL=TIMEOUT_AFTER_START'
+  exit 0
+}}
+throw 'WMPlayer COM did not enter playing state before timeout.'
+"""
+
+            command = [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                command_text,
+            ]
 
         result = subprocess.run(
             command,
@@ -46,36 +110,6 @@ class LocalWindowsSpeakerBackend(PlaybackBackend):
             "audio_path": str(audio_path),
             "audio_url": audio_url,
             "stdout": (result.stdout or "").strip(),
+            "player_script_used": bool(player_script),
         }
-
-    def _resolve_script_path(self) -> Path:
-        configured = self.options.get("player_script", "./scripts/play-local-audio.ps1")
-        script_path = Path(configured)
-
-        if script_path.is_absolute():
-            resolved = script_path
-        else:
-            base_dirs = []
-            config_dir = self.options.get("config_dir")
-            if config_dir:
-                base_dirs.append(Path(str(config_dir)))
-
-            skill_dir = self.options.get("skill_dir")
-            if skill_dir:
-                base_dirs.append(Path(str(skill_dir)))
-
-            resolved = None
-            for base_dir in base_dirs:
-                candidate = (base_dir / script_path).resolve()
-                if candidate.exists():
-                    resolved = candidate
-                    break
-
-            if resolved is None:
-                resolved = (Path(".") / script_path).resolve()
-
-        if not resolved.exists():
-            raise FileNotFoundError(f"local_windows_speaker script not found: {resolved}")
-
-        return resolved
 
