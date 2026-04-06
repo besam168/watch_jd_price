@@ -17,6 +17,105 @@
     "latest_report_html": "reports/scheduled/latest_report.html",
     "latest_collect_status": "reports/scheduled/latest_collect_status.json"
   },
+  "collection_policy": {
+    "time_window_hours": {
+      "min": 0,
+      "max": 24
+    },
+    "must_check": [
+      "gaza",
+      "ukraine",
+      "us-china-trade",
+      "us-equities",
+      "gold",
+      "brent"
+    ],
+    "source_groups": {
+      "macro_news_priority": [
+        "Reuters",
+        "AP News",
+        "BBC",
+        "Al Jazeera"
+      ],
+      "market_priority": [
+        "NYSE",
+        "TWSE",
+        "SSE",
+        "JPX",
+        "KRX"
+      ],
+      "finance_priority": [
+        "CNBC",
+        "Yahoo Finance",
+        "Investing.com"
+      ]
+    },
+    "whitelist_urls": [
+      "https://www.bbc.com/news",
+      "https://www.theguardian.com/international",
+      "https://www.reuters.com/",
+      "https://apnews.com/",
+      "https://www.npr.org/",
+      "https://www.aljazeera.com/",
+      "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
+      "https://www.france24.com/en/",
+      "https://www.cnbc.com/world/?region=world",
+      "https://www.usatoday.com/",
+      "https://www.nyse.com/index",
+      "https://jp.investing.com",
+      "https://finance.naver.com/",
+      "https://www.twse.com.tw/zh/index.html",
+      "https://www.sse.com.cn/",
+      "https://finance.yahoo.com/",
+      "https://www.theverge.com/",
+      "https://techcrunch.com/",
+      "https://spectrum.ieee.org/",
+      "https://www.wired.com/",
+      "https://arstechnica.com/",
+      "https://www.technologyreview.com/",
+      "https://venturebeat.com/category/ai",
+      "https://singularityhub.com/",
+      "https://www.artificialintelligence-news.com/",
+      "https://www.engadget.com/"
+    ],
+    "capture_strategies": [
+      {
+        "name": "rss-feed",
+        "priority": 1,
+        "use_for": ["headline discovery", "publish time filtering", "top stories"]
+      },
+      {
+        "name": "structured-market-data",
+        "priority": 2,
+        "use_for": ["us equities", "gold", "brent", "stock snapshots"]
+      },
+      {
+        "name": "web-fetch",
+        "priority": 3,
+        "use_for": ["article body", "single-page verification", "fallback extraction"]
+      },
+      {
+        "name": "desearch-crawl",
+        "priority": 4,
+        "use_for": ["clean article extraction", "whitelist page crawling"]
+      },
+      {
+        "name": "ddg-discovery",
+        "priority": 5,
+        "use_for": ["discover fresh stories", "cross-source expansion"]
+      },
+      {
+        "name": "desktop-verification",
+        "priority": 6,
+        "use_for": ["manual page verification only", "not primary daily collection"]
+      }
+    ],
+    "anti_hallucination": {
+      "require_source_and_time": true,
+      "forbid_backfill_with_old_news": true,
+      "fallback_text": "今日无重大更新"
+    }
+  },
   "jobs": {
     "comprehensive-morning": {
       "collect_script": "collect_comprehensive_report.py",
