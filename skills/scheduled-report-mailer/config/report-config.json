@@ -11,6 +11,12 @@
       "758622673@qq.com"
     ]
   },
+  "paths": {
+    "latest_subject": "reports/scheduled/latest_subject.txt",
+    "latest_report_txt": "reports/scheduled/latest_report.txt",
+    "latest_report_html": "reports/scheduled/latest_report.html",
+    "latest_collect_status": "reports/scheduled/latest_collect_status.json"
+  },
   "jobs": {
     "comprehensive-morning": {
       "collect_script": "collect_comprehensive_report.py",

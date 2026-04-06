@@ -44,6 +44,15 @@ def append_log(job: str, text: str) -> None:
         f.write(text.rstrip() + "\n")
 
 
+def resolve_outputs(cfg: dict) -> dict[str, str | None]:
+    out_cfg = cfg.get("paths", {})
+    resolved: dict[str, str | None] = {}
+    for key, rel in out_cfg.items():
+        path = ROOT / rel
+        resolved[key] = str(path) if path.exists() else None
+    return resolved
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--job", required=True)
@@ -59,7 +68,14 @@ def main() -> int:
 
     python_exe = cfg["python"]
     started = datetime.now().isoformat()
-    state: dict = {"job": args.job, "startedAt": started, "collect": None, "send": None}
+    state: dict = {
+        "job": args.job,
+        "mode": "collect-only" if args.collect_only else "collect-and-send",
+        "startedAt": started,
+        "collect": None,
+        "send": None,
+        "outputs": {},
+    }
 
     rc, stdout, stderr = run_step(python_exe, job["collect_script"])
     state["collect"] = {"rc": rc, "stdout": stdout, "stderr": stderr}
@@ -68,6 +84,7 @@ def main() -> int:
     if stderr:
         append_log(args.job, "[stderr]")
         append_log(args.job, stderr)
+    state["outputs"] = resolve_outputs(cfg)
     if rc != 0:
         state["finishedAt"] = datetime.now().isoformat()
         save_state(args.job, state)
@@ -84,13 +101,21 @@ def main() -> int:
             append_log(args.job, stderr)
         if rc != 0:
             state["finishedAt"] = datetime.now().isoformat()
+            state["outputs"] = resolve_outputs(cfg)
             save_state(args.job, state)
             print("JOB_FAILED_AT_SEND")
             return rc
 
     state["finishedAt"] = datetime.now().isoformat()
+    state["outputs"] = resolve_outputs(cfg)
     save_state(args.job, state)
     print("JOB_OK")
+    if state["outputs"].get("latest_subject"):
+        try:
+            subject = Path(state["outputs"]["latest_subject"]).read_text(encoding="utf-8").strip()
+            print(subject)
+        except Exception:
+            pass
     return 0
 
 

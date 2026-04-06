@@ -1,11 +1,15 @@
 {
   "job": "comprehensive-morning",
-  "startedAt": "2026-04-06T10:54:41.702798",
+  "startedAt": "2026-04-06T10:59:26.856647",
   "collect": {
     "rc": 0,
     "stdout": "COLLECT_OK\nȫ���ۺ��鱨���� - 2026-04-06\nC:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt\nFAILED_GROUPS: none\n",
     "stderr": ""
   },
-  "send": null,
-  "finishedAt": "2026-04-06T10:55:25.639089"
+  "send": {
+    "rc": 0,
+    "stdout": "SEND_OK\nȫ���ۺ��鱨���� - 2026-04-06\n",
+    "stderr": ""
+  },
+  "finishedAt": "2026-04-06T11:00:09.653926"
 }

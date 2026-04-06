@@ -1,0 +1,22 @@
+{
+  "job": "comprehensive-evening",
+  "mode": "collect-and-send",
+  "startedAt": "2026-04-06T11:04:07.214587",
+  "collect": {
+    "rc": 0,
+    "stdout": "COLLECT_OK\nȫ���ۺ��鱨���� - 2026-04-06\nC:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt\nFAILED_GROUPS: none\n",
+    "stderr": ""
+  },
+  "send": {
+    "rc": 0,
+    "stdout": "SEND_OK\nȫ���ۺ��鱨���� - 2026-04-06\n",
+    "stderr": ""
+  },
+  "outputs": {
+    "latest_subject": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_subject.txt",
+    "latest_report_txt": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt",
+    "latest_report_html": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.html",
+    "latest_collect_status": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_collect_status.json"
+  },
+  "finishedAt": "2026-04-06T11:04:52.164988"
+}
