@@ -28,7 +28,44 @@ if ($extension -and $extension.Equals(".wav", [System.StringComparison]::Ordinal
   }
 }
 
-# 非 WAV 格式优先尝试 Windows Media Player COM；若失败，再回退到系统默认播放器
+# MP3 优先尝试更稳的 MCI 静默播放
+if ($extension -and $extension.Equals(".mp3", [System.StringComparison]::OrdinalIgnoreCase)) {
+  try {
+    $mciCode = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class MciNative {
+  [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
+  public static extern int mciSendString(string command, StringBuilder buffer, int bufferSize, IntPtr hwndCallback);
+}
+'@
+    Add-Type -TypeDefinition $mciCode -ErrorAction SilentlyContinue | Out-Null
+
+    $alias = "tmall_" + [Guid]::NewGuid().ToString("N")
+    $buf = New-Object System.Text.StringBuilder 260
+    [void][MciNative]::mciSendString("close $alias", $buf, $buf.Capacity, [IntPtr]::Zero)
+    $openCode = [MciNative]::mciSendString("open `"$audioFile`" type mpegvideo alias $alias", $buf, $buf.Capacity, [IntPtr]::Zero)
+    if ($openCode -ne 0) {
+      throw ("MCI open failed: {0}" -f $openCode)
+    }
+
+    $playCode = [MciNative]::mciSendString("play $alias wait", $buf, $buf.Capacity, [IntPtr]::Zero)
+    $closeCode = [MciNative]::mciSendString("close $alias", $buf, $buf.Capacity, [IntPtr]::Zero)
+    if ($playCode -eq 0) {
+      Write-Output "PLAYBACK_CONFIRMED=1"
+      Write-Output "PLAYBACK_BACKEND=MCI"
+      Write-Output "PLAYSTATE_FINAL=WAIT_OK"
+      Write-Output ("PLAY_MCI_CODES=open:{0},play:{1},close:{2}" -f $openCode, $playCode, $closeCode)
+      exit 0
+    }
+  }
+  catch {
+    # swallow and continue to WMPlayer path
+  }
+}
+
+# 非 WAV 格式继续尝试 Windows Media Player COM；若失败，再回退到系统默认播放器
 try {
   $wmp = New-Object -ComObject WMPlayer.OCX
   $wmp.settings.autoStart = $false
@@ -89,5 +126,5 @@ try {
   exit 0
 }
 catch {
-  throw ("Failed to play audio via WMPlayer COM and Shell fallback: {0}" -f $_.Exception.Message)
+  throw ("Failed to play audio via MCI, WMPlayer COM, and Shell fallback: {0}" -f $_.Exception.Message)
 }

@@ -20,8 +20,11 @@ Implemented:
 Locally tested in this environment:
 - Python unit smoke tests with `unittest` (Flask test client + mock provider/backend).
 - `scripts/speak.py` CLI with `config.example.json`.
-- Local Windows speaker path restored to **silent/background playback** through `local_windows_speaker.player_script` + `WMPlayer COM`.
-- Emergency shell-open fallback exists for recovery, but it is not the preferred steady-state path because it may open a visible player window.
+- Local Windows speaker path now prefers **silent/background playback via MCI (`winmm.dll`)** for MP3.
+- WAV local playback continues to use `SoundPlayer`.
+- `WMPlayer COM` is retained as a secondary fallback path.
+- Shell-open fallback exists for recovery only and may open a visible player window.
+- **Human-heard validation passed for local silent/background playback on this machine.**
 
 Mocked / not verified here:
 - Real Tmall Genie hardware playback.
@@ -37,6 +40,7 @@ You may honestly claim:
 - "Preflight and rehearsal tooling exist for real-player bring-up."
 - "Integration evidence can be recorded with a timestamped artifact."
 - "Local silent/background playback is currently available on this Windows machine."
+- "Local silent/background playback has passed human-heard validation on this machine."
 
 You may **not** honestly claim unless a human confirmed it:
 - "Real Tmall Genie playback is verified."
@@ -195,13 +199,16 @@ Serves generated audio files from `tts.output_dir`.
 
 Current preferred local playback path:
 - `local_windows_speaker.py` should invoke the configured `local_windows_speaker.player_script`
-- `play-local-audio.ps1` should try `WMPlayer COM` first for silent/background playback
+- `play-local-audio.ps1` should prefer **MCI (`winmm.dll`)** for MP3 silent/background playback
+- WAV local playback should continue to use `SoundPlayer`
+- `WMPlayer COM` is a secondary fallback path
 - shell-open fallback is recovery-only and may open a visible player window
 
 Important nuance:
-- short MP3 clips may transition too quickly for rigid `playState=3 -> end` checks
+- short MP3 clips were observed to be unreliable on rigid `WMPlayer` state-based logic
 - do not treat a missed `playState=3` as proof that playback failed
 - `WMPlayer` state alone is not the same as human-heard confirmation
+- final local acceptance should always include a human-heard check
 
 ## Home Assistant / Real HTTP Player Integration Notes
 
