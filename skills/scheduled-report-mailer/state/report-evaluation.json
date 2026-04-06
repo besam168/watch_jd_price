@@ -1,0 +1,48 @@
+{
+  "generatedAt": "2026-04-06T11:43:01.322168",
+  "reportPath": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt",
+  "mustCheckResults": {
+    "gaza": {
+      "ok": false,
+      "matchedKeywords": []
+    },
+    "ukraine": {
+      "ok": true,
+      "matchedKeywords": [
+        "俄乌"
+      ]
+    },
+    "us-china-trade": {
+      "ok": true,
+      "matchedKeywords": [
+        "中美关系",
+        "china"
+      ]
+    },
+    "us-equities": {
+      "ok": true,
+      "matchedKeywords": [
+        "S&P 500",
+        "纳斯达克",
+        "道琼斯",
+        "美股"
+      ]
+    },
+    "gold": {
+      "ok": true,
+      "matchedKeywords": [
+        "黄金"
+      ]
+    },
+    "brent": {
+      "ok": true,
+      "matchedKeywords": [
+        "布伦特"
+      ]
+    }
+  },
+  "summary": {
+    "okCount": 5,
+    "total": 6
+  }
+}

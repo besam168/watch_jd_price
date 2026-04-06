@@ -18,3 +18,15 @@ COLLECT_OK
 ȫ���ۺ��鱨���� - 2026-04-06
 C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
 FAILED_GROUPS: none
+===== PLAN 2026-04-06T11:42:12.912857 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-06T11:42:12.912857 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-06T11:43:01.332168 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SEND 2026-04-06T11:43:02.369795 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-06

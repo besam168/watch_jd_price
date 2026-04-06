@@ -79,6 +79,7 @@ def main() -> int:
     python_exe = cfg["python"]
     started = datetime.now().isoformat()
     plan_script = SKILL_ROOT / "scripts" / "build-collect-plan.py"
+    eval_script = SKILL_ROOT / "scripts" / "evaluate-report.py"
     plan_rc, plan_stdout, plan_stderr = run_step(python_exe, str(plan_script))
     state: dict = {
         "job": args.job,
@@ -88,6 +89,8 @@ def main() -> int:
         "plan": {"rc": plan_rc, "stdout": plan_stdout, "stderr": plan_stderr},
         "collect": None,
         "send": None,
+        "evaluation": None,
+        "failedStage": None,
         "outputs": {},
     }
 
@@ -105,10 +108,19 @@ def main() -> int:
         append_log(args.job, stderr)
     state["outputs"] = resolve_outputs(cfg)
     if rc != 0:
+        state["failedStage"] = "collect"
         state["finishedAt"] = datetime.now().isoformat()
         save_state(args.job, state)
         print("JOB_FAILED_AT_COLLECT")
         return rc
+
+    eval_rc, eval_stdout, eval_stderr = run_step(python_exe, str(eval_script))
+    state["evaluation"] = {"rc": eval_rc, "stdout": eval_stdout, "stderr": eval_stderr}
+    append_log(args.job, f"===== EVALUATE {datetime.now().isoformat()} rc={eval_rc} =====")
+    append_log(args.job, eval_stdout or "(no eval stdout)")
+    if eval_stderr:
+        append_log(args.job, "[eval stderr]")
+        append_log(args.job, eval_stderr)
 
     if not args.collect_only:
         rc, stdout, stderr = run_step(python_exe, job["send_script"])
@@ -119,6 +131,7 @@ def main() -> int:
             append_log(args.job, "[stderr]")
             append_log(args.job, stderr)
         if rc != 0:
+            state["failedStage"] = "send"
             state["finishedAt"] = datetime.now().isoformat()
             state["outputs"] = resolve_outputs(cfg)
             save_state(args.job, state)

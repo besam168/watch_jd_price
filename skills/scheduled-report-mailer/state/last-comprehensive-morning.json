@@ -1,7 +1,7 @@
 {
   "job": "comprehensive-morning",
-  "mode": "collect-only",
-  "startedAt": "2026-04-06T11:32:47.825913",
+  "mode": "collect-and-send",
+  "startedAt": "2026-04-06T11:42:12.912857",
   "policy": {
     "timeWindowHours": {
       "min": 0,
@@ -35,12 +35,22 @@
     "stdout": "COLLECT_OK\nȫ���ۺ��鱨���� - 2026-04-06\nC:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt\nFAILED_GROUPS: none\n",
     "stderr": ""
   },
-  "send": null,
+  "send": {
+    "rc": 0,
+    "stdout": "SEND_OK\nȫ���ۺ��鱨���� - 2026-04-06\n",
+    "stderr": ""
+  },
+  "evaluation": {
+    "rc": 0,
+    "stdout": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\scheduled-report-mailer\\state\\report-evaluation.json\n",
+    "stderr": ""
+  },
+  "failedStage": null,
   "outputs": {
     "latest_subject": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_subject.txt",
     "latest_report_txt": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt",
     "latest_report_html": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.html",
     "latest_collect_status": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_collect_status.json"
   },
-  "finishedAt": "2026-04-06T11:33:30.984362"
+  "finishedAt": "2026-04-06T11:43:02.370794"
 }
