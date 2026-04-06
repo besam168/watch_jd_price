@@ -2,7 +2,7 @@ param(
     [string]$OutputDir = "C:\Users\besam\.openclaw\workspace\qq-screenshots",
     [switch]$NoMedia,
     [ValidateSet('system','pil')]
-    [string]$Method = 'system'
+    [string]$Method = 'pil'
 )
 
 $ErrorActionPreference = 'Stop'

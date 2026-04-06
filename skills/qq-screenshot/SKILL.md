@@ -1,6 +1,6 @@
 ---
 name: qq-screenshot
-description: Capture a fresh Windows desktop screenshot for QQ replies. Use when the user asks for 截图、截屏、桌面图、当前屏幕、最新桌面. Prefer the Windows Win+PrtScn system screenshot path, save into a dedicated QQ output folder, and return MEDIA:<path> for direct reply delivery.
+description: Capture a fresh Windows desktop screenshot for QQ replies. Use when the user asks for 截图、截屏、桌面图、当前屏幕、最新桌面. Prefer a live PIL/ImageGrab capture by default for truly fresh screenshots, keep the Windows Win+PrtScn system screenshot path as a fallback/manual option, save into a dedicated QQ output folder, and return MEDIA:<path> for direct reply delivery.
 ---
 
 # qq-screenshot
@@ -9,7 +9,8 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 
 ## What this skill does
 - Capture the current primary screen
-- Prefer the **Windows Win + PrtScn** system screenshot path by default
+- Prefer a **live PIL / ImageGrab** capture by default
+- Keep the **Windows Win + PrtScn** system screenshot path as a backup/manual option
 - Save each screenshot into a dedicated QQ folder with a new filename
 - Return `MEDIA:<path>` for direct OpenClaw media reply
 
@@ -28,7 +29,7 @@ Use this skill for requests like:
 ## Default behavior
 - Output folder: `C:\Users\besam\.openclaw\workspace\qq-screenshots`
 - Capture target: primary screen
-- Default method: `system` (Win + PrtScn)
+- Default method: `pil` (fresh live capture)
 - Output filename: `qq-screenshot_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 
@@ -38,9 +39,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq
 ```
 
 ## Useful options
-### Force PIL live capture instead of Win + PrtScn
+### Force Win + PrtScn system screenshot
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq.ps1 -Method pil
+powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq.ps1 -Method system
 ```
 
 ### Save to a custom folder
@@ -56,5 +57,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq
 ## Notes
 - Windows only
 - Designed for QQ screenshot replies
-- Default to **Win + PrtScn** because the user explicitly prefers that path
-- Use `-Method pil` only when the system screenshot path is unsuitable on the current machine
+- Default to **PIL / ImageGrab** because this machine needs truly fresh screenshots
+- Keep `-Method system` only as a backup/manual path when explicitly needed
