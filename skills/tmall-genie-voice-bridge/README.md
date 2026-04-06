@@ -1,6 +1,6 @@
 # tmall-genie-voice-bridge
 
-A local MVP bridge for text-to-speech and playback routing.
+A local MVP bridge for text-to-speech, speech capture, wake-word prototyping, and playback routing.
 
 This project does **not** directly capture microphone audio from a real Tmall Genie device and does **not** directly push audio to Tmall Genie hardware in this repository state.
 
@@ -13,24 +13,29 @@ Implemented:
   - `mock_tmall_genie` (mock only)
   - `local_http_player` (HTTP dispatch to external player service)
   - `local_windows_speaker` (PowerShell local playback)
-- Demo scripts for local text roundtrip, callback roundtrip, WAV roundtrip, and HTTP-player rehearsal.
+- One-shot microphone / WAV speech input via `scripts/listen_once.py`.
+- Wake-word prototype loop via `scripts/wake_loop.py`.
 - Preflight + rehearsal + acceptance-record tooling for real HTTP playback bring-up.
 - Lightweight smoke tests for request handling and core audio flow.
 
 Locally tested in this environment:
-- Python unit smoke tests with `unittest` (Flask test client + mock provider/backend).
+- Python unit smoke tests with `unittest`.
 - `scripts/speak.py` CLI with `config.example.json`.
 - Local Windows speaker path now prefers **silent/background playback via MCI (`winmm.dll`)** for MP3.
 - WAV local playback continues to use `SoundPlayer`.
 - `WMPlayer COM` is retained as a secondary fallback path.
 - Shell-open fallback exists for recovery only and may open a visible player window.
 - **Human-heard validation passed for local silent/background playback on this machine.**
+- Microphone capture works with the Logitech C270 webcam microphone.
+- Local Whisper works on captured WAV files and has successfully recognized Chinese short phrases in live tests.
+- Wake-word MVP has triggered at least once in local testing and replied with local TTS, but stability still needs improvement.
 
 Mocked / not verified here:
 - Real Tmall Genie hardware playback.
 - Production deployment behavior.
 - Real microphone capture quality and device compatibility on every machine.
 - Home Assistant -> target device -> audible playback proof in a real home environment.
+- Product-grade wake-word stability.
 
 ## Claim Boundary
 
@@ -41,24 +46,22 @@ You may honestly claim:
 - "Integration evidence can be recorded with a timestamped artifact."
 - "Local silent/background playback is currently available on this Windows machine."
 - "Local silent/background playback has passed human-heard validation on this machine."
+- "Microphone capture + local Whisper transcription has been wired up and works in local experiments."
+- "Wake-word MVP exists and has triggered successfully in at least one local test."
 
 You may **not** honestly claim unless a human confirmed it:
 - "Real Tmall Genie playback is verified."
 - "Hardware playback is complete."
 - "The device definitely played audio."
-- "The microphone / callback path is production-ready on real hardware."
-
-If a run only proves bridge behavior or HTTP acceptance, describe it as:
-- bridge handoff verified
-- rehearsal passed
-- target accepted the request
-- playback still needs human confirmation
+- "The microphone / callback / wake-word path is production-ready on real hardware."
+- "Wake-word detection is already stable enough for always-on unattended use."
 
 ## Repository Layout
 
 - `scripts/bridge_server.py`: Flask bridge server.
 - `scripts/speak.py`: text-to-audio generation and backend dispatch.
-- `scripts/listen_once.py`: one-shot speech recognition (Windows System.Speech / local Whisper path).
+- `scripts/listen_once.py`: one-shot speech recognition (Windows System.Speech or local Whisper path).
+- `scripts/wake_loop.py`: wake-word prototype loop for fast local wake-response testing.
 - `scripts/backends/`: playback adapters.
 - `scripts/providers/`: TTS providers.
 - `config.example.json`: baseline config template.
@@ -76,8 +79,6 @@ If a run only proves bridge behavior or HTTP acceptance, describe it as:
 - `scripts/record_acceptance_result.py`: timestamped acceptance evidence recorder (JSON/Markdown).
 - `FAILURE_MATRIX.md`: quick troubleshooting matrix for HTTP playback integration.
 - `HOME_ASSISTANT_ACCEPTANCE.md`: real Home Assistant bring-up and human acceptance checklist.
-- `tests/test_mvp_smoke.py`: local smoke tests.
-- `tests/test_acceptance_recorder.py`: targeted tests for acceptance record generation.
 
 ## Quickstart
 
@@ -117,31 +118,96 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-callback-roundtrip.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File .\demo-text-roundtrip.ps1 -Text "本地直连测试" -Mode local -Config .\config.local-speaker.json
 ```
 
+## Local Windows Speaker Notes
+
+Current preferred local playback path:
+- `local_windows_speaker.py` should invoke the configured `local_windows_speaker.player_script`
+- `play-local-audio.ps1` should prefer **MCI (`winmm.dll`)** for MP3 silent/background playback
+- WAV local playback should continue to use `SoundPlayer`
+- `WMPlayer COM` is a secondary fallback path
+- shell-open fallback is recovery-only and may open a visible player window
+
+Important nuance:
+- `WMPlayer` state alone is not the same as human-heard confirmation
+- final local acceptance should always include a human-heard check
+
 ## Microphone / STT Local Testing (Windows)
 
-The local STT path uses Windows `System.Speech` via PowerShell, with optional local Whisper integration for richer fallback.
-Microphone access can be healthy while recognition quality is still unstable, especially for `zh-CN`.
+The local STT path uses either:
+- Windows `System.Speech` (best-effort, weaker for Chinese), or
+- Local Whisper (preferred on this machine)
 
-Preflight recognizer + microphone access:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check-microphone.ps1 -Culture zh-CN
-```
-
-Run one-shot microphone recognition with practical defaults:
+Recommended local Chinese testing path:
 
 ```bash
-python scripts/listen_once.py --culture zh-CN --timeout-seconds 8 --attempts 2
+python scripts/listen_once.py --engine local_whisper --culture zh-CN --keep-recorded-wav
 ```
 
-If microphone results are unstable, use deterministic WAV fallback in the same command:
+Current stable defaults in `listen_once.py` are tuned for local experiments on this machine:
+- fixed default mic device: `麦克风 (Logi C270 HD WebCam)`
+- longer capture window for normal dictation
+- pre-roll delay before capture
+- raw audio level summary
+- cleaned audio level summary
+- preprocessing before Whisper
+
+### Preprocessing modes
+
+`listen_once.py` now supports two preprocessing modes:
+- `standard`:
+  - for normal dictation / one-shot transcription
+  - uses highpass + lowpass + silence removal + loudness normalization
+- `wake`:
+  - for short wake phrases
+  - uses lighter preprocessing to avoid over-trimming short utterances
+
+Examples:
 
 ```bash
-python scripts/listen_once.py --culture zh-CN --timeout-seconds 8 --attempts 2 --fallback-wav .\tmp_audio\listen-once-test.wav
+python scripts/listen_once.py --engine local_whisper --culture zh-CN --preprocess-mode standard
 ```
 
-`listen_once.py` returns JSON and includes diagnostics such as `installed_recognizers`, `elapsed_ms`, per-attempt results, and warnings.  
-Do not treat STT success as proof of real hardware playback.
+```bash
+python scripts/listen_once.py --engine local_whisper --culture zh-CN --preprocess-mode wake --timeout-seconds 3 --pre-roll-seconds 0.2
+```
+
+### What to look at in the JSON output
+
+For debugging, pay attention to:
+- `level_summary`
+- `cleaned_level_summary`
+- `likely_silent`
+- `likely_too_quiet_for_stt`
+- `recorded_wav_path`
+- `cleaned_wav_path`
+- `preprocess_filter_chain`
+
+Interpretation:
+- audio may be present but still too weak for reliable STT
+- short Chinese replies like `在` are much harder than longer replies like `我在`
+- wake-word detection should not reuse the exact same preprocessing strategy as normal dictation
+
+## Wake-Word MVP
+
+`scripts/wake_loop.py` is currently a **wake-word MVP**, not a product-grade always-on detector.
+
+### Current goal
+- Say a wake phrase such as `啊三在吗`
+- System responds locally with `我在`
+
+### Current characteristics
+- Uses `local_whisper`
+- Uses fast capture defaults for responsiveness
+- Uses `preprocess_mode="wake"`
+- Uses local silent/background playback for the reply
+- Supports fuzzy wake variants like `啊三`, `阿三`, `阿山`, `啊山`, and `啊三在吗`
+
+### Important limitation
+Wake-word triggering has worked in local testing at least once, but it is **not yet stable enough** for unattended always-on use.
+Current remaining work is mainly around:
+- reducing latency
+- improving short-phrase stability
+- balancing wake responsiveness vs false negatives
 
 ## Endpoint Contract
 
@@ -174,41 +240,9 @@ Minimal example:
 
 Same accepted payload formats and text keys as `/speak`.
 
-Extra callback metadata fields (optional):
-- `source`
-- `session_id` / `sessionId`
-- `user_id` / `userId`
-- `trace_id` / `traceId`
-- `intent`
-
 ### `GET /audio/<filename>`
 
 Serves generated audio files from `tts.output_dir`.
-
-## Config Notes
-
-- `tts.provider`: `mock` (no external TTS dependency) or `edge` (requires `edge-tts`).
-- `tts.max_text_length`: optional integer guard. Default `4000`.
-- `backend.type`: `mock_tmall_genie`, `local_http_player`, or `local_windows_speaker`.
-- `http_player.audio_base_url`:
-  - `auto`: derive from request host/proto (supports `X-Forwarded-*` headers)
-  - explicit URL: fixed base for audio URLs
-- `http_player.public_base_url`: if set, used as authoritative public base URL for `/audio/...` links.
-
-## Local Windows Speaker Notes
-
-Current preferred local playback path:
-- `local_windows_speaker.py` should invoke the configured `local_windows_speaker.player_script`
-- `play-local-audio.ps1` should prefer **MCI (`winmm.dll`)** for MP3 silent/background playback
-- WAV local playback should continue to use `SoundPlayer`
-- `WMPlayer COM` is a secondary fallback path
-- shell-open fallback is recovery-only and may open a visible player window
-
-Important nuance:
-- short MP3 clips were observed to be unreliable on rigid `WMPlayer` state-based logic
-- do not treat a missed `playState=3` as proof that playback failed
-- `WMPlayer` state alone is not the same as human-heard confirmation
-- final local acceptance should always include a human-heard check
 
 ## Home Assistant / Real HTTP Player Integration Notes
 
@@ -218,83 +252,11 @@ Recommended path for a real playback target:
 - Keep `http_player.player_url` pointed at your Home Assistant or other HTTP player endpoint.
 - Do **not** leave external playback on `127.0.0.1` audio URLs unless the player runs on the same machine.
 
-Example Home Assistant service payload pattern:
-
-```json
-{
-  "entity_id": "media_player.tmall_genie",
-  "media_content_id": "{{audio_url}}",
-  "media_content_type": "music"
-}
-```
-
-Recommended config rules:
-- If Home Assistant reaches the bridge through a reverse proxy or fixed domain, set `http_player.public_base_url`.
-- If the incoming request host is already the correct externally reachable address, `audio_base_url: "auto"` is acceptable.
-- If the player endpoint needs auth, keep it in `http_player.headers.Authorization`.
-- Start from `config.home-assistant.example.json` and replace `HOME_ASSISTANT_HOST`, `BRIDGE_HOST`, token, and `entity_id` before real testing.
-
 Minimum real-world checklist before claiming playback is ready:
 1. `/speak` returns an `audio_url` that the player machine can actually open.
 2. The player endpoint returns HTTP 2xx.
 3. The target device fetches the generated `/audio/...` file successfully.
 4. A human confirms the device actually played the sound.
-
-Preflight before real integration:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\preflight-real-http-player.ps1 -Config .\config.real-http-player.template.json
-```
-
-Then run a single rehearsal call against `/speak`:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\rehearse-real-http-player.ps1 -Config .\config.json -BridgeUrl http://127.0.0.1:57881/speak -Text "真实联调演练"
-```
-
-What the rehearsal does:
-- runs the same config preflight first
-- stops before `/speak` if preflight has blocking issues (unless `-Force` is used)
-- sends one real bridge request
-- returns structured JSON including bridge HTTP status, `audio_url`, backend name, and surfaced target status if the playback endpoint rejects the request
-
-Record one acceptance evidence artifact (timestamped JSON + Markdown under `acceptance_records/`):
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\record-acceptance-result.ps1 `
-  -Config .\config.json `
-  -PreflightJsonPath .\tmp\preflight.json `
-  -RehearsalJsonPath .\tmp\rehearsal.json `
-  -HumanHeard `
-  -HumanNote "Heard on living-room speaker at normal volume."
-```
-
-You can also pass inline JSON with `-PreflightJsonInline` / `-RehearsalJsonInline`.
-This recorder is for integration evidence keeping and does not claim hardware playback unless `-HumanHeard` is set by a human.
-When output filenames collide in the same second, recorder files are auto-suffixed (`-2`, `-3`, ...) instead of being overwritten.
-
-## Acceptance Rule of Thumb
-
-Treat these as different levels of proof:
-1. **Local bridge success**: the bridge accepted input and generated audio.
-2. **HTTP handoff success**: the playback target returned HTTP 2xx.
-3. **Fetch-path success**: the target could actually reach the generated `audio_url`.
-4. **Real playback success**: a human heard the target device play audio.
-
-Only level 4 justifies saying real playback is verified.
-Levels 1-3 are useful progress, but they are not the same thing.
-
-The preflight script checks:
-- whether `backend.type` is `local_http_player`
-- whether auth/header placeholders are still present
-- whether `Authorization` still uses the expected `Bearer ...` shape
-- whether `Content-Type` still looks like JSON
-- whether `entity_id` still looks like the example value
-- whether `media_content_id` still contains `{{audio_url}}`
-- whether Home Assistant service paths still look like `/api/services/media_player/play_media`
-- whether `public_base_url` / `audio_base_url` still look local or placeholder
-- whether bridge `/health` is currently reachable
-- whether the playback target base URL answers a quick probe
 
 ## Validation
 
@@ -303,15 +265,6 @@ Run smoke tests:
 ```bash
 python -m unittest discover -s tests -v
 ```
-
-Current automated coverage includes:
-- `/speak` plain text requests
-- forwarded header handling for `audio_base_url: auto`
-- `public_base_url` override behavior
-- callback dotted-form payload parsing
-- generated audio file serving from `/audio/...`
-- max text length guard
-- HTTP player payload rendering and dispatch
 
 Run speak CLI directly:
 

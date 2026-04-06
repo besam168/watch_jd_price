@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -17,7 +18,6 @@ if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
 from speak import load_config, speak
-
 
 SYSTEM_SPEECH_NOTE = (
     "Windows System.Speech dictation is best-effort. "
@@ -33,6 +33,10 @@ WORKSPACE_ROOT = SKILL_ROOT.parent.parent
 LOCAL_WHISPER_ROOT = WORKSPACE_ROOT / "skills" / "local-whisper"
 LOCAL_WHISPER_VENV_PYTHON = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "python.exe"
 LOCAL_WHISPER_FFMPEG = LOCAL_WHISPER_ROOT / ".venv" / "Scripts" / "ffmpeg.exe"
+DEFAULT_MIC_DEVICE = "麦克风 (Logi C270 HD WebCam)"
+DEFAULT_STABLE_TIMEOUT_SECONDS = 8
+DEFAULT_STABLE_PRE_ROLL_SECONDS = 1.0
+DEFAULT_PREPROCESS_MODE = "standard"
 
 
 def _resolve_local_whisper_env() -> tuple[dict[str, str], str]:
@@ -50,18 +54,45 @@ def _resolve_local_whisper_env() -> tuple[dict[str, str], str]:
     return env, ffmpeg_named
 
 
+def _analyze_wav_levels(wav_path: Path) -> Dict[str, Any]:
+    import audioop
+
+    with wave.open(str(wav_path), "rb") as wf:
+        channels = wf.getnchannels()
+        sample_width = wf.getsampwidth()
+        frame_rate = wf.getframerate()
+        frame_count = wf.getnframes()
+        raw = wf.readframes(frame_count)
+
+    duration_seconds = round(frame_count / float(frame_rate), 2) if frame_rate else 0.0
+    max_abs = audioop.max(raw, sample_width) if raw else 0
+    rms = audioop.rms(raw, sample_width) if raw else 0
+
+    return {
+        "channels": channels,
+        "sample_width": sample_width,
+        "frame_rate": frame_rate,
+        "frame_count": frame_count,
+        "duration_seconds": duration_seconds,
+        "max_abs": int(max_abs),
+        "rms": int(rms),
+        "likely_silent": bool(rms < 180 and max_abs < 1400),
+        "likely_too_quiet_for_stt": bool(rms < 700 or max_abs < 4000),
+    }
+
+
 def _record_microphone_to_wav(
     *,
     timeout_seconds: int,
     mic_device: str | None,
     pre_roll_seconds: float,
-) -> tuple[Path, str, int]:
+) -> tuple[Path, str, int, Dict[str, Any]]:
     env, ffmpeg_named = _resolve_local_whisper_env()
 
-    with tempfile.NamedTemporaryFile(prefix="tmall-mic-", suffix=".wav", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(prefix="tmall-mic-raw-", suffix=".wav", delete=False) as tmp:
         wav_path = Path(tmp.name)
 
-    device_name = str(mic_device or "").strip() or "audio=麦克风 (Logi C270 HD WebCam)"
+    device_name = str(mic_device or "").strip() or f"audio={DEFAULT_MIC_DEVICE}"
     if not device_name.lower().startswith("audio="):
         device_name = f"audio={device_name}"
 
@@ -104,7 +135,57 @@ def _record_microphone_to_wav(
             pass
         raise RuntimeError("ffmpeg microphone capture produced an empty wav file")
 
-    return wav_path, device_name, elapsed_ms
+    level_summary = _analyze_wav_levels(wav_path)
+    return wav_path, device_name, elapsed_ms, level_summary
+
+
+def _build_preprocess_filter(preprocess_mode: str) -> str:
+    mode = str(preprocess_mode or DEFAULT_PREPROCESS_MODE).strip().lower()
+    if mode == "wake":
+        return "highpass=f=120,lowpass=f=3800,volume=8dB"
+    return (
+        "highpass=f=120,"
+        "lowpass=f=3800,"
+        "silenceremove=start_periods=1:start_duration=0.10:start_threshold=-42dB:"
+        "stop_periods=1:stop_duration=0.25:stop_threshold=-42dB,"
+        "loudnorm=I=-16:TP=-1.5:LRA=11"
+    )
+
+
+def _preprocess_wav_for_stt(raw_wav_path: Path, preprocess_mode: str) -> tuple[Path, Dict[str, Any], str]:
+    env, ffmpeg_named = _resolve_local_whisper_env()
+
+    with tempfile.NamedTemporaryFile(prefix="tmall-mic-clean-", suffix=".wav", delete=False) as tmp:
+        cleaned_path = Path(tmp.name)
+
+    filter_chain = _build_preprocess_filter(preprocess_mode)
+    command = [
+        ffmpeg_named,
+        "-y",
+        "-i",
+        str(raw_wav_path),
+        "-af",
+        filter_chain,
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        str(cleaned_path),
+    ]
+
+    completed = subprocess.run(command, capture_output=True, text=False, check=False, env=env)
+    stdout = (completed.stdout or b"").decode("utf-8", errors="ignore").strip()
+    stderr = (completed.stderr or b"").decode("utf-8", errors="ignore").strip()
+
+    if completed.returncode != 0 or not cleaned_path.is_file() or cleaned_path.stat().st_size <= 44:
+        try:
+            cleaned_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise RuntimeError(stderr or stdout or "ffmpeg preprocessing failed")
+
+    summary = _analyze_wav_levels(cleaned_path)
+    return cleaned_path, summary, filter_chain
 
 
 def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str, Any]:
@@ -388,6 +469,16 @@ def _build_warnings(
         else:
             warnings.append("Fallback WAV attempt failed.")
 
+    level_summary = result.get("level_summary")
+    if isinstance(level_summary, dict) and level_summary.get("likely_silent"):
+        warnings.append("Recorded audio looks very quiet or mostly silent. Check microphone level, distance, and Windows input selection.")
+    elif isinstance(level_summary, dict) and level_summary.get("likely_too_quiet_for_stt"):
+        warnings.append("Recorded audio is present but still weak for reliable STT. Speak louder or move closer to the microphone.")
+
+    cleaned_level_summary = result.get("cleaned_level_summary")
+    if isinstance(cleaned_level_summary, dict) and cleaned_level_summary.get("likely_too_quiet_for_stt"):
+        warnings.append("Even after preprocessing, the cleaned audio is still weak for reliable STT.")
+
     return warnings
 
 
@@ -436,25 +527,41 @@ def listen_once(
     mic_device: str | None = None,
     keep_recorded_wav: bool = False,
     pre_roll_seconds: float = 0.0,
+    preprocess_mode: str = DEFAULT_PREPROCESS_MODE,
 ) -> Dict[str, Any]:
     primary_mode = "wav_file" if wav_path else "microphone"
 
     if engine == "local_whisper":
         cleanup_wav: Path | None = None
+        cleanup_cleaned_wav: Path | None = None
         recorded_device: str | None = None
         record_elapsed_ms = 0
+        raw_level_summary: Dict[str, Any] | None = None
+        cleaned_level_summary: Dict[str, Any] | None = None
         try:
             actual_wav_path = wav_path
             if not actual_wav_path:
-                cleanup_wav, recorded_device, record_elapsed_ms = _record_microphone_to_wav(
+                cleanup_wav, recorded_device, record_elapsed_ms, raw_level_summary = _record_microphone_to_wav(
                     timeout_seconds=timeout_seconds,
                     mic_device=mic_device,
                     pre_roll_seconds=pre_roll_seconds,
                 )
                 actual_wav_path = cleanup_wav
+            else:
+                raw_level_summary = _analyze_wav_levels(actual_wav_path)
+
+            processed_wav_path = actual_wav_path
+            applied_filter_chain = None
+            try:
+                cleanup_cleaned_wav, cleaned_level_summary, applied_filter_chain = _preprocess_wav_for_stt(actual_wav_path, preprocess_mode)
+                processed_wav_path = cleanup_cleaned_wav
+            except Exception:
+                cleanup_cleaned_wav = None
+                cleaned_level_summary = None
+                applied_filter_chain = None
 
             result = _run_local_whisper(
-                wav_path=actual_wav_path,
+                wav_path=processed_wav_path,
                 language=culture.split("-")[0].lower(),
                 model=whisper_model,
             )
@@ -464,21 +571,41 @@ def listen_once(
             result.setdefault("mode", primary_mode)
             result["result_source"] = "primary"
             result["attempt_count"] = 1
+            result["preprocess_mode"] = preprocess_mode
             if cleanup_wav:
                 result["recorded_wav_path"] = str(cleanup_wav)
+            if cleanup_cleaned_wav:
+                result["cleaned_wav_path"] = str(cleanup_cleaned_wav)
+            if applied_filter_chain:
+                result["preprocess_filter_chain"] = applied_filter_chain
             if recorded_device:
                 result["mic_device"] = recorded_device
                 result["mode"] = "microphone"
             if record_elapsed_ms:
                 result["record_elapsed_ms"] = record_elapsed_ms
+            if raw_level_summary:
+                result["level_summary"] = raw_level_summary
+            if cleaned_level_summary:
+                result["cleaned_level_summary"] = cleaned_level_summary
             warnings = [LOCAL_WHISPER_NOTE]
             if pre_roll_seconds > 0:
                 warnings.append(f"Pre-roll delay applied before capture: {pre_roll_seconds:.1f}s")
             if keep_recorded_wav and cleanup_wav:
                 warnings.append("Recorded wav was kept on disk for inspection.")
+            if raw_level_summary and raw_level_summary.get("likely_silent"):
+                warnings.append("Recorded audio looks very quiet or mostly silent. Check microphone level, distance, and Windows input selection.")
+            elif raw_level_summary and raw_level_summary.get("likely_too_quiet_for_stt"):
+                warnings.append("Recorded audio is present but still weak for reliable STT. Speak louder or move closer to the microphone.")
+            if cleanup_cleaned_wav:
+                warnings.append(f"Applied audio preprocessing before Whisper ({preprocess_mode} mode).")
             result["warnings"] = warnings
             return result
         finally:
+            if cleanup_cleaned_wav and not keep_recorded_wav:
+                try:
+                    cleanup_cleaned_wav.unlink(missing_ok=True)
+                except Exception:
+                    pass
             if cleanup_wav and not keep_recorded_wav:
                 try:
                     cleanup_wav.unlink(missing_ok=True)
@@ -546,93 +673,24 @@ def listen_once(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="One-shot speech input for tmall-genie-voice-bridge using Windows System.Speech."
-    )
-    parser.add_argument(
-        "--wav",
-        help="Optional WAV file path. If provided, transcribe this file instead of listening to the microphone.",
-    )
-    parser.add_argument(
-        "--timeout-seconds",
-        type=int,
-        default=8,
-        help="Recognition timeout in seconds for either microphone or wav recognition.",
-    )
-    parser.add_argument(
-        "--attempts",
-        type=int,
-        default=2,
-        help="Microphone retry attempts before failing. Ignored when --wav is provided.",
-    )
-    parser.add_argument(
-        "--culture",
-        default="zh-CN",
-        help="Recognizer culture, default zh-CN.",
-    )
-    parser.add_argument(
-        "--allow-culture-fallback",
-        action="store_true",
-        help="If requested culture is unavailable, fall back to the first installed recognizer culture.",
-    )
-    parser.add_argument(
-        "--initial-silence-seconds",
-        type=float,
-        default=3.0,
-        help="Initial silence timeout for System.Speech before speech starts.",
-    )
-    parser.add_argument(
-        "--babble-timeout-seconds",
-        type=float,
-        default=2.0,
-        help="Babble timeout for System.Speech.",
-    )
-    parser.add_argument(
-        "--end-silence-seconds",
-        type=float,
-        default=0.8,
-        help="End-of-speech silence timeout for System.Speech.",
-    )
-    parser.add_argument(
-        "--fallback-wav",
-        help="Optional WAV file used only when microphone recognition fails. Useful as a practical fallback path.",
-    )
-    parser.add_argument(
-        "--engine",
-        choices=["system_speech", "local_whisper"],
-        default="system_speech",
-        help="Speech recognition engine. local_whisper currently supports --wav mode and is preferred for Chinese wav transcription.",
-    )
-    parser.add_argument(
-        "--whisper-model",
-        default="small",
-        help="Whisper model name when --engine local_whisper is selected.",
-    )
-    parser.add_argument(
-        "--mic-device",
-        help="Optional ffmpeg dshow audio device name for microphone capture. Example: '麦克风 (Logi C270 HD WebCam)'.",
-    )
-    parser.add_argument(
-        "--keep-recorded-wav",
-        action="store_true",
-        help="Keep microphone-captured wav files on disk for inspection instead of deleting them after transcription.",
-    )
-    parser.add_argument(
-        "--pre-roll-seconds",
-        type=float,
-        default=0.0,
-        help="Optional delay before microphone capture starts. Useful when the human needs a beat after hearing prompt playback.",
-    )
-    parser.add_argument(
-        "--config",
-        default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
-        help="Config JSON used when --echo-speak is enabled.",
-    )
-    parser.add_argument(
-        "--echo-speak",
-        action="store_true",
-        help="If recognition succeeds, hand recognized text to scripts/speak.py flow.",
-    )
+    parser = argparse.ArgumentParser(description="One-shot speech input for tmall-genie-voice-bridge using Windows System.Speech or local Whisper.")
+    parser.add_argument("--wav", help="Optional WAV file path. If provided, transcribe this file instead of listening to the microphone.")
+    parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_STABLE_TIMEOUT_SECONDS, help="Recognition timeout in seconds for either microphone or wav recognition.")
+    parser.add_argument("--attempts", type=int, default=2, help="Microphone retry attempts before failing. Ignored when --wav is provided.")
+    parser.add_argument("--culture", default="zh-CN", help="Recognizer culture, default zh-CN.")
+    parser.add_argument("--allow-culture-fallback", action="store_true", help="If requested culture is unavailable, fall back to the first installed recognizer culture.")
+    parser.add_argument("--initial-silence-seconds", type=float, default=3.0, help="Initial silence timeout for System.Speech before speech starts.")
+    parser.add_argument("--babble-timeout-seconds", type=float, default=2.0, help="Babble timeout for System.Speech.")
+    parser.add_argument("--end-silence-seconds", type=float, default=0.8, help="End-of-speech silence timeout for System.Speech.")
+    parser.add_argument("--fallback-wav", help="Optional WAV file used only when microphone recognition fails. Useful as a practical fallback path.")
+    parser.add_argument("--engine", choices=["system_speech", "local_whisper"], default="system_speech", help="Speech recognition engine. local_whisper is currently the preferred path for Chinese wav transcription and microphone capture on this machine.")
+    parser.add_argument("--whisper-model", default="small", help="Whisper model name when --engine local_whisper is selected.")
+    parser.add_argument("--mic-device", default=DEFAULT_MIC_DEVICE, help="Optional ffmpeg dshow audio device name for microphone capture. Example: '麦克风 (Logi C270 HD WebCam)'.")
+    parser.add_argument("--keep-recorded-wav", action="store_true", help="Keep microphone-captured wav files on disk for inspection instead of deleting them after transcription.")
+    parser.add_argument("--pre-roll-seconds", type=float, default=DEFAULT_STABLE_PRE_ROLL_SECONDS, help="Optional delay before microphone capture starts. Useful when the human needs a beat after hearing prompt playback.")
+    parser.add_argument("--preprocess-mode", choices=["standard", "wake"], default=DEFAULT_PREPROCESS_MODE, help="Audio preprocessing mode. Use 'wake' for short wake phrases and 'standard' for normal dictation.")
+    parser.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"), help="Config JSON used when --echo-speak is enabled.")
+    parser.add_argument("--echo-speak", action="store_true", help="If recognition succeeds, hand recognized text to scripts/speak.py flow.")
     args = parser.parse_args()
 
     wav_path = Path(args.wav).resolve() if args.wav else None
@@ -669,16 +727,13 @@ def main() -> None:
             mic_device=args.mic_device,
             keep_recorded_wav=bool(args.keep_recorded_wav),
             pre_roll_seconds=float(args.pre_roll_seconds),
+            preprocess_mode=args.preprocess_mode,
         )
 
         if args.echo_speak and result.get("ok") and result.get("text"):
             config_path = Path(args.config).resolve()
             config = load_config(config_path)
-            result["speak_result"] = speak(
-                text=str(result["text"]),
-                config=config,
-                config_path=config_path,
-            )
+            result["speak_result"] = speak(text=str(result["text"]), config=config, config_path=config_path)
 
         print(json.dumps(result, ensure_ascii=False, indent=2))
         raise SystemExit(0 if result.get("ok") else 1)

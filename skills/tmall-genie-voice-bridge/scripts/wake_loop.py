@@ -12,8 +12,12 @@ CURRENT_DIR = Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
     sys.path.insert(0, str(CURRENT_DIR))
 
-from listen_once import listen_once
+from listen_once import DEFAULT_MIC_DEVICE, listen_once
 from speak import load_config, speak
+
+FAST_WAKE_TIMEOUT_SECONDS = 3
+FAST_WAKE_PRE_ROLL_SECONDS = 0.2
+FAST_WAKE_COOLDOWN_SECONDS = 0.3
 
 
 def normalize_text(value: str) -> str:
@@ -25,24 +29,34 @@ def normalize_text(value: str) -> str:
 
 def build_wake_variants(wake_phrase: str) -> set[str]:
     base = normalize_text(wake_phrase)
-    short_name_variants = {
-        "阿三",
+    variants = {
+        base,
+        "啊三在吗",
+        "阿三在吗",
+        "阿山在吗",
+        "啊山在吗",
+        "阿三在么",
+        "啊三在么",
+        "阿山在么",
+        "啊山在么",
         "啊三",
-        "阿散",
+        "阿三",
+        "阿3",
+        "a3",
+        "a三",
+        "啊3",
+        "呀三",
+        "亚三",
+        "阿叁",
         "阿山",
-        "阿桑",
-        "啊散",
         "啊山",
-        "啊桑",
-        "阿伞",
-        "啊伞",
-        "阿傘",
-        "啊傘",
+        "阿杉",
+        "啊杉",
+        "阿散",
+        "啊散",
+        "啊三啊",
+        "阿三啊",
     }
-    ending_variants = {"在吗", "在嗎", "在麻", "在嘛", "在吗?", "在嗎?", "在么", "在麼"}
-    variants = {base}
-    variants.update(short_name_variants)
-    variants.update({f"{name}{ending}" for name in short_name_variants for ending in ending_variants})
     return {normalize_text(v) for v in variants if normalize_text(v)}
 
 
@@ -50,51 +64,8 @@ def contains_wake_phrase(recognized_text: str, wake_phrase: str) -> bool:
     recognized = normalize_text(recognized_text)
     if not recognized:
         return False
-
     variants = build_wake_variants(wake_phrase)
-    for variant in variants:
-        if variant and variant in recognized:
-            return True
-
-    first_family = ("阿", "啊")
-    tail_family = ("三", "山", "散", "桑", "伞", "傘")
-    ending_variants = ("在吗", "在嗎", "在麻", "在嘛", "在么", "在麼")
-
-    if len(recognized) >= 2:
-        for i in range(len(recognized) - 1):
-            chunk = recognized[i : i + 2]
-            if chunk[0] in first_family and chunk[1] in tail_family:
-                if any(ending in recognized[i + 2 :] for ending in ending_variants):
-                    return True
-
-    return False
-
-
-def listen_question(
-    *,
-    culture: str,
-    timeout_seconds: int,
-    whisper_model: str,
-    mic_device: str | None,
-    keep_recorded_wav: bool,
-    pre_roll_seconds: float,
-) -> dict[str, Any]:
-    return listen_once(
-        timeout_seconds=timeout_seconds,
-        culture=culture,
-        wav_path=None,
-        attempts=1,
-        fallback_wav=None,
-        initial_silence_seconds=5.0,
-        babble_timeout_seconds=5.0,
-        end_silence_seconds=0.8,
-        allow_culture_fallback=False,
-        engine="local_whisper",
-        whisper_model=whisper_model,
-        mic_device=mic_device,
-        keep_recorded_wav=keep_recorded_wav,
-        pre_roll_seconds=pre_roll_seconds,
-    )
+    return any(variant and variant in recognized for variant in variants)
 
 
 def run_loop(
@@ -103,15 +74,13 @@ def run_loop(
     culture: str,
     timeout_seconds: int,
     whisper_model: str,
-    mic_device: str | None,
+    mic_device: str,
     wake_phrase: str,
     response_text: str,
-    question_prompt_text: str,
     pre_roll_seconds: float,
     cooldown_seconds: float,
     keep_recorded_wav: bool,
     max_turns: int,
-    listen_after_wake: bool,
 ) -> int:
     config = load_config(config_path)
     trigger_count = 0
@@ -125,9 +94,11 @@ def run_loop(
                 "response_text": response_text,
                 "engine": "local_whisper",
                 "model": whisper_model,
-                "mic_device": mic_device or "default",
+                "mic_device": mic_device,
+                "timeout_seconds": timeout_seconds,
+                "pre_roll_seconds": pre_roll_seconds,
+                "cooldown_seconds": cooldown_seconds,
                 "wake_variants": sorted(build_wake_variants(wake_phrase)),
-                "listen_after_wake": listen_after_wake,
             },
             ensure_ascii=False,
         ),
@@ -141,15 +112,16 @@ def run_loop(
             wav_path=None,
             attempts=1,
             fallback_wav=None,
-            initial_silence_seconds=5.0,
-            babble_timeout_seconds=5.0,
-            end_silence_seconds=0.8,
+            initial_silence_seconds=1.2,
+            babble_timeout_seconds=1.0,
+            end_silence_seconds=0.35,
             allow_culture_fallback=False,
             engine="local_whisper",
             whisper_model=whisper_model,
             mic_device=mic_device,
             keep_recorded_wav=keep_recorded_wav,
             pre_roll_seconds=pre_roll_seconds,
+            preprocess_mode="wake",
         )
 
         recognized_text = str(result.get("text") or "").strip()
@@ -160,6 +132,9 @@ def run_loop(
             "triggered": triggered,
             "recognized_text": recognized_text,
             "recorded_wav_path": result.get("recorded_wav_path"),
+            "cleaned_wav_path": result.get("cleaned_wav_path"),
+            "level_summary": result.get("level_summary"),
+            "cleaned_level_summary": result.get("cleaned_level_summary"),
             "warnings": result.get("warnings") or [],
         }
 
@@ -174,19 +149,6 @@ def run_loop(
             event["response_text"] = response_text
             event["speak_result"] = speak_result
             event["trigger_count"] = trigger_count
-
-            if listen_after_wake:
-                question_result = listen_question(
-                    culture=culture,
-                    timeout_seconds=timeout_seconds,
-                    whisper_model=whisper_model,
-                    mic_device=mic_device,
-                    keep_recorded_wav=keep_recorded_wav,
-                    pre_roll_seconds=pre_roll_seconds,
-                )
-                event["question_result"] = question_result
-                event["question_text"] = str(question_result.get("text") or "").strip()
-
             print(json.dumps(event, ensure_ascii=False), flush=True)
             if max_turns > 0 and trigger_count >= max_turns:
                 return 0
@@ -203,18 +165,16 @@ def main() -> None:
         default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"),
         help="Path to config JSON file",
     )
-    parser.add_argument("--wake-phrase", default="阿三在吗", help="Wake phrase to detect")
-    parser.add_argument("--response-text", default="在", help="Text to speak when wake phrase is detected")
-    parser.add_argument("--question-prompt-text", default="", help="Prompt to speak before listening for the next user question")
+    parser.add_argument("--wake-phrase", default="啊三在吗", help="Wake phrase to detect")
+    parser.add_argument("--response-text", default="我在", help="Text to speak when wake phrase is detected")
     parser.add_argument("--culture", default="zh-CN", help="Recognition culture/language hint")
-    parser.add_argument("--timeout-seconds", type=int, default=4, help="Per-listen capture duration in seconds")
-    parser.add_argument("--whisper-model", default="base", help="Whisper model name")
-    parser.add_argument("--mic-device", help="Optional ffmpeg dshow microphone device name")
-    parser.add_argument("--pre-roll-seconds", type=float, default=0.3, help="Delay before each short capture starts")
-    parser.add_argument("--cooldown-seconds", type=float, default=1.0, help="Delay after a successful wake response")
+    parser.add_argument("--timeout-seconds", type=int, default=FAST_WAKE_TIMEOUT_SECONDS, help="Per-listen capture duration in seconds")
+    parser.add_argument("--whisper-model", default="small", help="Whisper model name")
+    parser.add_argument("--mic-device", default=DEFAULT_MIC_DEVICE, help="ffmpeg dshow microphone device name")
+    parser.add_argument("--pre-roll-seconds", type=float, default=FAST_WAKE_PRE_ROLL_SECONDS, help="Delay before each capture starts")
+    parser.add_argument("--cooldown-seconds", type=float, default=FAST_WAKE_COOLDOWN_SECONDS, help="Delay after a successful wake response")
     parser.add_argument("--keep-recorded-wav", action="store_true", help="Keep captured wav files for debugging")
     parser.add_argument("--max-turns", type=int, default=1, help="Exit after this many successful wake detections; 0 means run forever")
-    parser.add_argument("--listen-after-wake", action="store_true", help="After wake response, prompt and listen for one follow-up question")
     args = parser.parse_args()
 
     if args.timeout_seconds <= 0:
@@ -236,12 +196,10 @@ def main() -> None:
             mic_device=args.mic_device,
             wake_phrase=args.wake_phrase,
             response_text=args.response_text,
-            question_prompt_text=args.question_prompt_text,
             pre_roll_seconds=float(args.pre_roll_seconds),
             cooldown_seconds=float(args.cooldown_seconds),
             keep_recorded_wav=bool(args.keep_recorded_wav),
             max_turns=int(args.max_turns),
-            listen_after_wake=bool(args.listen_after_wake),
         )
     )
 
