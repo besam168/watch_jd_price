@@ -30,3 +30,31 @@ C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-e
 ===== SEND 2026-04-06T11:43:02.369795 rc=0 =====
 SEND_OK
 ȫ���ۺ��鱨���� - 2026-04-06
+===== PLAN 2026-04-06T13:18:20.495368 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-06T13:18:20.495368 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-06T13:19:08.403665 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SEND 2026-04-06T13:19:09.487736 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+===== PLAN 2026-04-06T21:00:40.914695 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-06T21:00:40.914695 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-06T21:01:24.210863 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补
+===== SEND 2026-04-06T21:01:25.193577 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+[warning]
+状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补

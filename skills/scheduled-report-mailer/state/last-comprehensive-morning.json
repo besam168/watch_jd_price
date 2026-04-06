@@ -1,7 +1,7 @@
 {
   "job": "comprehensive-morning",
   "mode": "collect-and-send",
-  "startedAt": "2026-04-06T11:42:12.912857",
+  "startedAt": "2026-04-06T21:00:40.914695",
   "policy": {
     "timeWindowHours": {
       "min": 0,
@@ -23,7 +23,9 @@
       "ddg-discovery",
       "desktop-verification"
     ],
-    "whitelistCount": 26
+    "whitelistCount": 26,
+    "sendOnPartial": "send_with_warning",
+    "desktopFallbackEnabled": false
   },
   "plan": {
     "rc": 0,
@@ -38,13 +40,25 @@
   "send": {
     "rc": 0,
     "stdout": "SEND_OK\nȫ���ۺ��鱨���� - 2026-04-06\n",
-    "stderr": ""
+    "stderr": "",
+    "sendPolicy": "send_with_warning"
   },
   "evaluation": {
     "rc": 0,
     "stdout": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\scheduled-report-mailer\\state\\report-evaluation.json\n",
     "stderr": ""
   },
+  "summary": {
+    "status": "partial",
+    "missing": [
+      "gaza"
+    ],
+    "okCount": 5,
+    "total": 6,
+    "summaryText": "状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补"
+  },
+  "desktopFallback": null,
+  "status": "partial",
   "failedStage": null,
   "outputs": {
     "latest_subject": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_subject.txt",
@@ -52,5 +66,5 @@
     "latest_report_html": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.html",
     "latest_collect_status": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_collect_status.json"
   },
-  "finishedAt": "2026-04-06T11:43:02.370794"
+  "finishedAt": "2026-04-06T21:01:25.196579"
 }

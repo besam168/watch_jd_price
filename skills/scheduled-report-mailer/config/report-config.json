@@ -116,6 +116,14 @@
       "fallback_text": "今日无重大更新"
     }
   },
+  "delivery_policy": {
+    "send_on_partial": "send_with_warning"
+  },
+  "desktop_fallback": {
+    "enabled": false,
+    "mode": "placeholder",
+    "note": "Reserved for whitelist-page desktop fallback when must-check gaps remain."
+  },
   "jobs": {
     "comprehensive-morning": {
       "collect_script": "collect_comprehensive_report.py",
