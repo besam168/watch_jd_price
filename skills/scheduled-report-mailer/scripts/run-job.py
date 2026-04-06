@@ -21,7 +21,7 @@ def load_config() -> dict:
 
 
 def run_step(python_exe: str, script_name: str) -> tuple[int, str, str]:
-    script_path = ROOT / script_name
+    script_path = ROOT / script_name if not str(script_name).startswith(str(SKILL_ROOT)) else Path(script_name)
     completed = subprocess.run(
         [python_exe, str(script_path)],
         cwd=str(ROOT),
@@ -53,6 +53,16 @@ def resolve_outputs(cfg: dict) -> dict[str, str | None]:
     return resolved
 
 
+def summarize_policy(cfg: dict) -> dict:
+    policy = cfg.get("collection_policy", {})
+    return {
+        "timeWindowHours": policy.get("time_window_hours", {}),
+        "mustCheck": policy.get("must_check", []),
+        "strategyNames": [x.get("name") for x in policy.get("capture_strategies", [])],
+        "whitelistCount": len(policy.get("whitelist_urls", [])),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--job", required=True)
@@ -68,10 +78,14 @@ def main() -> int:
 
     python_exe = cfg["python"]
     started = datetime.now().isoformat()
+    plan_script = SKILL_ROOT / "scripts" / "build-collect-plan.py"
+    plan_rc, plan_stdout, plan_stderr = run_step(python_exe, str(plan_script))
     state: dict = {
         "job": args.job,
         "mode": "collect-only" if args.collect_only else "collect-and-send",
         "startedAt": started,
+        "policy": summarize_policy(cfg),
+        "plan": {"rc": plan_rc, "stdout": plan_stdout, "stderr": plan_stderr},
         "collect": None,
         "send": None,
         "outputs": {},
@@ -79,6 +93,11 @@ def main() -> int:
 
     rc, stdout, stderr = run_step(python_exe, job["collect_script"])
     state["collect"] = {"rc": rc, "stdout": stdout, "stderr": stderr}
+    append_log(args.job, f"===== PLAN {started} rc={plan_rc} =====")
+    append_log(args.job, plan_stdout or "(no plan stdout)")
+    if plan_stderr:
+        append_log(args.job, "[plan stderr]")
+        append_log(args.job, plan_stderr)
     append_log(args.job, f"===== COLLECT {started} rc={rc} =====")
     append_log(args.job, stdout or "(no stdout)")
     if stderr:
