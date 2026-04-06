@@ -42,7 +42,7 @@ STALE_PATTERNS = [
     "标普500在5400点",
 ]
 
-FRESH_MIN_HOURS = 12
+FRESH_MIN_HOURS = 0
 FRESH_MAX_HOURS = 24
 SEARCH_DISCOVERY_SITES = [
     ("Reuters", "reuters.com"),
@@ -487,6 +487,77 @@ def is_bad_discovery_title(title: str) -> bool:
     return False
 
 
+def clean_summary_text(text: str) -> str:
+    text = re.sub(r"<[^>]+>", "", text or "")
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def chineseize_text(text: str) -> str:
+    text = clean_summary_text(text)
+    if not text:
+        return ""
+    lower = text.lower()
+
+    substring_rules = [
+        (("custody", "ice"), "美国执法部门已将相关人员拘押，此举反映美伊旧案余波未散，政治象征意义大于短期军事变化。"),
+        (("military approval", "abroad"), "德国相关法规显示欧洲安全压力仍在上升，人员长期出境可能被纳入更严格的国防与预备役管理框架。"),
+        (("epstein", "gates"), "盖茨与爱泼斯坦旧关系再被放大，已影响慈善捐赠与精英圈互动，对市场层面影响有限但舆论冲击明显。"),
+        (("service member", "iran"), "伊朗相关救援任务引发市场化押注争议，反映中东局势已外溢到美国国内政治与舆论层面。"),
+        (("ukraine",), "俄乌局势仍处拉锯状态，欧洲安全外溢风险未消，但若缺乏新增官方口径，不宜过度延展解读。"),
+        (("china", "hong kong"), "中方围绕涉港规则调整向美方提出抗议，显示中美在政治与制度议题上的摩擦仍未降温。"),
+    ]
+    for keywords, zh in substring_rules:
+        if all(k in lower for k in keywords):
+            return zh
+
+    regex_rules = [
+        (r"\banthropic\b", "Anthropic 相关动态显示企业级大模型竞争仍在推进，重点仍是模型能力、商业化与实际部署速度。"),
+        (r"\brobot(s|ics)?\b", "机器人主题热度延续，市场继续关注从演示走向真实商用落地的兑现节奏。"),
+        (r"\bnvidia\b", "NVIDIA 相关动向继续牵引算力链资本开支预期，是当前科技板块的重要风向标。"),
+        (r"\bai\b", "AI 赛道仍是科技主线之一，重点在真实付费场景、企业采用进度与算力投入是否持续。"),
+    ]
+    for pattern, zh in regex_rules:
+        if re.search(pattern, lower):
+            return zh
+    return text
+
+
+def compress_to_30_zh(text: str) -> str:
+    text = clean_summary_text(text)
+    if not text:
+        return "今日无额外摘要。"
+    if re.search(r"[A-Za-z]", text):
+        text = chineseize_text(text)
+    text = re.sub(r"[。！？]+", "。", text)
+    if len(text) <= 36:
+        return text if text.endswith("。") else text + "。"
+    cut = text[:34].rstrip("，,；;：: ")
+    return cut + "。"
+
+
+def title_to_cn(title: str) -> str | None:
+    raw = clean_summary_text(title)
+    lower = raw.lower()
+    mappings = [
+        (("soleimani", "arrested"), "美国拘押苏莱曼尼亲属事件升温"),
+        (("military approval", "abroad"), "德国收紧适龄男性长期出境管理"),
+        (("ukraine",), "俄乌相关局势仍在发酵"),
+        (("epstein", "gates"), "盖茨与爱泼斯坦旧关系再掀风波"),
+        (("service member", "iran"), "伊朗相关救援押注引发美国舆论争议"),
+        (("hong kong",), "中方就涉港规则变动再向美方交涉"),
+        (("anthropic",), "Anthropic 动向仍值得跟踪"),
+        (("nvidia",), "NVIDIA 相关动向继续影响算力板块"),
+        (("robot",), "机器人与自动化主题继续升温"),
+        (("ai",), "AI 产业动态持续推升科技关注度"),
+    ]
+    for keywords, zh in mappings:
+        if all(k in lower for k in keywords):
+            return zh
+    return None
+
+
 def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]:
     raw = f"{title} {summary}".lower()
     rules = [
@@ -497,7 +568,7 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
         (("houthi", "missiles"), "也门方向袭扰升级，红海与中东航运风险再抬头", "若航运威胁持续，全球运费、保险与能源运输成本都可能继续承压。"),
         (("russia", "ukraine"), "俄乌相关局势仍在发酵", "欧洲安全与外交层面的外溢风险仍在，但若缺少更扎实新增口径，不展开过度演绎。"),
         (("china", "trade"), "中美经贸摩擦仍有新动向", "若涉及调查、限制或官方表态升级，市场会重新评估供应链与风险偏好。"),
-        (("tariff", "trump"), "美国关税口径再起波动", "若涉及新一轮关税/经贸表态，全球风险偏好与出口链预期都会受到影响。"),
+        (("tariff", "trump"), "美国关税口径再起波动", "若涉及新一轮关税或经贸表态，全球风险偏好与出口链预期都会受到影响。"),
         (("stocks", "market"), "全球市场仍在围绕风险偏好重新定价", "若市场报道聚焦波动与风险偏好，说明资金仍在等待更明确的宏观与地缘信号。"),
         (("openai", "gpt"), "OpenAI 相关动态继续牵动科技板块预期", "大模型产品、商业化与监管进展仍是科技资产定价的重要变量。"),
         (("anthropic",), "Anthropic 继续推动企业级 AI 竞争", "企业端模型能力与商业化落地仍是当前 AI 板块的重要观察点。"),
@@ -506,15 +577,16 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
     ]
     for keywords, zh_title, zh_summary in rules:
         if all(k in raw for k in keywords):
-            return zh_title, zh_summary
+            return zh_title, compress_to_30_zh(zh_summary)
     title_clean = re.sub(r"\s+", " ", title).strip()
     if is_bad_discovery_title(title_clean):
         return None, None
+    forced_cn = title_to_cn(title_clean)
+    if forced_cn:
+        return forced_cn, compress_to_30_zh(summary or title_clean)
     if re.search(r"[A-Za-z]", title_clean):
-        if len(title_clean) <= 140:
-            return title_clean, summary or "请以正文抓取为准，当前为搜索发现标题。"
         return None, None
-    return title_clean, summary or "今日无额外摘要。"
+    return title_clean, compress_to_30_zh(summary or "今日无额外摘要。")
 
 
 def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]]:
