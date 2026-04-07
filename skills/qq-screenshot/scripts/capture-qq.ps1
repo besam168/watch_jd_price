@@ -2,7 +2,7 @@ param(
     [string]$OutputDir = "C:\Users\besam\.openclaw\workspace\qq-screenshots",
     [switch]$NoMedia,
     [ValidateSet('system','pil','gdi')]
-    [string]$Method = 'gdi',
+    [string]$Method = 'system',
     [ValidateSet('primary','secondary','all')]
     [string]$Screen = 'primary',
     [int]$KeepCount = 50

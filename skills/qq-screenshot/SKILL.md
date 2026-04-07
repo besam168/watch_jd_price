@@ -19,7 +19,7 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 ## Default behavior
 - Output folder: `C:\Users\besam\.openclaw\workspace\qq-screenshots`
 - Capture target: primary screen
-- Default method: `gdi` (fresh live capture)
+- Default method: `system` (latest verified realtime path on this machine)
 - Output filename: `qq-screenshot_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 - Auto-prune: keep the newest 50 screenshot files by default
