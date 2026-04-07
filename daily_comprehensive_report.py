@@ -402,7 +402,7 @@ def collect_market_snapshot() -> dict[str, str]:
     jpx_nikkei = plausible(find_number(jpx, r"Nikkei\s*225.*?([0-9,]{4,}(?:\.[0-9]+)?)"), 10000, 70000)
     data["jpx_nikkei"] = jpx_nikkei or "今日无重大更新"
     if krx:
-        kospi = plausible(find_number(krx, r"KOSPI[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 1000, 10000)
+        kospi = plausible(find_number(krx, r"KOSPI[^0-9]*([0-9,]{4,}(?:\.[0-9]+)?)"), 1500, 4000)
         data["kospi"] = kospi or "今日无重大更新"
     else:
         data["kospi"] = "今日无重大更新"
@@ -416,27 +416,47 @@ def collect_market_snapshot() -> dict[str, str]:
     return data
 
 
+def clean_range_text(value: str | None) -> str:
+    value = clean_summary_text(value or "")
+    if not value:
+        return "今日无重大更新"
+    value = value.replace("--", "-")
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def within_numeric_range(value: str | None, low: float, high: float) -> str | None:
+    num = to_float(value)
+    if num is None:
+        return None
+    if low <= num <= high:
+        return normalize_numeric_string(value)
+    return None
+
+
 def collect_commodity_snapshot() -> dict[str, str]:
     gold = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-GC=F.md")
     brent = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-BZ=F.md")
     wti = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-CL=F.md")
 
     data: dict[str, str] = {}
-    data["gold_last"] = first_plausible(find_number(gold, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["gold_open"] = first_plausible(find_number(gold, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["gold_range"] = find_number(gold, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
-    data["brent_last"] = first_plausible(find_number(brent, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["brent_open"] = first_plausible(find_number(brent, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["brent_range"] = find_number(brent, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
-    data["wti_last"] = first_plausible(find_number(wti, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["wti_open"] = first_plausible(find_number(wti, r"Open\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
-    data["wti_range"] = find_number(wti, r"Day's Range\s*([0-9,.,\- ]+)") or "今日无重大更新"
+    data["gold_last"] = within_numeric_range(find_number(gold, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)"), 1500, 4500) or "今日无重大更新"
+    data["gold_open"] = within_numeric_range(find_number(gold, r"Open\s*([0-9,]+(?:\.[0-9]+)?)"), 1500, 4500) or "今日无重大更新"
+    data["gold_range"] = clean_range_text(find_number(gold, r"Day's Range\s*([0-9,.,\- ]+)"))
+    data["brent_last"] = within_numeric_range(find_number(brent, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)"), 20, 200) or "今日无重大更新"
+    data["brent_open"] = within_numeric_range(find_number(brent, r"Open\s*([0-9,]+(?:\.[0-9]+)?)"), 20, 200) or "今日无重大更新"
+    data["brent_range"] = clean_range_text(find_number(brent, r"Day's Range\s*([0-9,.,\- ]+)"))
+    data["wti_last"] = within_numeric_range(find_number(wti, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)"), 20, 200) or "今日无重大更新"
+    data["wti_open"] = within_numeric_range(find_number(wti, r"Open\s*([0-9,]+(?:\.[0-9]+)?)"), 20, 200) or "今日无重大更新"
+    data["wti_range"] = clean_range_text(find_number(wti, r"Day's Range\s*([0-9,.,\- ]+)"))
     data["headline_oil"] = "若缺少扎实最新报价，则只保留页面抓取到的区间，不再用旧默认值补洞。"
     qv = collect_qveris_market_snapshot()
     if qv.get("gold_qv"):
-        data["gold_last"] = qv["gold_qv"]
-        data["gold_open"] = qv.get("gold_qv_open", data["gold_open"])
-        data["gold_range"] = qv.get("gold_qv_range", data["gold_range"])
+        qv_gold = within_numeric_range(qv["gold_qv"], 1500, 4500)
+        if qv_gold:
+            data["gold_last"] = qv_gold
+            data["gold_open"] = within_numeric_range(qv.get("gold_qv_open"), 1500, 4500) or data["gold_open"]
+            data["gold_range"] = clean_range_text(qv.get("gold_qv_range")) or data["gold_range"]
     return data
 
 
@@ -460,8 +480,16 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
         middle_east.append("BBC：胡塞武装对红海航运的潜在威胁仍可能扩大对全球经济的冲击。")
     if "second attack from Yemen" in reuters:
         middle_east.append("Reuters：以色列报告再次遭到来自也门方向的袭击，中东战事仍在外溢。")
+    if "Iran" in reuters and ("rescues airman" in reuters or "downed" in reuters):
+        middle_east.append("Reuters：美伊冲突相关军事行动升级，说明中东风险仍处高位，不宜简单视作无重大更新。")
     if "Kuwait says Indian worker killed" in aljazeera:
         middle_east.append("Al Jazeera：科威特称一名印度工人在伊朗对电力/水务设施袭击中死亡，冲突已触及民生基础设施。")
+    if "Iran rejects Trump's 'helpless, nervous' 48-hour ultimatum" in aljazeera:
+        middle_east.append("Al Jazeera：伊朗拒绝美方最后通牒式表态，显示中东局势仍在政治与军事双线升级。")
+    if "Alarms activated in Israel's north" in aljazeera:
+        middle_east.append("Al Jazeera：以色列北部再响警报，说明战火外溢风险仍在扩散。")
+    if "gaza" in aljazeera.lower() or "gaza" in bbc.lower() or "gaza" in reuters.lower() or "gaza" in ap.lower():
+        middle_east.append("加沙：本轮抓取仍可见加沙相关关键词，中东主线不能简单判作空白。")
     if "Iran-backed Houthis" in ap:
         middle_east.append("AP：胡塞力量卷入月度冲突并可能进一步威胁全球航运。")
 
@@ -480,7 +508,7 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
         us_china.append("Reuters China：中国已对美国贸易做法启动调查，中美经贸摩擦仍有升温空间。")
 
     return {
-        "middle_east": middle_east,
+        "middle_east": list(dict.fromkeys(middle_east)),
         "russia_ukraine": russia_ukraine,
         "us_china": us_china,
     }
