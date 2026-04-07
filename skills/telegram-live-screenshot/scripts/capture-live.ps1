@@ -3,7 +3,7 @@ param(
     [switch]$OverlayTimestamp,
     [switch]$NoMedia,
     [ValidateSet('pil','system')]
-    [string]$Method = 'pil'
+    [string]$Method = 'system'
 )
 
 $ErrorActionPreference = 'Stop'

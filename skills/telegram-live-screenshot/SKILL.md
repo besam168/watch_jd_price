@@ -1,6 +1,6 @@
 ---
 name: telegram-live-screenshot
-description: Capture a fresh Windows desktop screenshot and return a Telegram-sendable image path from a dedicated output folder. Default to PIL/ImageGrab for live screenshots, fall back to system Win+PrtScn capture when needed, and avoid CopyFromScreen as the default because it may freeze on stale frames.
+description: Capture a fresh Windows desktop screenshot and return a Telegram-sendable image path from a dedicated output folder. Default to the system screenshot route because it has now been verified to produce real-time images on this machine; keep PIL/ImageGrab as a secondary option and avoid CopyFromScreen as the default because it may freeze on stale frames.
 ---
 
 # telegram-live-screenshot
@@ -27,6 +27,8 @@ Use this skill for requests like:
 ## Default behavior
 - Output folder: `C:\Users\besam\.openclaw\workspace\new photo`
 - Capture target: primary screen
+- Default method: `system`
+- Fallback method: `pil`
 - Output filename: `live-screenshot_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 
@@ -71,5 +73,7 @@ The script:
 ## Notes
 - Windows only
 - Designed for Telegram screenshot replies
+- On this machine, `system` has been verified twice to produce real-time screenshots; use it as the default.
+- Keep `pil` as a secondary option when needed for comparison/testing.
 - Prefer this skill when older screenshot flows appear stale, cached, or confusing to verify
 - Direct-send mode is an external action and should only be used when the user explicitly wants the image sent
