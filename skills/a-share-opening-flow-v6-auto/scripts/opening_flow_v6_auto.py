@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import subprocess
-import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -13,11 +13,11 @@ TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts' 
 
 DEFAULT_STAGES = [
     ('09:15', '启动阶段', '载入当天自动流程', None),
-    ('09:25', '竞价风向阶段', '看竞价最强板块、竞价龙头、盘前观察池', ['python', str(TEST_SCRIPT)]),
-    ('09:33', '第一轮初筛阶段', '看开盘后真强票、最强板块、龙头、第一轮候选池', ['python', str(TEST_SCRIPT)]),
-    ('09:38', '第二轮筛选逻辑阶段', '对第一轮候选池跑近3日放量、近3日拉升、5日线宽松辅助', ['python', str(TEST_SCRIPT), '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
-    ('09:43', '二次强弱确认阶段', '留强去弱，更新主线、龙头、掉队票', ['python', str(TEST_SCRIPT), '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
-    ('09:45', '上午主看名单阶段', '定主看核心票、主看跟随票、降级观察票和风险预警', ['python', str(TEST_SCRIPT), '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
+    ('09:25', '竞价风向阶段', '只看竞价风向，不做最终结论', ['python', str(TEST_SCRIPT), '--json']),
+    ('09:33', '第一轮初筛阶段', '只做开盘后第一轮盘中初筛', ['python', str(TEST_SCRIPT), '--json']),
+    ('09:38', '第二轮筛选逻辑阶段', '只负责精筛，不负责最后拍板', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
+    ('09:43', '二次强弱确认阶段', '只做留强去弱和主线确认', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
+    ('09:45', '上午主看名单阶段', '只出最终上午名单和风险口径', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
 ]
 
 
@@ -34,6 +34,64 @@ def print_schedule(now_only: bool = False):
         print(f'当前时间 {now_str} 不在自动时段内。')
 
 
+def stage_view(stage_name: str, payload: dict):
+    top_sectors = payload.get('top_sectors', [])
+    candidates = payload.get('first_round_candidates', [])
+    passed = payload.get('passed', [])
+    partial = payload.get('partial', [])
+    failed = payload.get('failed', [])
+    core = payload.get('resonance_core', [])
+    follow = payload.get('resonance_follow', [])
+
+    if stage_name == '竞价风向阶段':
+        print('竞价最强板块：')
+        for x in top_sectors[:3]:
+            print(f"- {x.get('name', '')} {x.get('change_pct', 0)}%｜龙头 {x.get('leading_stock', '')}")
+        print('盘前观察池：')
+        for x in candidates[:8]:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        return
+
+    if stage_name == '第一轮初筛阶段':
+        print('第一轮候选池：')
+        for x in candidates[:10]:
+            print(f"- {x.get('name', '')} {x.get('code', '')}｜{x.get('change_pct', 0)}%｜成交额{x.get('amount_yi', 0)}亿")
+        return
+
+    if stage_name == '第二轮筛选逻辑阶段':
+        print('第二轮通过：')
+        for x in passed:
+            print(f"- {x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}")
+        print('第二轮部分通过：')
+        for x in partial:
+            print(f"- {x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}")
+        print('第二轮不通过：')
+        for x in failed:
+            print(f"- {x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}")
+        return
+
+    if stage_name == '二次强弱确认阶段':
+        print('共振核心（继续观察）：')
+        for x in core:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        print('共振跟随（留强去弱）：')
+        for x in follow:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        return
+
+    if stage_name == '上午主看名单阶段':
+        print('上午主看核心票：')
+        for x in core:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        print('上午主看跟随票：')
+        for x in follow:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        print('降级观察票：')
+        for x in partial:
+            print(f"- {x.get('name', '')} {x.get('code', '')}")
+        return
+
+
 def run_stage(stage):
     time_str, stage_name, desc, command = stage
     print(f'[{time_str}] {stage_name}')
@@ -41,16 +99,25 @@ def run_stage(stage):
     if not command:
         print('  - 无需外部脚本调用')
         return 0
-    print(f'  - 调用: {' '.join(command)}')
+    print(f"  - 调用: {' '.join(command)}")
     try:
         env = dict(**__import__('os').environ)
         env['PYTHONIOENCODING'] = 'utf-8'
-        result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60, env=env)
-        if result.stdout.strip():
-            print(result.stdout.strip())
-        if result.stderr.strip():
-            print(result.stderr.strip())
-        return result.returncode
+        result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=90, env=env)
+        if result.returncode != 0:
+            if result.stdout.strip():
+                print(result.stdout.strip())
+            if result.stderr.strip():
+                print(result.stderr.strip())
+            return result.returncode
+        output = result.stdout.strip()
+        try:
+            payload = json.loads(output)
+            stage_view(stage_name, payload)
+        except Exception:
+            if output:
+                print(output)
+        return 0
     except Exception as e:
         print(f'  - 调用失败: {e}')
         return 1
@@ -105,7 +172,7 @@ def main():
         print('\n自动流程模拟：')
         for stage in DEFAULT_STAGES:
             run_stage(stage)
-        print('当前为自动指令版增强骨架，已能按阶段调用 V6测试版入口。')
+        print('当前自动指令版已按五个时间点分开输出口径。')
         return 0
 
     if args.auto_loop:
