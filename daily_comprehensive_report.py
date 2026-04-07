@@ -301,25 +301,79 @@ def collect_qveris_market_snapshot() -> dict[str, str]:
         return {}
 
     out: dict[str, str] = {}
+    stock_ranges = {
+        "AAPL": (50, 500),
+        "NVDA": (50, 2000),
+        "TSLA": (50, 1000),
+    }
     for key in ("AAPL", "NVDA", "TSLA"):
         item = data.get(key) or {}
         price = item.get("c") or item.get("price")
         change = item.get("dp")
-        if price is not None:
-            out[key.lower()] = f"{price}"
+        low, high = stock_ranges[key]
+        price_text = plausible(str(price) if price is not None else None, low, high)
+        if price_text is not None:
+            out[key.lower()] = price_text
         if change is not None:
-            out[f"{key.lower()}_change"] = f"{change}%"
+            try:
+                change_num = float(change)
+                if -30 <= change_num <= 30:
+                    out[f"{key.lower()}_change"] = f"{change_num:.2f}%"
+            except Exception:
+                pass
 
     gold = data.get("XAUUSD") or {}
     if isinstance(gold, dict):
-        if gold.get("price") is not None:
-            out["gold_qv"] = f"{gold.get('price')}"
-        if gold.get("open") is not None:
-            out["gold_qv_open"] = f"{gold.get('open')}"
-        if gold.get("dayLow") is not None and gold.get("dayHigh") is not None:
-            out["gold_qv_range"] = f"{gold.get('dayLow')} - {gold.get('dayHigh')}"
+        gold_price = plausible(str(gold.get("price")) if gold.get("price") is not None else None, 1800, 4000)
+        gold_open = plausible(str(gold.get("open")) if gold.get("open") is not None else None, 1800, 4000)
+        gold_low = plausible(str(gold.get("dayLow")) if gold.get("dayLow") is not None else None, 1800, 4000)
+        gold_high = plausible(str(gold.get("dayHigh")) if gold.get("dayHigh") is not None else None, 1800, 4000)
+        if gold_price is not None:
+            out["gold_qv"] = gold_price
+        if gold_open is not None:
+            out["gold_qv_open"] = gold_open
+        if gold_low is not None and gold_high is not None:
+            out["gold_qv_range"] = f"{gold_low} - {gold_high}"
 
     return out
+
+
+def sanitize_report_text(text: str) -> str:
+    replacements = {
+        "�?": "",
+        "过�?2-24小时": "过去0-24小时",
+        "补�?": "补充",
+        "二�?0字左右总判�?": "二、50字左右总判断",
+        "一、重要头条新�?": "一、重要头条新闻",
+        "三、全球市场动�?": "三、全球市场动态",
+        "四、地缘政治热�?": "四、地缘政治热点",
+        "五、全球经济与产业动�?": "五、全球经济与产业动态",
+        "六、风险预警（24-48小时短期 / 中期 / 长期�?": "六、风险预警（24-48小时短期 / 中期 / 长期）",
+        "七、投资建�?": "七、投资建议",
+        "【美股�?": "【美股】",
+        "【欧洲与亚太股市�?": "【欧洲与亚太股市】",
+        "【商品与避险资产�?": "【商品与避险资产】",
+        "【中东�?": "【中东】",
+        "【俄乌�?": "【俄乌】",
+        "【中美关�?/ 东亚政治�?": "【中美关系 / 东亚政治】",
+        "【AI / 机器�?/ 科技前沿�?": "【AI / 机器人 / 科技前沿】",
+        "【美股科技龙头快照（QVeris，如存在）�?": "【美股科技龙头快照（QVeris，如存在）】",
+        "【短期�?": "【短期】",
+        "【中期�?": "【中期】",
+        "【长期�?": "【长期】",
+        "更�?": "更新",
+        "动�?": "动态",
+        "热�?": "热点",
+        "判�?": "判断",
+        "建�?": "建议",
+        "发�?": "发酵",
+        "交�?": "交涉",
+        "升�?": "升温",
+        "投�?": "投入",
+    }
+    for old_s, new_s in replacements.items():
+        text = text.replace(old_s, new_s)
+    return text
 
 
 def collect_market_snapshot() -> dict[str, str]:
@@ -491,6 +545,14 @@ def clean_summary_text(text: str) -> str:
     text = re.sub(r"<[^>]+>", "", text or "")
     text = html.unescape(text)
     text = re.sub(r"\s+", " ", text).strip()
+    if re.search(r"[\u4e00-\u9fff]", text):
+        return text
+    if re.search(r"[^\x00-\x7F]", text):
+        return ""
+    if text.count("�") >= 1:
+        return ""
+    if len(text) <= 20 and text.isascii() and text.isupper():
+        return ""
     return text
 
 
@@ -544,6 +606,8 @@ def title_to_cn(title: str) -> str | None:
         (("soleimani", "arrested"), "美国拘押苏莱曼尼亲属事件升温"),
         (("military approval", "abroad"), "德国收紧适龄男性长期出境管理"),
         (("ukraine",), "俄乌相关局势仍在发酵"),
+        (("gaza",), "加沙局势仍牵动中东风险定价"),
+        (("oil", "brent"), "国际油价与布伦特走势继续受关注"),
         (("epstein", "gates"), "盖茨与爱泼斯坦旧关系再掀风波"),
         (("service member", "iran"), "伊朗相关救援押注引发美国舆论争议"),
         (("hong kong",), "中方就涉港规则变动再向美方交涉"),
@@ -551,6 +615,7 @@ def title_to_cn(title: str) -> str | None:
         (("nvidia",), "NVIDIA 相关动向继续影响算力板块"),
         (("robot",), "机器人与自动化主题继续升温"),
         (("ai",), "AI 产业动态持续推升科技关注度"),
+        (("artemis",), "航天任务动态带动科技与国防关注度"),
     ]
     for keywords, zh in mappings:
         if all(k in lower for k in keywords):
@@ -566,6 +631,7 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
         (("oil prices rise", "brent"), "油价继续上行，布伦特月度涨势扩大", "中东局势持续推升风险溢价，原油价格仍处高波动区间。"),
         (("iran", "water", "power"), "中东冲突开始冲击水电等民生基础设施", "冲突外溢至民生与工业设施，说明局势对经济层面的冲击正在加深。"),
         (("houthi", "missiles"), "也门方向袭扰升级，红海与中东航运风险再抬头", "若航运威胁持续，全球运费、保险与能源运输成本都可能继续承压。"),
+        (("gaza",), "加沙局势仍牵动中东风险定价", "加沙若出现新一轮军事或人道事件，市场会迅速重估中东冲突外溢风险。"),
         (("russia", "ukraine"), "俄乌相关局势仍在发酵", "欧洲安全与外交层面的外溢风险仍在，但若缺少更扎实新增口径，不展开过度演绎。"),
         (("china", "trade"), "中美经贸摩擦仍有新动向", "若涉及调查、限制或官方表态升级，市场会重新评估供应链与风险偏好。"),
         (("tariff", "trump"), "美国关税口径再起波动", "若涉及新一轮关税或经贸表态，全球风险偏好与出口链预期都会受到影响。"),
@@ -574,6 +640,7 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
         (("anthropic",), "Anthropic 继续推动企业级 AI 竞争", "企业端模型能力与商业化落地仍是当前 AI 板块的重要观察点。"),
         (("nvidia",), "NVIDIA 相关动向继续影响算力板块", "算力资本开支与芯片供需预期仍直接影响科技股风险偏好。"),
         (("tesla", "robot"), "机器人主题继续升温", "若头条直接涉及机器人或自动化，说明资金仍在追逐 AI 向硬件落地的延伸故事。"),
+        (("artemis",), "航天任务动态带动科技与国防关注度", "载人登月与航天任务推进，通常会带动航天科技、国防工业与高端制造关注度。"),
     ]
     for keywords, zh_title, zh_summary in rules:
         if all(k in raw for k in keywords):
@@ -583,7 +650,10 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
         return None, None
     forced_cn = title_to_cn(title_clean)
     if forced_cn:
-        return forced_cn, compress_to_30_zh(summary or title_clean)
+        safe_summary = summary or title_clean
+        if re.search(r"[^\x00-\x7F]", safe_summary) and not re.search(r"[\u4e00-\u9fff]", safe_summary):
+            safe_summary = title_clean
+        return forced_cn, compress_to_30_zh(safe_summary)
     if re.search(r"[A-Za-z]", title_clean):
         return None, None
     return title_clean, compress_to_30_zh(summary or "今日无额外摘要。")
@@ -600,6 +670,8 @@ def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]
         zh_title, zh_summary = localize_headline(title, summary)
         if not zh_title:
             continue
+        if zh_summary and re.search(r"[^\x00-\x7F]", zh_summary) and not re.search(r"[\u4e00-\u9fff]", zh_summary):
+            zh_summary = "今日无额外摘要。"
         display_title = f"{zh_title}（来源：{item.get('source', '未知')} | 发布时间：{item.get('pub_date') or '未知'}）"
         display_key = zh_title.strip().lower()
         if display_key in seen_display_titles:
@@ -741,7 +813,7 @@ def build_report() -> tuple[str, str, str]:
         "说明：本报告默认使用模板 A（详细正式版），用于每日综合情报、发邮箱与存档；抓不到的数据直接写“今日无重大更新”或“未获取到扎实数据”，严禁虚构补洞。",
     ])
 
-    text_body = "\n".join(lines)
+    text_body = sanitize_report_text("\n".join(lines))
 
     def p(txt: str) -> str:
         return html.escape(txt)
@@ -749,9 +821,9 @@ def build_report() -> tuple[str, str, str]:
     html_parts = [
         "<html><body style='font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.75;'>",
         f"<h2>{p(subject)}</h2>",
-        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>严格限定过去12-24小时；抓不到就明确写无更新，拒绝旧闻补洞<br><b>搜索增强：</b>已接入 multi-search-engine 模板做新闻发现补充</p>",
+        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>严格限定过去0-24小时；抓不到就明确写无更新，拒绝旧闻补洞<br><b>搜索增强：</b>已接入 multi-search-engine 模板做新闻发现补充</p>",
     ]
-    for line in lines[7:]:
+    for line in text_body.splitlines()[7:]:
         if line == "---":
             html_parts.append("<hr>")
         elif re.match(r"^[一二三四五六七八九十]+、", line):
@@ -769,7 +841,7 @@ def build_report() -> tuple[str, str, str]:
         else:
             html_parts.append(f"<p>{p(line)}</p>")
     html_parts.append("</body></html>")
-    html_body = "\n".join(html_parts)
+    html_body = sanitize_report_text("\n".join(html_parts))
     return subject, text_body, html_body
 
 
