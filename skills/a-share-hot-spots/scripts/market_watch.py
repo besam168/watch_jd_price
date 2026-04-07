@@ -47,6 +47,20 @@ def fetch_text(url: str, referer: str | None = None, timeout: int = 10) -> str:
     raise last_error
 
 
+def safe_float(value, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", "")
+    if not text or text in {"-", "--", "None", "null", "NULL", "N/A"}:
+        return default
+    try:
+        return float(text)
+    except Exception:
+        return default
+
+
 def normalize_code(code: str):
     code = code.strip().upper()
     if code.startswith("SH") or code.startswith("SZ"):
@@ -277,10 +291,10 @@ def fetch_hot_sectors() -> list:
     for item in diff:
         out.append({
             "name": item.get("f14", ""),
-            "change_pct": round(float(item.get("f3", 0) or 0), 2),
+            "change_pct": round(safe_float(item.get("f3", 0)), 2),
             "leading_stock": item.get("f128", ""),
-            "leading_change_pct": round(float(item.get("f136", 0) or 0), 2),
-            "amount_yi": round(float(item.get("f20", 0) or 0) / 1e8, 2),
+            "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
+            "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
         })
     return out
 
@@ -302,11 +316,11 @@ def fetch_hot_stocks() -> list:
         out.append({
             "symbol": f"{market}{code}",
             "name": item.get("f14", ""),
-            "current": round(float(item.get("f2", 0) or 0), 2),
-            "change_pct": round(float(item.get("f3", 0) or 0), 2),
-            "change": round(float(item.get("f4", 0) or 0), 2),
-            "volume_lot": int(float(item.get("f5", 0) or 0)),
-            "amount_yi": round(float(item.get("f6", 0) or 0) / 1e8, 2),
+            "current": round(safe_float(item.get("f2", 0)), 2),
+            "change_pct": round(safe_float(item.get("f3", 0)), 2),
+            "change": round(safe_float(item.get("f4", 0)), 2),
+            "volume_lot": int(safe_float(item.get("f5", 0))),
+            "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
         })
     return out
 
@@ -325,10 +339,10 @@ def fetch_industry_sectors() -> list:
     for item in diff:
         out.append({
             "name": item.get("f14", ""),
-            "change_pct": round(float(item.get("f3", 0) or 0), 2),
+            "change_pct": round(safe_float(item.get("f3", 0)), 2),
             "leading_stock": item.get("f128", ""),
-            "leading_change_pct": round(float(item.get("f136", 0) or 0), 2),
-            "amount_yi": round(float(item.get("f20", 0) or 0) / 1e8, 2),
+            "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
+            "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
         })
     return out
 
