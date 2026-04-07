@@ -46,11 +46,11 @@ FRESH_MIN_HOURS = 0
 FRESH_MAX_HOURS = 24
 SEARCH_DISCOVERY_SITES = [
     ("Reuters", "reuters.com", ["middle east", "iran", "israel", "gaza", "ukraine", "china trade", "markets", "oil"]),
-    ("BBC", "bbc.com/news", ["iran", "israel", "gaza", "ukraine", "markets"]),
-    ("AP", "apnews.com", ["iran", "israel", "gaza", "ukraine", "markets"]),
+    ("BBC", "bbc.com/news", ["iran", "israel", "gaza", "ukraine", "markets", "china"]),
+    ("AP", "apnews.com", ["iran", "israel", "gaza", "ukraine", "markets", "china"]),
     ("Al Jazeera", "aljazeera.com", ["gaza", "iran", "israel", "middle east"]),
-    ("CNBC", "cnbc.com", ["markets", "oil", "stocks", "fed"]),
-    ("Guardian", "theguardian.com", ["iran", "gaza", "ukraine", "markets"]),
+    ("CNBC", "cnbc.com", ["markets", "oil", "stocks", "fed", "china"]),
+    ("Guardian", "theguardian.com", ["iran", "gaza", "ukraine", "markets", "china"]),
     ("The Verge", "theverge.com", ["ai", "anthropic", "openai", "nvidia"]),
     ("TechCrunch", "techcrunch.com", ["ai", "robotics", "openai"]),
 ]
@@ -265,7 +265,7 @@ def discover_news_via_multi_search() -> list[dict[str, str]]:
         if not template:
             continue
         for source_name, site, topics in SEARCH_DISCOVERY_SITES:
-            for topic in topics[:2]:
+            for topic in topics[:4]:
                 query = f"site:{site} {topic} latest"
                 encoded = urllib.parse.quote_plus(query)
                 url = template.replace("{keyword}", encoded)
@@ -628,9 +628,14 @@ def compress_to_30_zh(text: str) -> str:
     if re.search(r"[A-Za-z]", text):
         text = chineseize_text(text)
     text = re.sub(r"[。！？]+", "。", text)
+    text = re.sub(r"[，,；;：:]$", "", text)
     if len(text) <= 36:
         return text if text.endswith("。") else text + "。"
     cut = text[:34].rstrip("，,；;：: ")
+    if len(cut) >= 2 and cut[-1] in {"投", "牵", "推", "升", "落", "配", "需", "看", "处", "受", "走"}:
+        cut = cut[:-1]
+    if len(cut) < 8:
+        return "今日无额外摘要。"
     return cut + "。"
 
 
