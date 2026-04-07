@@ -45,13 +45,14 @@ STALE_PATTERNS = [
 FRESH_MIN_HOURS = 0
 FRESH_MAX_HOURS = 24
 SEARCH_DISCOVERY_SITES = [
-    ("Reuters", "reuters.com"),
-    ("BBC", "bbc.com/news"),
-    ("AP", "apnews.com"),
-    ("Guardian", "theguardian.com"),
-    ("CNBC", "cnbc.com"),
-    ("The Verge", "theverge.com"),
-    ("TechCrunch", "techcrunch.com"),
+    ("Reuters", "reuters.com", ["middle east", "iran", "israel", "gaza", "ukraine", "china trade", "markets", "oil"]),
+    ("BBC", "bbc.com/news", ["iran", "israel", "gaza", "ukraine", "markets"]),
+    ("AP", "apnews.com", ["iran", "israel", "gaza", "ukraine", "markets"]),
+    ("Al Jazeera", "aljazeera.com", ["gaza", "iran", "israel", "middle east"]),
+    ("CNBC", "cnbc.com", ["markets", "oil", "stocks", "fed"]),
+    ("Guardian", "theguardian.com", ["iran", "gaza", "ukraine", "markets"]),
+    ("The Verge", "theverge.com", ["ai", "anthropic", "openai", "nvidia"]),
+    ("TechCrunch", "techcrunch.com", ["ai", "robotics", "openai"]),
 ]
 SEARCH_ENGINE_PREFERENCE = ["DuckDuckGo", "Startpage", "Yahoo"]
 
@@ -216,7 +217,7 @@ def fetch_url_text(url: str) -> str:
     return raw.decode("utf-8", errors="ignore")
 
 
-def extract_search_result_candidates(source_name: str, site: str, html_text: str) -> list[dict[str, str]]:
+def extract_search_result_candidates(source_name: str, site: str, html_text: str, priority_topic: str = "") -> list[dict[str, str]]:
     html_text = html.unescape(html_text)
     candidates: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -231,6 +232,11 @@ def extract_search_result_candidates(source_name: str, site: str, html_text: str
             title = re.sub(r"\s+", " ", title)
             if not url or not title or is_stale(title):
                 continue
+            lower_title = title.lower()
+            if priority_topic and priority_topic.lower() not in lower_title:
+                important = any(k in lower_title for k in ["iran", "israel", "gaza", "ukraine", "market", "oil", "china", "trade", "ai", "robot"])
+                if not important:
+                    continue
             if title.lower() in seen:
                 continue
             seen.add(title.lower())
@@ -241,7 +247,7 @@ def extract_search_result_candidates(source_name: str, site: str, html_text: str
                 "pub_date": "搜索发现（待正文交叉验证）",
                 "summary": "",
             })
-            if len(candidates) >= 3:
+            if len(candidates) >= 2:
                 break
         if candidates:
             break
@@ -258,15 +264,16 @@ def discover_news_via_multi_search() -> list[dict[str, str]]:
         template = templates.get(engine_name)
         if not template:
             continue
-        for source_name, site in SEARCH_DISCOVERY_SITES:
-            query = f"site:{site} latest world news"
-            encoded = urllib.parse.quote_plus(query)
-            url = template.replace("{keyword}", encoded)
-            try:
-                page = fetch_url_text(url)
-            except Exception:
-                continue
-            items.extend(extract_search_result_candidates(source_name, site, page))
+        for source_name, site, topics in SEARCH_DISCOVERY_SITES:
+            for topic in topics[:2]:
+                query = f"site:{site} {topic} latest"
+                encoded = urllib.parse.quote_plus(query)
+                url = template.replace("{keyword}", encoded)
+                try:
+                    page = fetch_url_text(url)
+                except Exception:
+                    continue
+                items.extend(extract_search_result_candidates(source_name, site, page, priority_topic=topic))
     return items
 
 
