@@ -687,10 +687,49 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
     return title_clean, compress_to_30_zh(summary or "今日无额外摘要。")
 
 
+def news_priority_score(item: dict[str, str]) -> int:
+    text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('source', '')}".lower()
+    score = 0
+    priority_rules = [
+        (("gaza",), 120),
+        (("iran",), 110),
+        (("israel",), 105),
+        (("middle east",), 100),
+        (("ukraine",), 95),
+        (("russia",), 90),
+        (("china", "trade"), 88),
+        (("tariff",), 85),
+        (("market",), 80),
+        (("stocks",), 78),
+        (("oil",), 76),
+        (("brent",), 75),
+        (("gold",), 72),
+        (("ai",), 40),
+        (("anthropic",), 38),
+        (("nvidia",), 36),
+        (("artemis",), 20),
+        (("moon",), 18),
+    ]
+    for keywords, pts in priority_rules:
+        if all(k in text for k in keywords):
+            score = max(score, pts)
+    source = (item.get("source") or "").lower()
+    if "reuters" in source:
+        score += 10
+    elif "ap" in source:
+        score += 8
+    elif "bbc" in source:
+        score += 6
+    elif "al jazeera" in source:
+        score += 6
+    return score
+
+
 def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     seen_display_titles: set[str] = set()
-    for item in items:
+    sorted_items = sorted(list(items), key=news_priority_score, reverse=True)
+    for item in sorted_items:
         title = item.get("title", "").strip()
         summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip()
         if not title or is_stale(title):
@@ -707,6 +746,21 @@ def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]
         seen_display_titles.add(display_key)
         pairs.append((display_title, zh_summary or "今日无额外摘要。"))
     return pairs
+
+
+def format_commodity_line(name: str, last_value: str, open_value: str, range_value: str) -> str:
+    if last_value != "今日无重大更新":
+        details: list[str] = []
+        if open_value != "今日无重大更新":
+            details.append(f"Open {open_value}")
+        if range_value != "今日无重大更新":
+            details.append(f"Range {range_value}")
+        if details:
+            return f"- {name}：{last_value}（{' | '.join(details)}）"
+        return f"- {name}：{last_value}"
+    if range_value != "今日无重大更新":
+        return f"- {name}：今日无重大更新（仅抓到区间 {range_value}）"
+    return f"- {name}：今日无重大更新"
 
 
 def build_report() -> tuple[str, str, str]:
@@ -775,9 +829,9 @@ def build_report() -> tuple[str, str, str]:
         "（来源：TWSE / KRX / JPX / Eastmoney | 发布时间：页面抓取时点）",
         "",
         "【商品与避险资产】",
-        f"- 黄金：{commodities['gold_last']}（Open {commodities['gold_open']} | Range {commodities['gold_range']}）",
-        f"- 布伦特：{commodities['brent_last']}（Open {commodities['brent_open']} | Range {commodities['brent_range']}）",
-        f"- WTI：{commodities['wti_last']}（Open {commodities['wti_open']} | Range {commodities['wti_range']}）",
+        format_commodity_line("黄金", commodities['gold_last'], commodities['gold_open'], commodities['gold_range']),
+        format_commodity_line("布伦特", commodities['brent_last'], commodities['brent_open'], commodities['brent_range']),
+        format_commodity_line("WTI", commodities['wti_last'], commodities['wti_open'], commodities['wti_range']),
         f"- 新闻口径：{commodities['headline_oil']}",
         "- 结论：原油与黄金只使用本轮页面抓到的报价/区间；若无新值，不做历史数字填充。",
         "（来源：Yahoo Finance GC=F / BZ=F / CL=F | 发布时间：页面抓取时点）",
