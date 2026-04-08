@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SKILL_DIR = ROOT / "skills" / "telegram-image-sender"
 CAPTURE_SCRIPT = SKILL_DIR / "scripts" / "capture-screen.ps1"
+OCR_SCRIPT = ROOT / "desktop_browser_ocr.py"
 STATE_DIR = ROOT / "reports" / "scheduled"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -33,6 +34,9 @@ def run() -> int:
         "browserOpened": False,
         "screenshotPath": None,
         "usedDesktopFallback": True,
+        "ocrAvailable": False,
+        "titleMatched": False,
+        "ocrText": "",
     }
 
     try:
@@ -79,6 +83,29 @@ def run() -> int:
                     result["screenshotPath"] = last_line
         except Exception as e:
             result["captureError"] = str(e)
+
+    expected_title = "bbc" if "bbc.com" in url.lower() else ""
+    if result.get("screenshotPath") and OCR_SCRIPT.exists():
+        try:
+            ocr_completed = subprocess.run(
+                ["python", str(OCR_SCRIPT), str(result["screenshotPath"]), expected_title],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=150,
+                check=False,
+            )
+            payload = json.loads((ocr_completed.stdout or "{}").strip() or "{}")
+            result["ocrAvailable"] = bool(payload.get("ocrAvailable"))
+            result["titleMatched"] = bool(payload.get("titleMatched"))
+            result["ocrText"] = payload.get("ocrText", "")[:1000]
+            result["ocrReturnCode"] = payload.get("ocrReturnCode", ocr_completed.returncode)
+            if payload.get("error"):
+                result["ocrError"] = payload.get("error")
+        except Exception as e:
+            result["ocrError"] = str(e)
 
     result["ok"] = bool(result.get("browserOpened"))
     out_path = STATE_DIR / "desktop_browser_fallback.json"
