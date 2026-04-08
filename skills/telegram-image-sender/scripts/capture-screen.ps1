@@ -83,7 +83,7 @@ import sys
 out = Path(sys.argv[1])
 overlay = sys.argv[2] == "1"
 stamp = sys.argv[3]
-overlay_text = sys.argv[4]
+overlay_text = sys.argv[4] if len(sys.argv) > 4 else ""
 img = ImageGrab.grab(all_screens=True)
 d = ImageDraw.Draw(img)
 if overlay:
