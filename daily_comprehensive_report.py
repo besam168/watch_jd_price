@@ -76,6 +76,11 @@ def fetch_cn_hk_market_snapshot() -> dict[str, str]:
         "s_sz399006": "chinext",
         "s_sh000688": "star50",
         "rt_hkHSI": "hangseng_rt",
+        "int_dji": "dji_sina",
+        "int_nasdaq": "ixic_sina",
+        "int_sp500": "spx_sina",
+        "int_nikkei": "n225_sina",
+        "int_ftse": "ftse_sina",
     }
     query = ",".join(symbols.keys())
     out: dict[str, str] = {}
@@ -105,6 +110,13 @@ def fetch_cn_hk_market_snapshot() -> dict[str, str]:
                 change_pct = parts[8].strip()
             elif len(parts) > 32 and parts[32].strip():
                 change_pct = parts[32].strip()
+            if current:
+                out[alias] = normalize_numeric_string(current) or current
+            if change_pct:
+                out[f"{alias}_change"] = change_pct if str(change_pct).endswith("%") else f"{change_pct}%"
+        elif sym.startswith("int_") and len(parts) >= 4:
+            current = plausible(parts[1], 1000, 100000)
+            change_pct = parts[3].strip()
             if current:
                 out[alias] = normalize_numeric_string(current) or current
             if change_pct:
@@ -507,6 +519,21 @@ def collect_market_snapshot() -> dict[str, str]:
         data["hangseng"] = "今日无重大更新"
 
     cn_hk = fetch_cn_hk_market_snapshot()
+    if cn_hk.get("spx_sina"):
+        data["spx"] = cn_hk["spx_sina"]
+        data["spx_change"] = cn_hk.get("spx_sina_change", data.get("spx_change", "今日无重大更新"))
+    if cn_hk.get("ixic_sina"):
+        data["ixic"] = cn_hk["ixic_sina"]
+        data["ixic_change"] = cn_hk.get("ixic_sina_change", data.get("ixic_change", "今日无重大更新"))
+    if cn_hk.get("dji_sina"):
+        data["dji"] = cn_hk["dji_sina"]
+        data["dji_change"] = cn_hk.get("dji_sina_change", data.get("dji_change", "今日无重大更新"))
+    if cn_hk.get("ftse_sina"):
+        data["ftse"] = cn_hk["ftse_sina"]
+        data["ftse_change"] = cn_hk.get("ftse_sina_change", data.get("ftse_change", "今日无重大更新"))
+    if cn_hk.get("n225_sina"):
+        data["n225"] = cn_hk["n225_sina"]
+        data["n225_change"] = cn_hk.get("n225_sina_change", data.get("n225_change", "今日无重大更新"))
     if cn_hk.get("shanghai"):
         data["shanghai"] = cn_hk["shanghai"]
         data["shanghai_change"] = cn_hk.get("shanghai_change", "今日无重大更新")
@@ -944,7 +971,7 @@ def build_report() -> tuple[str, str, str]:
         "",
         "【欧洲与亚太股市】",
         f"- STOXX Europe 600：{market['stoxx']}",
-        f"- 英国富时100：{market['ftse']}",
+        f"- 英国富时100：{market['ftse']}（{market.get('ftse_change', '今日无重大更新')}）",
         f"- 日经225：{market['n225']}（{market['n225_change']}）",
         f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}（{market.get('hangseng_change', '今日无重大更新')}）",
         f"- 上证指数：{market.get('shanghai', '今日无重大更新')}（{market.get('shanghai_change', '今日无重大更新')}）",
