@@ -8,7 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 import akshare as ak
-import pandas as pd
+ENABLE_EASTMONEY = False
+
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -334,24 +335,25 @@ def fetch_hot_sectors() -> list:
         "&fltt=2&invt=2&fid=f3&fs=m:90+t:2+f:!50"
         "&fields=f3,f14,f20,f128,f136"
     )
-    try:
-        raw = fetch_text(url, referer="https://www.eastmoney.com")
-        obj = json.loads(raw)
-        diff = ((obj.get("data") or {}).get("diff") or [])
-        out = []
-        for item in diff:
-            out.append({
-                "name": item.get("f14", ""),
-                "change_pct": round(safe_float(item.get("f3", 0)), 2),
-                "leading_stock": item.get("f128", ""),
-                "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
-                "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
-                "source": "东方财富",
-            })
-        if out:
-            return out
-    except Exception:
-        pass
+    if ENABLE_EASTMONEY:
+        try:
+            raw = fetch_text(url, referer="https://www.eastmoney.com")
+            obj = json.loads(raw)
+            diff = ((obj.get("data") or {}).get("diff") or [])
+            out = []
+            for item in diff:
+                out.append({
+                    "name": item.get("f14", ""),
+                    "change_pct": round(safe_float(item.get("f3", 0)), 2),
+                    "leading_stock": item.get("f128", ""),
+                    "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
+                    "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
+                    "source": "东方财富",
+                })
+            if out:
+                return out
+        except Exception:
+            pass
     return fetch_hot_sectors_tx_fallback()
 
 
@@ -390,28 +392,29 @@ def fetch_hot_stocks() -> list:
         "&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
         "&fields=f12,f14,f2,f3,f4,f5,f6"
     )
-    try:
-        raw = fetch_text(url, referer="https://quote.eastmoney.com")
-        obj = json.loads(raw)
-        diff = ((obj.get("data") or {}).get("diff") or [])
-        out = []
-        for item in diff:
-            code = str(item.get("f12", ""))
-            market = "sh" if code.startswith(("60", "68")) else "sz"
-            out.append({
-                "symbol": f"{market}{code}",
-                "name": item.get("f14", ""),
-                "current": round(safe_float(item.get("f2", 0)), 2),
-                "change_pct": round(safe_float(item.get("f3", 0)), 2),
-                "change": round(safe_float(item.get("f4", 0)), 2),
-                "volume_lot": int(safe_float(item.get("f5", 0))),
-                "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
-                "source": "东方财富",
-            })
-        if out:
-            return out
-    except Exception:
-        pass
+    if ENABLE_EASTMONEY:
+        try:
+            raw = fetch_text(url, referer="https://quote.eastmoney.com")
+            obj = json.loads(raw)
+            diff = ((obj.get("data") or {}).get("diff") or [])
+            out = []
+            for item in diff:
+                code = str(item.get("f12", ""))
+                market = "sh" if code.startswith(("60", "68")) else "sz"
+                out.append({
+                    "symbol": f"{market}{code}",
+                    "name": item.get("f14", ""),
+                    "current": round(safe_float(item.get("f2", 0)), 2),
+                    "change_pct": round(safe_float(item.get("f3", 0)), 2),
+                    "change": round(safe_float(item.get("f4", 0)), 2),
+                    "volume_lot": int(safe_float(item.get("f5", 0))),
+                    "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
+                    "source": "东方财富",
+                })
+            if out:
+                return out
+        except Exception:
+            pass
     return fetch_hot_stocks_tx_fallback()
 
 

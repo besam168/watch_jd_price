@@ -247,6 +247,12 @@ def main():
         'failed': failed,
         'resonance_core': core,
         'resonance_follow': follow,
+        'data_sources': {
+            'eastmoney_enabled': False,
+            'realtime_candidates': '新浪/腾讯fallback',
+            'daily_filter': '腾讯历史K线(akshare)',
+            'sector_source': '新浪/腾讯分组fallback',
+        },
     }
     payload = sanitize_payload(payload)
 
