@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SKILL_DIR = ROOT / "skills" / "telegram-image-sender"
 CAPTURE_SCRIPT = SKILL_DIR / "scripts" / "capture-screen.ps1"
-OCR_SCRIPT = ROOT / "desktop_browser_ocr.py"
+DESKTOP_OCR_SCRIPT = ROOT / "extensions" / "desktop-input-control" / "scripts" / "screen-ocr.py"
 STATE_DIR = ROOT / "reports" / "scheduled"
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -85,10 +85,20 @@ def run() -> int:
             result["captureError"] = str(e)
 
     expected_title = "bbc" if "bbc.com" in url.lower() else ""
-    if result.get("screenshotPath") and OCR_SCRIPT.exists():
+    if result.get("screenshotPath") and DESKTOP_OCR_SCRIPT.exists():
         try:
+            cmd = [
+                "python",
+                str(DESKTOP_OCR_SCRIPT),
+                str(result["screenshotPath"]),
+                "chi_sim+eng",
+                "--preprocess",
+                "gray_upscale2x",
+            ]
+            if expected_title:
+                cmd.extend(["--query", expected_title, "--query-mode", "contains", "--top-n", "3"])
             ocr_completed = subprocess.run(
-                ["python", str(OCR_SCRIPT), str(result["screenshotPath"]), expected_title],
+                cmd,
                 cwd=str(ROOT),
                 capture_output=True,
                 text=True,
@@ -98,12 +108,14 @@ def run() -> int:
                 check=False,
             )
             payload = json.loads((ocr_completed.stdout or "{}").strip() or "{}")
-            result["ocrAvailable"] = bool(payload.get("ocrAvailable"))
-            result["titleMatched"] = bool(payload.get("titleMatched"))
-            result["ocrText"] = payload.get("ocrText", "")[:1000]
-            result["ocrReturnCode"] = payload.get("ocrReturnCode", ocr_completed.returncode)
+            result["ocrAvailable"] = payload.get("ok", False) or ocr_completed.returncode == 0
+            result["titleMatched"] = bool(payload.get("matches")) if isinstance(payload, dict) else False
+            result["ocrText"] = (payload.get("text") or payload.get("fullText") or "")[:1000] if isinstance(payload, dict) else ""
+            result["ocrReturnCode"] = ocr_completed.returncode
             if payload.get("error"):
                 result["ocrError"] = payload.get("error")
+            elif ocr_completed.stderr:
+                result["ocrError"] = (ocr_completed.stderr or "")[:1000]
         except Exception as e:
             result["ocrError"] = str(e)
 
