@@ -30,6 +30,14 @@ def load_name_map() -> dict:
     return mapping
 
 
+def load_code_name_map() -> dict:
+    direct = load_name_map()
+    reverse = {}
+    for name, code in direct.items():
+        reverse[code.strip()] = name.strip()
+    return reverse
+
+
 def fetch_text(url: str, referer: str | None = None, timeout: int = 10) -> str:
     headers = dict(HEADERS)
     if referer:
@@ -85,6 +93,17 @@ def resolve_names(names: list[str]) -> list[str]:
     return resolved
 
 
+def _decode_possible_garbled(text: str) -> str:
+    if not text:
+        return text
+    try:
+        if '�' in text or any(ch in text for ch in ['����', '��', '�']):
+            return text.encode('latin1', errors='ignore').decode('gbk', errors='ignore') or text
+    except Exception:
+        pass
+    return text
+
+
 def fetch_stock(code: str) -> dict:
     if code.startswith("UNKNOWN:"):
         return {"error": f"暂不认识这个股票名：{code.split(':', 1)[1]}", "symbol": code}
@@ -101,10 +120,12 @@ def fetch_stock(code: str) -> dict:
     current = float(parts[3] or 0)
     change = current - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0
+    code_name_map = load_code_name_map()
+    preferred_name = code_name_map.get(digits) or _decode_possible_garbled(parts[0])
     return {
         "symbol": symbol,
         "code": digits,
-        "name": parts[0],
+        "name": preferred_name,
         "current": round(current, 2),
         "change": round(change, 2),
         "change_pct": round(change_pct, 2),
@@ -277,6 +298,35 @@ def fetch_index() -> list:
     return out
 
 
+def fetch_hot_sectors_tx_fallback() -> list:
+    candidates = fetch_hot_stocks_tx_fallback()
+    groups = {
+        '算力/AI': ['中芯国际', '寒武纪', '工业富联'],
+        '金融科技': ['东方财富', '中国平安', '中信证券'],
+        '新能源': ['宁德时代', '隆基绿能'],
+        '资源周期': ['紫金矿业'],
+        '消费医药': ['药明康德', '中国中免', '贵州茅台', '美的集团'],
+    }
+    out = []
+    for sector, names in groups.items():
+        rows = [x for x in candidates if _decode_possible_garbled(x.get('name', '')) in names]
+        if not rows:
+            continue
+        rows = sorted(rows, key=lambda x: x.get('change_pct', 0), reverse=True)
+        avg_change = sum(x.get('change_pct', 0) for x in rows) / len(rows)
+        leader = rows[0]
+        out.append({
+            'name': sector,
+            'change_pct': round(avg_change, 2),
+            'leading_stock': leader.get('name', ''),
+            'leading_change_pct': leader.get('change_pct', 0),
+            'amount_yi': round(sum(x.get('amount_yi', 0) for x in rows), 2),
+            'source': '腾讯/新浪板块fallback',
+        })
+    out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+    return out[:5]
+
+
 def fetch_hot_sectors() -> list:
     url = (
         "http://push2.eastmoney.com/api/qt/clist/get"
@@ -284,19 +334,53 @@ def fetch_hot_sectors() -> list:
         "&fltt=2&invt=2&fid=f3&fs=m:90+t:2+f:!50"
         "&fields=f3,f14,f20,f128,f136"
     )
-    raw = fetch_text(url, referer="https://www.eastmoney.com")
-    obj = json.loads(raw)
-    diff = ((obj.get("data") or {}).get("diff") or [])
+    try:
+        raw = fetch_text(url, referer="https://www.eastmoney.com")
+        obj = json.loads(raw)
+        diff = ((obj.get("data") or {}).get("diff") or [])
+        out = []
+        for item in diff:
+            out.append({
+                "name": item.get("f14", ""),
+                "change_pct": round(safe_float(item.get("f3", 0)), 2),
+                "leading_stock": item.get("f128", ""),
+                "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
+                "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
+                "source": "东方财富",
+            })
+        if out:
+            return out
+    except Exception:
+        pass
+    return fetch_hot_sectors_tx_fallback()
+
+
+def fetch_hot_stocks_tx_fallback() -> list:
+    mapping = load_name_map()
+    names = list(mapping.keys())[:20]
     out = []
-    for item in diff:
+    for name in names:
+        code = mapping.get(name, "")
+        if not code:
+            continue
+        try:
+            stock = fetch_stock(code)
+        except Exception:
+            continue
+        if stock.get("error"):
+            continue
         out.append({
-            "name": item.get("f14", ""),
-            "change_pct": round(safe_float(item.get("f3", 0)), 2),
-            "leading_stock": item.get("f128", ""),
-            "leading_change_pct": round(safe_float(item.get("f136", 0)), 2),
-            "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
+            "symbol": stock.get("symbol", ""),
+            "name": stock.get("name", name),
+            "current": stock.get("current", 0),
+            "change_pct": stock.get("change_pct", 0),
+            "change": stock.get("change", 0),
+            "volume_lot": stock.get("volume_lot", 0),
+            "amount_yi": stock.get("amount_yi", 0),
+            "source": "腾讯/新浪候选池fallback",
         })
-    return out
+    out.sort(key=lambda x: (x.get("change_pct", 0), x.get("amount_yi", 0)), reverse=True)
+    return out[:15]
 
 
 def fetch_hot_stocks() -> list:
@@ -306,23 +390,29 @@ def fetch_hot_stocks() -> list:
         "&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23"
         "&fields=f12,f14,f2,f3,f4,f5,f6"
     )
-    raw = fetch_text(url, referer="https://quote.eastmoney.com")
-    obj = json.loads(raw)
-    diff = ((obj.get("data") or {}).get("diff") or [])
-    out = []
-    for item in diff:
-        code = str(item.get("f12", ""))
-        market = "sh" if code.startswith(("60", "68")) else "sz"
-        out.append({
-            "symbol": f"{market}{code}",
-            "name": item.get("f14", ""),
-            "current": round(safe_float(item.get("f2", 0)), 2),
-            "change_pct": round(safe_float(item.get("f3", 0)), 2),
-            "change": round(safe_float(item.get("f4", 0)), 2),
-            "volume_lot": int(safe_float(item.get("f5", 0))),
-            "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
-        })
-    return out
+    try:
+        raw = fetch_text(url, referer="https://quote.eastmoney.com")
+        obj = json.loads(raw)
+        diff = ((obj.get("data") or {}).get("diff") or [])
+        out = []
+        for item in diff:
+            code = str(item.get("f12", ""))
+            market = "sh" if code.startswith(("60", "68")) else "sz"
+            out.append({
+                "symbol": f"{market}{code}",
+                "name": item.get("f14", ""),
+                "current": round(safe_float(item.get("f2", 0)), 2),
+                "change_pct": round(safe_float(item.get("f3", 0)), 2),
+                "change": round(safe_float(item.get("f4", 0)), 2),
+                "volume_lot": int(safe_float(item.get("f5", 0))),
+                "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
+                "source": "东方财富",
+            })
+        if out:
+            return out
+    except Exception:
+        pass
+    return fetch_hot_stocks_tx_fallback()
 
 
 def fetch_industry_sectors() -> list:
