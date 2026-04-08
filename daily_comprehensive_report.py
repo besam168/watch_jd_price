@@ -29,6 +29,7 @@ TIMEOUT_SECONDS = 20
 ROOT = Path(__file__).resolve().parent
 FIRECRAWL_DIR = ROOT / ".firecrawl"
 MULTI_SEARCH_CONFIG = ROOT / "skills" / "itisbig-multi-search-engine" / "config.json"
+A_SHARE_HOT_SPOTS_DIR = ROOT / "skills" / "a-share-hot-spots"
 
 RSS_FEEDS = [
     ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -61,6 +62,54 @@ def read_optional(path: Path) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8", errors="ignore")
     return ""
+
+
+def fetch_cn_hk_market_snapshot() -> dict[str, str]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) OpenClaw/1.0",
+        "Referer": "https://finance.sina.com.cn",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+    }
+    symbols = {
+        "s_sh000001": "shanghai",
+        "s_sz399001": "shenzhen",
+        "s_sz399006": "chinext",
+        "s_sh000688": "star50",
+        "rt_hkHSI": "hangseng_rt",
+    }
+    query = ",".join(symbols.keys())
+    out: dict[str, str] = {}
+    try:
+        req = urllib.request.Request(f"http://hq.sinajs.cn/list={query}", headers=headers)
+        with urllib.request.urlopen(req, timeout=TIMEOUT_SECONDS) as resp:
+            raw = resp.read().decode("gbk", errors="replace")
+    except Exception:
+        return out
+
+    for sym, alias in symbols.items():
+        m = re.search(rf'hq_str_{re.escape(sym)}="([^"]*)"', raw)
+        if not m:
+            continue
+        parts = m.group(1).split(",")
+        if sym.startswith("s_") and len(parts) >= 4:
+            current = plausible(parts[1], 1000, 100000)
+            change_pct = parts[3].strip()
+            if current:
+                out[alias] = normalize_numeric_string(current) or current
+            if change_pct:
+                out[f"{alias}_change"] = change_pct if str(change_pct).endswith("%") else f"{change_pct}%"
+        elif sym == "rt_hkHSI" and len(parts) >= 7:
+            current = plausible(parts[6], 10000, 40000)
+            change_pct = ""
+            if len(parts) > 8 and parts[8].strip():
+                change_pct = parts[8].strip()
+            elif len(parts) > 32 and parts[32].strip():
+                change_pct = parts[32].strip()
+            if current:
+                out[alias] = normalize_numeric_string(current) or current
+            if change_pct:
+                out[f"{alias}_change"] = change_pct if str(change_pct).endswith("%") else f"{change_pct}%"
+    return out
 
 
 def parse_pub_date_to_local(pub_date: str) -> dt.datetime | None:
@@ -329,18 +378,56 @@ def collect_qveris_market_snapshot() -> dict[str, str]:
             except Exception:
                 pass
 
-    gold = data.get("XAUUSD") or {}
-    if isinstance(gold, dict):
-        gold_price = plausible(str(gold.get("price")) if gold.get("price") is not None else None, 1800, 4000)
-        gold_open = plausible(str(gold.get("open")) if gold.get("open") is not None else None, 1800, 4000)
-        gold_low = plausible(str(gold.get("dayLow")) if gold.get("dayLow") is not None else None, 1800, 4000)
-        gold_high = plausible(str(gold.get("dayHigh")) if gold.get("dayHigh") is not None else None, 1800, 4000)
-        if gold_price is not None:
-            out["gold_qv"] = gold_price
-        if gold_open is not None:
-            out["gold_qv_open"] = gold_open
-        if gold_low is not None and gold_high is not None:
-            out["gold_qv_range"] = f"{gold_low} - {gold_high}"
+    indices = {
+        "SPX": ("spx", 3000, 10000),
+        "IXIC": ("ixic", 8000, 30000),
+        "DJI": ("dji", 20000, 60000),
+        "FTSE": ("ftse", 4000, 15000),
+        "N225": ("n225", 15000, 70000),
+        "HSI": ("hangseng", 10000, 40000),
+        "TWII": ("twse", 10000, 40000),
+        "KOSPI": ("kospi", 1500, 4000),
+    }
+    for key, (out_key, low, high) in indices.items():
+        item = data.get(key) or {}
+        price = item.get("c") or item.get("price")
+        change = item.get("dp")
+        price_text = plausible(str(price) if price is not None else None, low, high)
+        if price_text is not None:
+            out[out_key] = price_text
+        if change is not None:
+            try:
+                change_num = float(change)
+                if -20 <= change_num <= 20:
+                    out[f"{out_key}_change"] = f"{change_num:.2f}%"
+            except Exception:
+                pass
+
+    brent = data.get("BZUSD") or {}
+    if isinstance(brent, dict):
+        brent_price = plausible(str(brent.get("price") or brent.get("c")) if (brent.get("price") is not None or brent.get("c") is not None) else None, 20, 200)
+        brent_open = plausible(str(brent.get("open") or brent.get("o")) if (brent.get("open") is not None or brent.get("o") is not None) else None, 20, 200)
+        brent_low = plausible(str(brent.get("dayLow") or brent.get("l")) if (brent.get("dayLow") is not None or brent.get("l") is not None) else None, 20, 200)
+        brent_high = plausible(str(brent.get("dayHigh") or brent.get("h")) if (brent.get("dayHigh") is not None or brent.get("h") is not None) else None, 20, 200)
+        if brent_price is not None:
+            out["brent_qv"] = brent_price
+        if brent_open is not None:
+            out["brent_qv_open"] = brent_open
+        if brent_low is not None and brent_high is not None:
+            out["brent_qv_range"] = f"{brent_low} - {brent_high}"
+
+    wti = data.get("CLUSD") or {}
+    if isinstance(wti, dict):
+        wti_price = plausible(str(wti.get("price") or wti.get("c")) if (wti.get("price") is not None or wti.get("c") is not None) else None, 20, 200)
+        wti_open = plausible(str(wti.get("open") or wti.get("o")) if (wti.get("open") is not None or wti.get("o") is not None) else None, 20, 200)
+        wti_low = plausible(str(wti.get("dayLow") or wti.get("l")) if (wti.get("dayLow") is not None or wti.get("l") is not None) else None, 20, 200)
+        wti_high = plausible(str(wti.get("dayHigh") or wti.get("h")) if (wti.get("dayHigh") is not None or wti.get("h") is not None) else None, 20, 200)
+        if wti_price is not None:
+            out["wti_qv"] = wti_price
+        if wti_open is not None:
+            out["wti_qv_open"] = wti_open
+        if wti_low is not None and wti_high is not None:
+            out["wti_qv_range"] = f"{wti_low} - {wti_high}"
 
     return out
 
@@ -419,6 +506,23 @@ def collect_market_snapshot() -> dict[str, str]:
     else:
         data["hangseng"] = "今日无重大更新"
 
+    cn_hk = fetch_cn_hk_market_snapshot()
+    if cn_hk.get("shanghai"):
+        data["shanghai"] = cn_hk["shanghai"]
+        data["shanghai_change"] = cn_hk.get("shanghai_change", "今日无重大更新")
+    if cn_hk.get("shenzhen"):
+        data["shenzhen"] = cn_hk["shenzhen"]
+        data["shenzhen_change"] = cn_hk.get("shenzhen_change", "今日无重大更新")
+    if cn_hk.get("chinext"):
+        data["chinext"] = cn_hk["chinext"]
+        data["chinext_change"] = cn_hk.get("chinext_change", "今日无重大更新")
+    if cn_hk.get("star50"):
+        data["star50"] = cn_hk["star50"]
+        data["star50_change"] = cn_hk.get("star50_change", "今日无重大更新")
+    if cn_hk.get("hangseng_rt"):
+        data["hangseng"] = cn_hk["hangseng_rt"]
+        data["hangseng_change"] = cn_hk.get("hangseng_rt_change", data.get("hangseng_change", "今日无重大更新"))
+
     data.update(collect_qveris_market_snapshot())
     return data
 
@@ -464,6 +568,14 @@ def collect_commodity_snapshot() -> dict[str, str]:
             data["gold_last"] = qv_gold
             data["gold_open"] = within_numeric_range(qv.get("gold_qv_open"), 1500, 4500) or data["gold_open"]
             data["gold_range"] = clean_range_text(qv.get("gold_qv_range")) or data["gold_range"]
+    if qv.get("brent_qv"):
+        data["brent_last"] = within_numeric_range(qv.get("brent_qv"), 20, 200) or data["brent_last"]
+        data["brent_open"] = within_numeric_range(qv.get("brent_qv_open"), 20, 200) or data["brent_open"]
+        data["brent_range"] = clean_range_text(qv.get("brent_qv_range")) or data["brent_range"]
+    if qv.get("wti_qv"):
+        data["wti_last"] = within_numeric_range(qv.get("wti_qv"), 20, 200) or data["wti_last"]
+        data["wti_open"] = within_numeric_range(qv.get("wti_qv_open"), 20, 200) or data["wti_open"]
+        data["wti_range"] = clean_range_text(qv.get("wti_qv_range")) or data["wti_range"]
     return data
 
 
@@ -834,9 +946,13 @@ def build_report() -> tuple[str, str, str]:
         f"- STOXX Europe 600：{market['stoxx']}",
         f"- 英国富时100：{market['ftse']}",
         f"- 日经225：{market['n225']}（{market['n225_change']}）",
+        f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}（{market.get('hangseng_change', '今日无重大更新')}）",
+        f"- 上证指数：{market.get('shanghai', '今日无重大更新')}（{market.get('shanghai_change', '今日无重大更新')}）",
+        f"- 深证成指：{market.get('shenzhen', '今日无重大更新')}（{market.get('shenzhen_change', '今日无重大更新')}）",
+        f"- 创业板指：{market.get('chinext', '今日无重大更新')}（{market.get('chinext_change', '今日无重大更新')}）",
+        f"- 科创50：{market.get('star50', '今日无重大更新')}（{market.get('star50_change', '今日无重大更新')}）",
         f"- 台湾加权：{market.get('twse', '今日无重大更新')}",
         f"- 韩国KOSPI：{market.get('kospi', '今日无重大更新')}",
-        f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}",
         "- 结论：亚太市场分化若缺少页面抓取到的新值，就直接留白，不拿旧数据补写。",
         "（来源：TWSE / KRX / JPX / Eastmoney | 发布时间：页面抓取时点）",
         "",

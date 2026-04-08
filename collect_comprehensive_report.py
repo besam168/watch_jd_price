@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import subprocess
 from pathlib import Path
 from daily_comprehensive_report import build_report
 
@@ -20,25 +21,57 @@ def append_log(text: str) -> None:
 
 
 append_log("===== COLLECT START =====")
-append_log("Firecrawl disabled by local fallback mode. Building report from RSS / QVeris / multi-search sources.")
+append_log("Building report with local + QVeris + market snapshot refresh.")
+
+refresh_script = ROOT / "refresh_qveris_market_snapshot.py"
+refresh_rc = None
+if refresh_script.exists():
+    try:
+        completed = subprocess.run(
+            ["python", str(refresh_script)],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=120,
+            check=False,
+        )
+        refresh_rc = completed.returncode
+        append_log(f"===== REFRESH_QVERIS rc={completed.returncode} =====")
+        append_log(completed.stdout or "(no refresh stdout)")
+        if completed.stderr:
+            append_log("[refresh stderr]")
+            append_log(completed.stderr)
+    except Exception as e:
+        refresh_rc = -1
+        append_log(f"REFRESH_QVERIS_EXCEPTION: {e}")
 
 subject, text_body, html_body = build_report()
 
 collect_status = {
     "generatedAt": dt.datetime.now().isoformat(),
-    "mode": "fallback-no-firecrawl",
-    "freshnessWindowHours": {"min": 12, "max": 24},
-    "ok_groups": ["rss_qveris_multi_search"],
-    "failed_groups": [],
+    "mode": "local-plus-qveris-refresh",
+    "freshnessWindowHours": {"min": 0, "max": 24},
+    "ok_groups": ["rss_qveris_multi_search", "market_snapshot_refresh"],
+    "failed_groups": [] if refresh_rc in (0, None) else ["market_snapshot_refresh"],
     "results": [
         {
             "group": "rss_qveris_multi_search",
             "returncode": 0,
             "ok": True,
-            "stdout": "build_report() completed without Firecrawl",
+            "stdout": "build_report() completed with refreshed local sources",
             "stderr": "",
             "urlCount": 0,
-        }
+        },
+        {
+            "group": "market_snapshot_refresh",
+            "returncode": refresh_rc if refresh_rc is not None else 0,
+            "ok": refresh_rc in (0, None),
+            "stdout": "refresh_qveris_market_snapshot.py executed" if refresh_rc is not None else "refresh script not found, skipped",
+            "stderr": "",
+            "urlCount": 0,
+        },
     ],
 }
 
