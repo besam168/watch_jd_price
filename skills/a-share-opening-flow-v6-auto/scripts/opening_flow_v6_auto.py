@@ -1,24 +1,64 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import os
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 PLUGIN_NAME = 'A股开盘风向与实时盯盘插件 V6自动指令版'
 BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE = BASE_DIR.parent.parent
+FORMAL_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow' / 'scripts' / 'opening_flow.py'
 TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts' / 'opening_flow_v6_test.py'
+STATE_DIR = BASE_DIR / 'output'
+STATE_FILE = STATE_DIR / 'auto_state.json'
+HEARTBEAT_SECONDS = 30
 
 DEFAULT_STAGES = [
     ('09:15', '启动阶段', '载入当天自动流程', None),
-    ('09:25', '竞价风向阶段', '只看竞价风向，不做最终结论', ['python', str(TEST_SCRIPT), '--json']),
-    ('09:33', '第一轮初筛阶段', '只做开盘后第一轮盘中初筛', ['python', str(TEST_SCRIPT), '--json']),
-    ('09:38', '第二轮筛选逻辑阶段', '只负责精筛，不负责最后拍板', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
-    ('09:43', '二次强弱确认阶段', '只做留强去弱和主线确认', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
-    ('09:45', '上午主看名单阶段', '只出最终上午名单和风险口径', ['python', str(TEST_SCRIPT), '--json', '--filter-volume-3d', '--filter-price-3d', '--filter-ma5-soft']),
+    ('09:25', '竞价风向阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
+    ('09:33', '第一轮初筛阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
+    ('09:38', '第二轮筛选逻辑阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
+    ('09:43', '二次强弱确认阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
+    ('09:45', '上午主看名单阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
 ]
+
+
+def ensure_state_dir():
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def load_state():
+    ensure_state_dir()
+    if not STATE_FILE.exists():
+        return {'trading_day': datetime.now().strftime('%Y-%m-%d'), 'executed': []}
+    try:
+        return json.loads(STATE_FILE.read_text(encoding='utf-8'))
+    except Exception:
+        return {'trading_day': datetime.now().strftime('%Y-%m-%d'), 'executed': []}
+
+
+def save_state(state):
+    ensure_state_dir()
+    state['updated_at'] = datetime.now().isoformat(timespec='seconds')
+    STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def refresh_state_for_today(state):
+    today = datetime.now().strftime('%Y-%m-%d')
+    if state.get('trading_day') != today:
+        state = {'trading_day': today, 'executed': []}
+        save_state(state)
+    return state
 
 
 def print_schedule(now_only: bool = False):
@@ -46,7 +86,7 @@ def stage_view(stage_name: str, payload: dict):
     if stage_name == '竞价风向阶段':
         print('竞价最强板块：')
         for x in top_sectors[:3]:
-            print(f"- {x.get('name', '')} {x.get('change_pct', 0)}%｜龙头 {x.get('leading_stock', '')}")
+            print(f"- {x.get('name', '')} {x.get('change_pct', 0)}%｜龙头{x.get('leading_stock', '')}")
         print('盘前观察池：')
         for x in candidates[:8]:
             print(f"- {x.get('name', '')} {x.get('code', '')}")
@@ -92,6 +132,26 @@ def stage_view(stage_name: str, payload: dict):
         return
 
 
+def run_data_script(primary_command):
+    env = dict(os.environ)
+    env['PYTHONIOENCODING'] = 'utf-8'
+    attempts = [
+        primary_command,
+        ['python', str(TEST_SCRIPT), '--json'],
+    ]
+    last = None
+    for command in attempts:
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120, env=env)
+            last = (command, result)
+            if result.returncode == 0 and result.stdout.strip():
+                return command, result
+        except Exception as e:
+            last = (command, e)
+            continue
+    return last
+
+
 def run_stage(stage):
     time_str, stage_name, desc, command = stage
     print(f'[{time_str}] {stage_name}')
@@ -99,11 +159,16 @@ def run_stage(stage):
     if not command:
         print('  - 无需外部脚本调用')
         return 0
-    print(f"  - 调用: {' '.join(command)}")
     try:
-        env = dict(**__import__('os').environ)
-        env['PYTHONIOENCODING'] = 'utf-8'
-        result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=90, env=env)
+        attempted = run_data_script(command)
+        if not attempted:
+            print('  - 调用失败: 无可用脚本')
+            return 1
+        used_command, result = attempted
+        if isinstance(result, Exception):
+            print(f'  - 调用失败: {result}')
+            return 1
+        print(f"  - 调用: {' '.join(used_command)}")
         if result.returncode != 0:
             if result.stdout.strip():
                 print(result.stdout.strip())
@@ -123,28 +188,52 @@ def run_stage(stage):
         return 1
 
 
-def run_current_stage():
+def get_due_stage(now_str: str):
+    due = [s for s in DEFAULT_STAGES if s[0] <= now_str]
+    if not due:
+        return None
+    return due[-1]
+
+
+def run_current_stage(allow_catchup: bool = False):
     now_str = datetime.now().strftime('%H:%M')
     matched = [s for s in DEFAULT_STAGES if s[0] == now_str]
-    if not matched:
-        print(f'当前时间 {now_str} 不在自动时段内。')
-        return 0
-    return run_stage(matched[0])
+    if matched:
+        return run_stage(matched[0])
+    if allow_catchup:
+        due = get_due_stage(now_str)
+        if due:
+            print(f'当前时间 {now_str} 不在自动时段内，补跑最近阶段 {due[0]}。')
+            return run_stage(due)
+    print(f'当前时间 {now_str} 不在自动时段内。')
+    return 0
 
 
 def run_auto_loop(poll_seconds: int = 20):
+    state = refresh_state_for_today(load_state())
+    executed = set(state.get('executed', []))
     print('进入自动调度模式。')
-    executed = set()
+    print(f'状态文件: {STATE_FILE}')
+    last_heartbeat = 0.0
     while True:
-        now_str = datetime.now().strftime('%H:%M')
+        now = datetime.now()
+        now_str = now.strftime('%H:%M')
         for stage in DEFAULT_STAGES:
             time_str = stage[0]
             if time_str == now_str and time_str not in executed:
-                run_stage(stage)
-                executed.add(time_str)
+                rc = run_stage(stage)
+                if rc == 0:
+                    executed.add(time_str)
+                    state['executed'] = sorted(executed)
+                    save_state(state)
         if len(executed) == len(DEFAULT_STAGES):
             print('今日自动流程已全部执行完毕。')
             return 0
+        now_ts = time.time()
+        if now_ts - last_heartbeat >= HEARTBEAT_SECONDS:
+            pending = [s[0] for s in DEFAULT_STAGES if s[0] not in executed]
+            print(f"[heartbeat {now.strftime('%H:%M:%S')}] 运行中，待执行阶段: {', '.join(pending)}")
+            last_heartbeat = now_ts
         time.sleep(poll_seconds)
 
 
@@ -152,6 +241,7 @@ def main():
     parser = argparse.ArgumentParser(description=PLUGIN_NAME)
     parser.add_argument('--show-schedule', action='store_true', help='显示完整时间流程表')
     parser.add_argument('--run-current-stage', action='store_true', help='只执行当前时间点对应阶段')
+    parser.add_argument('--run-nearest-stage', action='store_true', help='若错过整点，则补跑最近一个已到阶段')
     parser.add_argument('--dry-run', action='store_true', help='做一次自动流程模拟')
     parser.add_argument('--auto-loop', action='store_true', help='进入自动调度循环，按时间点执行')
     parser.add_argument('--poll-seconds', type=int, default=20, help='自动调度轮询秒数')
@@ -166,7 +256,11 @@ def main():
 
     if args.run_current_stage:
         print('\n当前阶段执行：')
-        return run_current_stage()
+        return run_current_stage(allow_catchup=False)
+
+    if args.run_nearest_stage:
+        print('\n最近阶段补跑：')
+        return run_current_stage(allow_catchup=True)
 
     if args.dry_run:
         print('\n自动流程模拟：')
@@ -178,8 +272,8 @@ def main():
     if args.auto_loop:
         return run_auto_loop(args.poll_seconds)
 
-    if not args.show_schedule and not args.run_current_stage and not args.dry_run and not args.auto_loop:
-        print('可用参数：--show-schedule / --run-current-stage / --dry-run / --auto-loop')
+    if not args.show_schedule and not args.run_current_stage and not args.run_nearest_stage and not args.dry_run and not args.auto_loop:
+        print('可用参数：--show-schedule / --run-current-stage / --run-nearest-stage / --dry-run / --auto-loop')
     return 0
 
 
