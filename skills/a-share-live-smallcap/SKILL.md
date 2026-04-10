@@ -3,10 +3,10 @@ name: a-share-live-smallcap
 description: 盘中筛选A股“正在动的中小盘强势股”。适用于用户想在早盘或盘中，从实时强势热股里先剔除大票/权重，再保留中小盘、创业板、次新、科创与高弹性方向，最后叠加“近3日放量拉升 + 5日线宽松辅助”过滤时使用。不替代 a-share-opening-flow-v6-test，而是独立补充一个更偏中小盘实战的版本。
 ---
 
-# A股盘中中小盘强势股插件
+# A股盘中中小盘强势股插件 V2
 
 ## 定位
-这个插件是 **a-share-opening-flow-v6-test 的独立补充版**。
+这个插件是 **a-share-opening-flow-v6-test 的独立补充版 V2**。
 
 它不改原插件逻辑，专门解决一个问题：
 
@@ -25,9 +25,10 @@ description: 盘中筛选A股“正在动的中小盘强势股”。适用于用
 
 ## 输出重点
 建议重点看这几类：
-- **live_smallcap_candidates**：实时抓到、且已剔除大票后的候选池
-- **passed**：实时强势 + 中小盘风格 + 近3日量价 + 5日线都通过
-- **partial**：盘中强，但日线过滤只过部分条件
+- **true_leaders**：盘中最像真龙头的中小盘强势股
+- **strong_followers**：强跟风/强跟随票
+- **pseudo_strong**：伪强票，盘中看着强但过滤不完整
+- **watchlist**：适合盯盘的前排名单
 - **rejected_largecap**：被剔除的大票/权重
 - **rejected_live**：实时强度或风格不过关的票
 
@@ -39,9 +40,10 @@ python {baseDir}/scripts/live_smallcap.py --json
 ## 常用参数
 ```powershell
 python {baseDir}/scripts/live_smallcap.py --json
-python {baseDir}/scripts/live_smallcap.py --top-n 80 --pick-count 24 --json
+python {baseDir}/scripts/live_smallcap.py --top-n 120 --pick-count 24 --json
 python {baseDir}/scripts/live_smallcap.py --min-change-pct 1.5 --min-amount-yi 2 --json
 python {baseDir}/scripts/live_smallcap.py --max-total-mv-yi 1200 --max-circ-mv-yi 800 --json
+python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
 ```
 
 ## 默认原则
