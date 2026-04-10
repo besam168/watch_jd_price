@@ -3,10 +3,10 @@ name: a-share-live-smallcap
 description: 盘中筛选A股“正在动的中小盘强势股”。适用于用户想在早盘或盘中，从实时强势热股里先剔除大票/权重，再保留中小盘、创业板、次新、科创与高弹性方向，最后叠加“近3日放量拉升 + 5日线宽松辅助”过滤时使用。不替代 a-share-opening-flow-v6-test，而是独立补充一个更偏中小盘实战的版本。
 ---
 
-# A股盘中中小盘强势股插件 V3
+# A股盘中中小盘强势股插件 V4
 
 ## 定位
-这个插件是 **a-share-opening-flow-v6-test 的独立补充版 V3**。
+这个插件是 **a-share-opening-flow-v6-test 的独立补充版 V4**。
 
 它不改原插件逻辑，专门解决一个问题：
 
@@ -43,14 +43,16 @@ python {baseDir}/scripts/live_smallcap.py --json
 python {baseDir}/scripts/live_smallcap.py --json
 python {baseDir}/scripts/live_smallcap.py --top-n 120 --pick-count 24 --json
 python {baseDir}/scripts/live_smallcap.py --min-change-pct 1.5 --min-amount-yi 2 --json
+python {baseDir}/scripts/live_smallcap.py --min-turnover-ratio 5 --json
 python {baseDir}/scripts/live_smallcap.py --max-total-mv-yi 1200 --max-circ-mv-yi 800 --json
 python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
 ```
 
 ## 默认原则
-- 优先抓实时涨幅靠前、成交额不太差的票
-- 先排除明显大票/权重
+- 优先抓 **新浪全市场涨幅榜**
+- 再排除明显大票/权重
 - 创业板、次新、科创、中小盘主板给更高优先级
+- 叠加换手率过滤（可选）
 - 最后仍以 V6 测试版的日线过滤作收口
 
 ## 注意

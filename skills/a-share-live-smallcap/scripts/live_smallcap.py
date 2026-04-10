@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-PLUGIN_NAME = 'A股盘中中小盘强势股插件（实时版 V2）'
+PLUGIN_NAME = 'A股盘中中小盘强势股插件（实时版 V4）'
 WORKSPACE = Path(__file__).resolve().parents[3]
 HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
 V6_TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts'
@@ -42,6 +42,7 @@ LARGE_CAP_CODES = {
 }
 HIGH_BETA_PREFIX = ('300', '301', '688')
 SMALLCAP_ACCEPT_PREFIX = ('300', '301', '688', '002', '003', '603', '605')
+SINA_ALL_MARKET_URL = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num={num}&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=page'
 
 
 def normalize_name(text: str) -> str:
@@ -54,24 +55,25 @@ def normalize_name(text: str) -> str:
         return text
 
 
-def fetch_text_no_proxy(url: str, referer: str | None = None, timeout: int = 12) -> str:
+def fetch_text_direct(url: str, referer: str | None = None, timeout: int = 12) -> str:
     headers = dict(mw.HEADERS)
     if referer:
         headers['Referer'] = referer
-    last_error = None
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    last_error = None
     for _ in range(3):
         try:
             req = urllib.request.Request(url, headers=headers)
             with opener.open(req, timeout=timeout) as resp:
                 raw = resp.read()
-                return raw.decode('utf-8', errors='replace')
+                charset = 'gbk' if 'sina' in url or 'sinajs' in url else 'utf-8'
+                return raw.decode(charset, errors='replace')
         except Exception as e:
             last_error = e
     raise last_error
 
 
-def build_live_item(code: str, name: str, current, change_pct, change, volume_lot, amount_yi, total_mv_yi=0.0, circ_mv_yi=0.0, source='') -> dict:
+def build_live_item(code: str, name: str, current, change_pct, change, volume_lot, amount_yi, total_mv_yi=0.0, circ_mv_yi=0.0, source='', turnover_ratio=0.0) -> dict:
     market = 'sh' if code.startswith(('60', '68')) else 'sz'
     return {
         'symbol': f'{market}{code}',
@@ -84,8 +86,38 @@ def build_live_item(code: str, name: str, current, change_pct, change, volume_lo
         'amount_yi': round(mw.safe_float(amount_yi), 2),
         'total_mv_yi': round(mw.safe_float(total_mv_yi), 2),
         'circ_mv_yi': round(mw.safe_float(circ_mv_yi), 2),
+        'turnover_ratio': round(mw.safe_float(turnover_ratio), 2),
         'source': source,
     }
+
+
+def try_fetch_live_market_from_sina(top_n: int) -> tuple[list, str]:
+    per_page = 80
+    pages = max(1, (top_n + per_page - 1) // per_page)
+    out = []
+    for page in range(1, pages + 1):
+        url = SINA_ALL_MARKET_URL.format(page=page, num=per_page)
+        raw = fetch_text_direct(url, referer='https://finance.sina.com.cn')
+        items = json.loads(raw)
+        for item in items:
+            code = str(item.get('code', '')).strip()
+            if not re.fullmatch(r'\d{6}', code):
+                continue
+            out.append(build_live_item(
+                code=code,
+                name=str(item.get('name', '')).strip(),
+                current=item.get('trade', 0),
+                change_pct=item.get('changepercent', 0),
+                change=item.get('pricechange', 0),
+                volume_lot=item.get('volume', 0),
+                amount_yi=mw.safe_float(item.get('amount', 0)) / 1e8,
+                total_mv_yi=mw.safe_float(item.get('mktcap', 0)) / 1e4,
+                circ_mv_yi=mw.safe_float(item.get('nmc', 0)) / 1e4,
+                turnover_ratio=item.get('turnoverratio', 0),
+                source='新浪全市场涨幅榜',
+            ))
+    out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+    return out[:top_n], 'sina-all-market'
 
 
 def try_fetch_live_market_from_eastmoney(top_n: int) -> tuple[list, str]:
@@ -99,38 +131,33 @@ def try_fetch_live_market_from_eastmoney(top_n: int) -> tuple[list, str]:
             '&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f4,f5,f6,f20,f21'
         ),
     ]
-    fetchers = [
-        lambda u: fetch_text_no_proxy(u, referer='https://quote.eastmoney.com'),
-        lambda u: mw.fetch_text(u, referer='https://quote.eastmoney.com'),
-    ]
-    for fetcher in fetchers:
-        for url in urls:
-            try:
-                raw = fetcher(url)
-                obj = json.loads(raw)
-                diff = ((obj.get('data') or {}).get('diff') or [])
-                out = []
-                for item in diff:
-                    code = str(item.get('f12', '')).strip()
-                    if not re.fullmatch(r'\d{6}', code):
-                        continue
-                    out.append(build_live_item(
-                        code=code,
-                        name=str(item.get('f14', '')).strip(),
-                        current=item.get('f2', 0),
-                        change_pct=item.get('f3', 0),
-                        change=item.get('f4', 0),
-                        volume_lot=item.get('f5', 0),
-                        amount_yi=mw.safe_float(item.get('f6', 0)) / 1e8,
-                        total_mv_yi=mw.safe_float(item.get('f20', 0)) / 1e8,
-                        circ_mv_yi=mw.safe_float(item.get('f21', 0)) / 1e8,
-                        source='东方财富实时全市场',
-                    ))
-                if out:
-                    out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
-                    return out, 'eastmoney-live'
-            except Exception:
-                continue
+    for url in urls:
+        try:
+            raw = fetch_text_direct(url, referer='https://quote.eastmoney.com')
+            obj = json.loads(raw)
+            diff = ((obj.get('data') or {}).get('diff') or [])
+            out = []
+            for item in diff:
+                code = str(item.get('f12', '')).strip()
+                if not re.fullmatch(r'\d{6}', code):
+                    continue
+                out.append(build_live_item(
+                    code=code,
+                    name=str(item.get('f14', '')).strip(),
+                    current=item.get('f2', 0),
+                    change_pct=item.get('f3', 0),
+                    change=item.get('f4', 0),
+                    volume_lot=item.get('f5', 0),
+                    amount_yi=mw.safe_float(item.get('f6', 0)) / 1e8,
+                    total_mv_yi=mw.safe_float(item.get('f20', 0)) / 1e8,
+                    circ_mv_yi=mw.safe_float(item.get('f21', 0)) / 1e8,
+                    source='东方财富实时全市场',
+                ))
+            if out:
+                out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+                return out, 'eastmoney-live'
+        except Exception:
+            continue
     return [], 'eastmoney-failed'
 
 
@@ -171,6 +198,13 @@ def merge_unique_by_code(*groups: list) -> list:
 
 
 def try_fetch_live_market(top_n: int) -> tuple[list, str]:
+    try:
+        sina_items, sina_source = try_fetch_live_market_from_sina(top_n)
+        if sina_items:
+            return sina_items, sina_source
+    except Exception:
+        pass
+
     eastmoney_items, eastmoney_source = try_fetch_live_market_from_eastmoney(top_n)
     if eastmoney_items:
         return eastmoney_items[:top_n], eastmoney_source
@@ -238,31 +272,26 @@ def is_smallcap_style(item: dict, max_total_mv_yi: float, max_circ_mv_yi: float,
 
     if code in LARGE_CAP_CODES:
         return False, '命中大票/权重黑名单'
-
     if total_mv > 0 and total_mv > max_total_mv_yi:
         return False, f'总市值过大>{max_total_mv_yi}亿'
     if circ_mv > 0 and circ_mv > max_circ_mv_yi:
         return False, f'流通市值过大>{max_circ_mv_yi}亿'
-
     if code.startswith(HIGH_BETA_PREFIX):
         return True, '高弹性代码段'
     if code.startswith(('002', '003', '603', '605')):
         return True, '中小盘/弹性主板代码段'
-
     if code.startswith('60'):
         if not allow_mainboard_60:
             return False, '默认排除60主板大票风格'
         if total_mv > 0 and total_mv <= max_total_mv_yi and circ_mv <= max_circ_mv_yi:
             return True, '60主板但市值未超阈值'
         return False, '60主板且不满足小中盘阈值'
-
     if total_mv > 0 and total_mv <= max_total_mv_yi and circ_mv <= max_circ_mv_yi:
         return True, '市值阈值通过'
-
     return False, '非中小盘风格'
 
 
-def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: float, pick_count: int, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool):
+def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: float, pick_count: int, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool, min_turnover_ratio: float):
     live_items, source = try_fetch_live_market(top_n)
     filtered = []
     rejected_largecap = []
@@ -277,11 +306,14 @@ def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: flo
         if item.get('change_pct', 0) < min_change_pct or item.get('amount_yi', 0) < min_amount_yi:
             rejected_live.append({**item, 'reject_reason': '盘中强度不足'})
             continue
+        if mw.safe_float(item.get('turnover_ratio', 0)) > 0 and mw.safe_float(item.get('turnover_ratio', 0)) < min_turnover_ratio:
+            rejected_live.append({**item, 'reject_reason': f'换手不足<{min_turnover_ratio}%'})
+            continue
         if not ok_style:
             rejected_largecap.append({**item, 'reject_reason': style_reason})
             continue
         filtered.append({**item, 'style_reason': style_reason})
-    filtered.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+    filtered.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0), x.get('turnover_ratio', 0)), reverse=True)
     return filtered[:pick_count], rejected_largecap, rejected_live, source, live_items
 
 
@@ -329,6 +361,7 @@ def second_round_filter(candidates):
 def compute_intraday_score(item: dict) -> float:
     change_pct = mw.safe_float(item.get('change_pct', 0))
     amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    turnover = mw.safe_float(item.get('turnover_ratio', 0))
     code = item.get('code', '')
     bonus = 0.0
     if code.startswith(HIGH_BETA_PREFIX):
@@ -339,13 +372,18 @@ def compute_intraday_score(item: dict) -> float:
         bonus += 0.8
     elif amount_yi >= 5:
         bonus += 0.4
+    if turnover >= 20:
+        bonus += 1.0
+    elif turnover >= 8:
+        bonus += 0.5
     return round(change_pct * 1.2 + bonus, 2)
 
 
 def compute_conviction(item: dict) -> str:
     change_pct = mw.safe_float(item.get('change_pct', 0))
     amount_yi = mw.safe_float(item.get('amount_yi', 0))
-    if change_pct >= 6 and amount_yi >= 10:
+    turnover = mw.safe_float(item.get('turnover_ratio', 0))
+    if change_pct >= 6 and amount_yi >= 10 and turnover >= 8:
         return '高'
     if change_pct >= 3 and amount_yi >= 4:
         return '中'
@@ -426,6 +464,7 @@ def main():
     parser.add_argument('--pick-count', type=int, default=24, help='中小盘候选池上限')
     parser.add_argument('--min-change-pct', type=float, default=1.5, help='最小涨幅过滤')
     parser.add_argument('--min-amount-yi', type=float, default=2.0, help='最小成交额(亿)过滤')
+    parser.add_argument('--min-turnover-ratio', type=float, default=0.0, help='最小换手率过滤(%)')
     parser.add_argument('--max-total-mv-yi', type=float, default=1200, help='总市值上限(亿)')
     parser.add_argument('--max-circ-mv-yi', type=float, default=800, help='流通市值上限(亿)')
     parser.add_argument('--allow-mainboard-60', action='store_true', help='允许60主板在满足阈值时入选')
@@ -441,24 +480,25 @@ def main():
         max_total_mv_yi=args.max_total_mv_yi,
         max_circ_mv_yi=args.max_circ_mv_yi,
         allow_mainboard_60=args.allow_mainboard_60,
+        min_turnover_ratio=args.min_turnover_ratio,
     )
     passed, partial, failed = second_round_filter(candidates)
     true_leaders, strong_followers, pseudo_strong = classify_trading_roles(passed, partial, failed)
     watchlist = build_watchlist(true_leaders, strong_followers)
-
     chinese_summary = build_chinese_summary(true_leaders, strong_followers, pseudo_strong, watchlist)
 
     payload = {
         'plugin': PLUGIN_NAME,
-        'version': 'v3',
+        'version': 'v4',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'date': args.date,
-        'strategy': '实时强势热股 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
+        'strategy': '优先新浪全市场涨幅榜 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
         'market_scan_source': source,
         'top_n': args.top_n,
         'pick_count': args.pick_count,
         'min_change_pct': args.min_change_pct,
         'min_amount_yi': args.min_amount_yi,
+        'min_turnover_ratio': args.min_turnover_ratio,
         'max_total_mv_yi': args.max_total_mv_yi,
         'max_circ_mv_yi': args.max_circ_mv_yi,
         'allow_mainboard_60': args.allow_mainboard_60,
@@ -476,6 +516,8 @@ def main():
         'rejected_live': rejected_live,
         'data_sources': {
             'realtime_scan': source,
+            'primary': '新浪全市场涨幅榜',
+            'secondary': '东方财富实时全市场',
             'daily_filter': '腾讯历史K线(akshare)',
             'fallback': '新浪/腾讯候选池fallback + V6内置中小盘池',
         },
@@ -496,16 +538,13 @@ def main():
     print(f"结论: {chinese_summary['overall']}")
     print('真龙头：')
     for x in true_leaders:
-        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿")
+        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x.get('turnover_ratio', 0)}%")
     print('\n强跟风：')
     for x in strong_followers:
-        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿")
+        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x.get('turnover_ratio', 0)}%")
     print('\n伪强票：')
     for x in pseudo_strong[:10]:
         print(f"- {x['name']} {x['code']}  {x.get('change_pct', 0)}%  score={x.get('score', 'NA')}")
-    print('\n剔除的大票/权重：')
-    for x in rejected_largecap[:15]:
-        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  {x['reject_reason']}")
 
 
 if __name__ == '__main__':
