@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-PLUGIN_NAME = 'A股盘中中小盘强势股插件'
+PLUGIN_NAME = 'A股盘中中小盘强势股插件（实时版）'
 WORKSPACE = Path(__file__).resolve().parents[3]
 HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
 V6_TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts'

@@ -1,5 +1,5 @@
 ---
-name: a-share-opening-flow-smallcap-live
+name: a-share-live-smallcap
 description: 盘中筛选A股“正在动的中小盘强势股”。适用于用户想在早盘或盘中，从实时强势热股里先剔除大票/权重，再保留中小盘、创业板、次新、科创与高弹性方向，最后叠加“近3日放量拉升 + 5日线宽松辅助”过滤时使用。不替代 a-share-opening-flow-v6-test，而是独立补充一个更偏中小盘实战的版本。
 ---
 
@@ -33,15 +33,15 @@ description: 盘中筛选A股“正在动的中小盘强势股”。适用于用
 
 ## 建议脚本
 ```powershell
-python {baseDir}/scripts/opening_flow_smallcap_live.py --json
+python {baseDir}/scripts/live_smallcap.py --json
 ```
 
 ## 常用参数
 ```powershell
-python {baseDir}/scripts/opening_flow_smallcap_live.py --json
-python {baseDir}/scripts/opening_flow_smallcap_live.py --top-n 80 --pick-count 24 --json
-python {baseDir}/scripts/opening_flow_smallcap_live.py --min-change-pct 1.5 --min-amount-yi 2 --json
-python {baseDir}/scripts/opening_flow_smallcap_live.py --max-total-mv-yi 1200 --max-circ-mv-yi 800 --json
+python {baseDir}/scripts/live_smallcap.py --json
+python {baseDir}/scripts/live_smallcap.py --top-n 80 --pick-count 24 --json
+python {baseDir}/scripts/live_smallcap.py --min-change-pct 1.5 --min-amount-yi 2 --json
+python {baseDir}/scripts/live_smallcap.py --max-total-mv-yi 1200 --max-circ-mv-yi 800 --json
 ```
 
 ## 默认原则
