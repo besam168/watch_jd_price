@@ -1,7 +1,7 @@
 {
-  "plugin": "A股盘中中小盘强势股插件（实时版 V4）",
+  "plugin": "A股盘中中小盘强势股插件（实时版）",
   "version": "v4",
-  "generated_at": "2026-04-10 18:18:55",
+  "generated_at": "2026-04-10 19:08:29",
   "date": "today",
   "strategy": "优先东方财富实时全市场 -> 再用新浪全市场涨幅榜 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤",
   "market_scan_source": "eastmoney-live",
