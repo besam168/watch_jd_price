@@ -198,16 +198,16 @@ def merge_unique_by_code(*groups: list) -> list:
 
 
 def try_fetch_live_market(top_n: int) -> tuple[list, str]:
+    eastmoney_items, eastmoney_source = try_fetch_live_market_from_eastmoney(top_n)
+    if eastmoney_items:
+        return eastmoney_items[:top_n], eastmoney_source
+
     try:
         sina_items, sina_source = try_fetch_live_market_from_sina(top_n)
         if sina_items:
             return sina_items, sina_source
     except Exception:
         pass
-
-    eastmoney_items, eastmoney_source = try_fetch_live_market_from_eastmoney(top_n)
-    if eastmoney_items:
-        return eastmoney_items[:top_n], eastmoney_source
 
     hot_items = []
     try:
@@ -492,7 +492,7 @@ def main():
         'version': 'v4',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'date': args.date,
-        'strategy': '优先新浪全市场涨幅榜 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
+        'strategy': '优先东方财富实时全市场 -> 再用新浪全市场涨幅榜 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
         'market_scan_source': source,
         'top_n': args.top_n,
         'pick_count': args.pick_count,
@@ -516,8 +516,8 @@ def main():
         'rejected_live': rejected_live,
         'data_sources': {
             'realtime_scan': source,
-            'primary': '新浪全市场涨幅榜',
-            'secondary': '东方财富实时全市场',
+            'primary': '东方财富实时全市场',
+            'secondary': '新浪全市场涨幅榜',
             'daily_filter': '腾讯历史K线(akshare)',
             'fallback': '新浪/腾讯候选池fallback + V6内置中小盘池',
         },
