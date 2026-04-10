@@ -6,7 +6,7 @@ param(
     [int]$WaitAfterClickMs = 400,
     [int]$WaitAfterTypeMs = 300,
     [int]$WaitAfterSendMs = 2500,
-    [switch]$NoOpen
+    [switch]$NoOpen = $true
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,18 +25,19 @@ $runDir = Join-Path $outputDir ("control-continue_{0}" -f $stamp)
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
 $desktopInput = Join-Path $rootDir 'extensions\desktop-input-control\scripts\desktop-input.py'
+$pythonExe = 'python'
 $captureScreen = Join-Path $rootDir 'skills\telegram-image-sender\scripts\capture-screen.ps1'
 $telegramOutputDir = Join-Path $rootDir 'skills\telegram-image-sender\output'
 
 function Invoke-DesktopInput {
     param([string[]]$Args)
-    & python $desktopInput @Args
+    & $pythonExe $desktopInput @Args 2>&1
 }
 
 function Invoke-DesktopInputUtf8 {
     param([string[]]$Args)
     $env:PYTHONIOENCODING = 'utf-8'
-    & python $desktopInput @Args
+    & $pythonExe $desktopInput @Args 2>&1
 }
 
 function Capture-Png {
