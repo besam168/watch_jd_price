@@ -4,27 +4,35 @@
 
 ## 当前第一版脚本
 
-### 发送“继续”到 OpenClaw Control 页面
+### 脚本1：轻动作版发送消息
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\skills\desktop-web-workflow\scripts\send-openclaw-continue.ps1
+python .\skills\desktop-web-workflow\scripts\script1_runner.py
 ```
 
-## 当前能力
-- 打开本地 OpenClaw Control 页面
-- 聚焦 OpenClaw 窗口
-- 截图保存
-- OCR 结果归档
-- 在当前光标位置点击一次
+默认行为：
+- 不开网页
+- 不聚焦窗口
+- 不改变浏览器位置
+- 在**当前鼠标位置**点击一下
 - 输入 `继续`
 - 回车发送
-- 再截图归档
-- 输出本次运行日志路径
 
-## 注意
-这还是第一版原型：
-- 目前默认依赖**当前鼠标已经在输入框附近**或窗口焦点已对准可输入区域
-- 下一版会补：
-  - 输入框区域 OCR/坐标定位
-  - 多次点击/Tab 聚焦 fallback
-  - 成功输出更明确的 OCR 判定
+## 使用约定
+执行前请先：
+- 自己把 OpenClaw Control 页面打开好
+- 把鼠标停在输入框里或输入框可点击位置
+
+然后发送口令：
+- `起动脚本1`
+
+## 当前能力
+- 轻动作点击
+- 文本输入
+- 回车发送
+- 运行日志归档
+
+## 后续待补
+- 自定义消息内容
+- OCR 定位输入框
+- 成功回读校验
