@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -325,7 +326,74 @@ def second_round_filter(candidates):
     return passed, partial, failed
 
 
+def compute_intraday_score(item: dict) -> float:
+    change_pct = mw.safe_float(item.get('change_pct', 0))
+    amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    code = item.get('code', '')
+    bonus = 0.0
+    if code.startswith(HIGH_BETA_PREFIX):
+        bonus += 0.8
+    elif code.startswith(('002', '003', '603', '605')):
+        bonus += 0.4
+    if amount_yi >= 10:
+        bonus += 0.8
+    elif amount_yi >= 5:
+        bonus += 0.4
+    return round(change_pct * 1.2 + bonus, 2)
+
+
+def compute_conviction(item: dict) -> str:
+    change_pct = mw.safe_float(item.get('change_pct', 0))
+    amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    if change_pct >= 6 and amount_yi >= 10:
+        return '高'
+    if change_pct >= 3 and amount_yi >= 4:
+        return '中'
+    return '一般'
+
+
+def attach_intraday_metrics(items: list) -> list:
+    out = []
+    for item in items:
+        out.append({
+            **item,
+            'intraday_score': compute_intraday_score(item),
+            'conviction': compute_conviction(item),
+        })
+    out.sort(key=lambda x: (x.get('intraday_score', 0), x.get('amount_yi', 0)), reverse=True)
+    return out
+
+
+def build_chinese_summary(true_leaders: list, strong_followers: list, pseudo_strong: list, watchlist: list) -> dict:
+    def pack(items):
+        return [f"{x['name']} {x['code']}" for x in items[:3]]
+
+    leader_names = pack(true_leaders)
+    follower_names = pack(strong_followers)
+    pseudo_names = pack(pseudo_strong)
+    watch_names = pack(watchlist)
+
+    if leader_names:
+        overall = f"盘中中小盘强势股里，最强的是 {'、'.join(leader_names)}。"
+    elif watch_names:
+        overall = f"盘中中小盘候选偏少，当前先看 {'、'.join(watch_names)}。"
+    else:
+        overall = '这会儿中小盘真正走出来的票不多，先别硬做。'
+
+    return {
+        'overall': overall,
+        'true_leaders': leader_names,
+        'strong_followers': follower_names,
+        'pseudo_strong': pseudo_names,
+        'watchlist': watch_names,
+    }
+
+
 def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[list, list, list]:
+    passed = attach_intraday_metrics(passed)
+    partial = attach_intraday_metrics(partial)
+    failed = attach_intraday_metrics(failed)
+
     true_leaders = []
     strong_followers = []
     pseudo_strong = []
@@ -335,13 +403,13 @@ def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[l
         change_pct = item.get('change_pct', 0)
         amount_yi = item.get('amount_yi', 0)
         high_beta = code.startswith(HIGH_BETA_PREFIX)
-        if (high_beta and change_pct >= 2.8) or change_pct >= 4.5 or (idx < 2 and change_pct >= 2.0 and amount_yi >= 3.0):
+        if (high_beta and change_pct >= 2.0 and amount_yi >= 4.0) or change_pct >= 5.0 or (idx < 2 and item.get('intraday_score', 0) >= 3.2):
             true_leaders.append(item)
         else:
             strong_followers.append(item)
 
-    pseudo_pool = partial + [x for x in failed if x.get('change_pct', 0) >= 1.5]
-    pseudo_pool.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+    pseudo_pool = partial + [x for x in failed if x.get('change_pct', 0) >= 1.0]
+    pseudo_pool.sort(key=lambda x: (x.get('intraday_score', 0), x.get('amount_yi', 0)), reverse=True)
     pseudo_strong = pseudo_pool
     return true_leaders, strong_followers, pseudo_strong
 
@@ -378,9 +446,12 @@ def main():
     true_leaders, strong_followers, pseudo_strong = classify_trading_roles(passed, partial, failed)
     watchlist = build_watchlist(true_leaders, strong_followers)
 
+    chinese_summary = build_chinese_summary(true_leaders, strong_followers, pseudo_strong, watchlist)
+
     payload = {
         'plugin': PLUGIN_NAME,
-        'version': 'v2',
+        'version': 'v3',
+        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'date': args.date,
         'strategy': '实时强势热股 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
         'market_scan_source': source,
@@ -400,6 +471,7 @@ def main():
         'strong_followers': strong_followers,
         'pseudo_strong': pseudo_strong,
         'watchlist': watchlist,
+        'chinese_summary': chinese_summary,
         'rejected_largecap': rejected_largecap,
         'rejected_live': rejected_live,
         'data_sources': {
@@ -421,6 +493,7 @@ def main():
     print(f'{PLUGIN_NAME} 已运行')
     print(f'策略: {payload["strategy"]}')
     print(f'实时来源: {source}')
+    print(f"结论: {chinese_summary['overall']}")
     print('真龙头：')
     for x in true_leaders:
         print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿")

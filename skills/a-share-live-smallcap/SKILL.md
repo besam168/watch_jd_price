@@ -3,10 +3,10 @@ name: a-share-live-smallcap
 description: 盘中筛选A股“正在动的中小盘强势股”。适用于用户想在早盘或盘中，从实时强势热股里先剔除大票/权重，再保留中小盘、创业板、次新、科创与高弹性方向，最后叠加“近3日放量拉升 + 5日线宽松辅助”过滤时使用。不替代 a-share-opening-flow-v6-test，而是独立补充一个更偏中小盘实战的版本。
 ---
 
-# A股盘中中小盘强势股插件 V2
+# A股盘中中小盘强势股插件 V3
 
 ## 定位
-这个插件是 **a-share-opening-flow-v6-test 的独立补充版 V2**。
+这个插件是 **a-share-opening-flow-v6-test 的独立补充版 V3**。
 
 它不改原插件逻辑，专门解决一个问题：
 
@@ -29,6 +29,7 @@ description: 盘中筛选A股“正在动的中小盘强势股”。适用于用
 - **strong_followers**：强跟风/强跟随票
 - **pseudo_strong**：伪强票，盘中看着强但过滤不完整
 - **watchlist**：适合盯盘的前排名单
+- **chinese_summary**：一段可直接拿去盯盘的中文结论
 - **rejected_largecap**：被剔除的大票/权重
 - **rejected_live**：实时强度或风格不过关的票
 
