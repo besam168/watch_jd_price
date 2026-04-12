@@ -136,6 +136,7 @@ function baseFindImageParams() {
   return {
     templatePath: Type.String(),
     confidence: Type.Optional(Type.Number()),
+    debugOverlayPath: Type.Optional(Type.String()),
     virtualScreen: Type.Optional(Type.Boolean()),
     x: Type.Optional(Type.Number()),
     y: Type.Optional(Type.Number()),
@@ -501,13 +502,28 @@ export default function (api) {
     async execute(_id, params) {
       const imagePath = await captureScreen(captureScriptPath, params);
       const confidence = typeof params.confidence === "number" ? params.confidence : 0.8;
-      const matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence)]);
+      const debugOverlayPath = params.debugOverlayPath || createArtifactPath("find-image", "overlay");
+      let matchText: string;
+      try {
+        matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence), debugOverlayPath]);
+      } catch (error: any) {
+        const text = (error?.stdout || error?.stderr || error?.message || "").trim() || "find-image failed";
+        return { content: [{ type: "text", text: JSON.stringify({
+          ok: false,
+          error: text,
+          imagePath,
+          templatePath: params.templatePath,
+          confidence,
+          debugOverlayPath,
+        }) }] };
+      }
       const match = parseJsonObject(matchText);
       return { content: [{ type: "text", text: JSON.stringify({
         ok: Boolean(match?.ok),
         imagePath,
         templatePath: params.templatePath,
         confidence,
+        debugOverlayPath,
         match,
       }) }] };
     },
@@ -524,7 +540,21 @@ export default function (api) {
     async execute(_id, params) {
       const imagePath = await captureScreen(captureScriptPath, params);
       const confidence = typeof params.confidence === "number" ? params.confidence : 0.8;
-      const matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence)]);
+      const debugOverlayPath = params.debugOverlayPath || createArtifactPath("click-image", "overlay");
+      let matchText: string;
+      try {
+        matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence), debugOverlayPath]);
+      } catch (error: any) {
+        const text = (error?.stdout || error?.stderr || error?.message || "").trim() || "find-image failed";
+        return { content: [{ type: "text", text: JSON.stringify({
+          ok: false,
+          error: text,
+          imagePath,
+          templatePath: params.templatePath,
+          confidence,
+          debugOverlayPath,
+        }) }] };
+      }
       const match = parseJsonObject(matchText);
       if (!match?.ok) {
         return { content: [{ type: "text", text: JSON.stringify({
@@ -533,6 +563,7 @@ export default function (api) {
           imagePath,
           templatePath: params.templatePath,
           confidence,
+          debugOverlayPath,
           match,
         }) }] };
       }
@@ -555,6 +586,7 @@ export default function (api) {
         imagePath,
         templatePath: params.templatePath,
         confidence,
+        debugOverlayPath,
         match,
         click: {
           x: clickX,

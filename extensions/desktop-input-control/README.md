@@ -45,6 +45,13 @@
 - 截图 `desktop_screen_capture`
 - OCR 识别 `desktop_screen_ocr`
 - 查找屏幕文字 `desktop_find_text_on_screen`
+- 查找模板图像 `desktop_find_image_on_screen`
+  - 支持 `confidence`
+  - 支持 `debugOverlayPath`
+- 查找并点击模板图像 `desktop_click_image_on_screen`
+  - 支持 `dryRun`
+  - 支持 `confidence`
+  - 支持 `debugOverlayPath`
 - 查找并点击屏幕文字 `desktop_click_text_on_screen`
   - 支持 `dryRun`
   - 支持点击后 `verifyQuery`
@@ -84,6 +91,12 @@
 - `verifyImagePath`
 - `requireFocusSuccess`（若前置 focus 失败则直接中止，不再继续点击）
 - 更完整的 attempt 记录
+
+`desktop_find_image_on_screen` / `desktop_click_image_on_screen` 现在也支持：
+- `confidence`
+- `debugOverlayPath`
+- 自动输出模板匹配框的调试图
+- 找图失败时把评分和 overlay 一并回传
 
 当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束；同时失败回包会更适合复盘和回放。
 
@@ -166,6 +179,7 @@ python scripts/desktop-input.py clear-window-lock
 python scripts/desktop-input.py get-recent-actions 10
 powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1
 python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 设置 --top-n 3
+python scripts/desktop-input.py find-image demo-live.png demo-live.png 0.99 artifacts/self-match-overlay.png
 powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
 python scripts/qq-search-helper.py --contact 新干线

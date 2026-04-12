@@ -488,12 +488,13 @@ def run_command(command: str):
     return f"Started command: {command} (PID={proc.pid})"
 
 
-def find_image(screen_path: str, template_path: str, confidence: float = 0.8):
+def find_image(screen_path: str, template_path: str, confidence: float = 0.8, debug_overlay_path: str = ""):
     if cv2 is None or np is None:
         raise RuntimeError("OpenCV template matching requires opencv-python and numpy")
 
     screen_path = (screen_path or "").strip()
     template_path = (template_path or "").strip()
+    debug_overlay_path = (debug_overlay_path or "").strip()
     if not screen_path:
         raise ValueError("screen_path is required")
     if not template_path:
@@ -527,6 +528,22 @@ def find_image(screen_path: str, template_path: str, confidence: float = 0.8):
     best = float(max_val)
     x, y = int(max_loc[0]), int(max_loc[1])
     match_ok = best >= float(confidence)
+    center_x = int(round(x + template_w / 2))
+    center_y = int(round(y + template_h / 2))
+
+    debug_overlay = None
+    if debug_overlay_path:
+        try:
+            overlay = screen.copy()
+            color = (0, 200, 0) if match_ok else (0, 0, 255)
+            cv2.rectangle(overlay, (x, y), (x + template_w, y + template_h), color, 2)
+            cv2.circle(overlay, (center_x, center_y), 6, color, 2)
+            label = f"score={best:.3f} threshold={float(confidence):.3f}"
+            cv2.putText(overlay, label, (max(4, x), max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+            cv2.imwrite(debug_overlay_path, overlay)
+            debug_overlay = debug_overlay_path
+        except Exception:
+            debug_overlay = None
 
     return {
         "ok": match_ok,
@@ -538,10 +555,11 @@ def find_image(screen_path: str, template_path: str, confidence: float = 0.8):
         "y": y,
         "width": int(template_w),
         "height": int(template_h),
-        "centerX": int(round(x + template_w / 2)),
-        "centerY": int(round(y + template_h / 2)),
+        "centerX": center_x,
+        "centerY": center_y,
         "screenSize": {"width": screen_w, "height": screen_h},
         "templateSize": {"width": template_w, "height": template_h},
+        "debugOverlay": debug_overlay,
     }
 
 
@@ -887,9 +905,10 @@ def main(argv):
         screen_path = arg1
         template_path = arg2
         confidence = float(arg3 or "0.8")
-        result_obj = find_image(screen_path, template_path, confidence)
+        debug_overlay_path = argv[5] if len(argv) > 5 else ""
+        result_obj = find_image(screen_path, template_path, confidence, debug_overlay_path)
         result_text = json.dumps(result_obj, ensure_ascii=False)
-        write_action_log(action, {"screenPath": screen_path, "templatePath": template_path, "confidence": confidence}, result_text, ok=bool(result_obj.get("ok")))
+        write_action_log(action, {"screenPath": screen_path, "templatePath": template_path, "confidence": confidence, "debugOverlayPath": debug_overlay_path}, result_text, ok=bool(result_obj.get("ok")))
         emit(result_text)
         return 0 if result_obj.get("ok") else 1
     if action in {"focus-window", "focus-window-verified"}:
