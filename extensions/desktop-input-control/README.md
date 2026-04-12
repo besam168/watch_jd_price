@@ -160,6 +160,7 @@
 - `scripts/screen-ocr.py`：OCR 与文字定位
 - `scripts/qq-search-helper.py`：QQ 搜索框 / 结果区诊断辅助脚本
 - `scripts/qq-search-state-machine.py`：QQ 搜索框聚焦 / 清空 / 输入 / 结果复核状态机
+- `scripts/demo-web-click-flow.ps1`：网页打开 / 聚焦 / 截图的演示入口
 - `safe-config.json`：安全配置
 - `logs/`：动作日志
 - `artifacts/`：截图归档
@@ -191,6 +192,7 @@ python scripts/screen-ocr.py scripts/capture-style-test.png chi_sim+eng --query 
 python scripts/desktop-input.py find-image demo-live.png demo-live.png 0.99 artifacts/self-match-overlay.png
 powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1
 powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -TargetWindow chrome -Query OpenClaw
+powershell -ExecutionPolicy Bypass -File scripts/demo-web-click-flow.ps1 -Url https://www.bbc.com/news -WindowQuery BBC -Query BBC
 python scripts/qq-search-helper.py --contact 新干线
 python scripts/qq-search-state-machine.py --window-title QQ --contact 新干线
 ```
@@ -220,9 +222,12 @@ python scripts/qq-search-state-machine.py --window-title QQ --contact 新干线
 
 这 8 个组合起来，才更接近真正可落地的桌面自动化工具。
 
-补充：如果是模板图像路线，优先顺序建议改为：
-1. `desktop_screen_capture`
-2. `desktop_find_image_on_screen`（先看 score 和 overlay）
-3. `desktop_click_image_on_screen`（先 `dryRun=true`）
-4. 正式点击时带 `verifyTemplatePath`
-5. 需要时启用 `retries` + `archiveScreenshots`
+补充：如果是网页场景，推荐流程是：
+1. `desktop_open_url` 或浏览器启动
+2. `desktop_focus_window_verified`
+3. `desktop_set_window_lock`
+4. `desktop_screen_capture`
+5. `desktop_find_text_on_screen` / `desktop_find_image_on_screen`
+6. `desktop_click_text_on_screen` / `desktop_click_image_on_screen`
+7. `verifyQuery` 或 `verifyTemplatePath` 做点击后复核
+8. 归档 before/after 截图 + recent actions

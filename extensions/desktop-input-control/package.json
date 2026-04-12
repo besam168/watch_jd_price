@@ -8,7 +8,8 @@
     "verify:capture": "powershell -ExecutionPolicy Bypass -File scripts/screen-capture-compat.ps1",
     "verify:windows": "python scripts/desktop-input.py list-windows chrome",
     "demo:workflow": "powershell -ExecutionPolicy Bypass -File scripts/demo-workflow.ps1",
-    "demo:locked-click": "powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -Query OpenClaw"
+    "demo:locked-click": "powershell -ExecutionPolicy Bypass -File scripts/demo-locked-click-flow.ps1 -Query OpenClaw",
+    "demo:web-click": "powershell -ExecutionPolicy Bypass -File scripts/demo-web-click-flow.ps1"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.41"
