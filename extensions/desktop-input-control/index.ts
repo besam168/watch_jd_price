@@ -536,67 +536,151 @@ export default function (api) {
       ...baseFindImageParams(),
       button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle"), Type.Literal("double")], { default: "left" })),
       dryRun: Type.Optional(Type.Boolean()),
+      verifyTemplatePath: Type.Optional(Type.String()),
+      verifyConfidence: Type.Optional(Type.Number()),
+      verifyDelayMs: Type.Optional(Type.Number()),
+      retries: Type.Optional(Type.Number()),
+      retryDelayMs: Type.Optional(Type.Number()),
+      archiveScreenshots: Type.Optional(Type.Boolean()),
     }),
     async execute(_id, params) {
-      const imagePath = await captureScreen(captureScriptPath, params);
       const confidence = typeof params.confidence === "number" ? params.confidence : 0.8;
-      const debugOverlayPath = params.debugOverlayPath || createArtifactPath("click-image", "overlay");
-      let matchText: string;
-      try {
-        matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence), debugOverlayPath]);
-      } catch (error: any) {
-        const text = (error?.stdout || error?.stderr || error?.message || "").trim() || "find-image failed";
-        return { content: [{ type: "text", text: JSON.stringify({
-          ok: false,
-          error: text,
-          imagePath,
-          templatePath: params.templatePath,
-          confidence,
-          debugOverlayPath,
-        }) }] };
-      }
-      const match = parseJsonObject(matchText);
-      if (!match?.ok) {
-        return { content: [{ type: "text", text: JSON.stringify({
-          ok: false,
-          error: "image not found",
-          imagePath,
-          templatePath: params.templatePath,
-          confidence,
-          debugOverlayPath,
-          match,
-        }) }] };
-      }
-
-      const clickX = Math.round(match.centerX);
-      const clickY = Math.round(match.centerY);
       const button = params.button || "left";
       const dryRun = Boolean(params.dryRun);
-      let moveResult: string | null = null;
-      let clickResult: string | null = null;
+      const retries = Math.max(0, Math.round(params.retries ?? 0));
+      const retryDelayMs = Math.max(0, Math.round(params.retryDelayMs ?? 500));
+      const archiveScreenshots = Boolean(params.archiveScreenshots);
+      const attempts: any[] = [];
 
-      if (!dryRun) {
-        moveResult = await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
-        clickResult = await runPy(scriptPath, ["mouse-click", button]);
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        const prefix = `click-image-attempt-${attempt + 1}`;
+        const imagePath = await captureScreen(captureScriptPath, {
+          ...params,
+          path: archiveScreenshots ? createArtifactPath(prefix, "before") : params.path,
+        });
+        const debugOverlayPath = params.debugOverlayPath || createArtifactPath(prefix, "overlay");
+
+        let matchText: string;
+        try {
+          matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence), debugOverlayPath]);
+        } catch (error: any) {
+          const text = (error?.stdout || error?.stderr || error?.message || "").trim() || "find-image failed";
+          attempts.push({ attempt: attempt + 1, ok: false, imagePath, debugOverlayPath, error: text });
+          if (attempt < retries && retryDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+            continue;
+          }
+          return { content: [{ type: "text", text: JSON.stringify({
+            ok: false,
+            error: text,
+            templatePath: params.templatePath,
+            confidence,
+            attempts,
+          }) }] };
+        }
+
+        const match = parseJsonObject(matchText);
+        if (!match?.ok) {
+          attempts.push({ attempt: attempt + 1, ok: false, imagePath, debugOverlayPath, error: "image not found", match });
+          if (attempt < retries && retryDelayMs > 0) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+            continue;
+          }
+          return { content: [{ type: "text", text: JSON.stringify({
+            ok: false,
+            error: "image not found",
+            templatePath: params.templatePath,
+            confidence,
+            attempts,
+            match,
+          }) }] };
+        }
+
+        const clickX = Math.round(match.centerX);
+        const clickY = Math.round(match.centerY);
+        let moveResult: string | null = null;
+        let clickResult: string | null = null;
+        let verify: any = null;
+        let verifyImagePath: string | null = null;
+        let verifyOverlayPath: string | null = null;
+
+        if (!dryRun) {
+          moveResult = await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
+          clickResult = await runPy(scriptPath, ["mouse-click", button]);
+
+          if (params.verifyTemplatePath) {
+            const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
+            if (delayMs > 0) {
+              await new Promise((resolve) => setTimeout(resolve, delayMs));
+            }
+            verifyImagePath = await captureScreen(captureScriptPath, {
+              ...params,
+              path: archiveScreenshots ? createArtifactPath(prefix, "after") : params.path,
+            });
+            verifyOverlayPath = createArtifactPath(prefix, "verify-overlay");
+            const verifyConfidence = typeof params.verifyConfidence === "number" ? params.verifyConfidence : confidence;
+
+            try {
+              const verifyText = await runPy(scriptPath, ["find-image", verifyImagePath, params.verifyTemplatePath, String(verifyConfidence), verifyOverlayPath]);
+              const verifyMatch = parseJsonObject(verifyText);
+              verify = {
+                imagePath: verifyImagePath,
+                overlayPath: verifyOverlayPath,
+                templatePath: params.verifyTemplatePath,
+                confidence: verifyConfidence,
+                delayMs,
+                success: Boolean(verifyMatch?.ok),
+                match: verifyMatch,
+              };
+            } catch (error: any) {
+              const text = (error?.stdout || error?.stderr || error?.message || "").trim() || "verify find-image failed";
+              verify = {
+                imagePath: verifyImagePath,
+                overlayPath: verifyOverlayPath,
+                templatePath: params.verifyTemplatePath,
+                confidence: verifyConfidence,
+                delayMs,
+                success: false,
+                error: text,
+              };
+            }
+          }
+        }
+
+        const result = {
+          ok: true,
+          dryRun,
+          imagePath,
+          debugOverlayPath,
+          templatePath: params.templatePath,
+          confidence,
+          match,
+          click: {
+            x: clickX,
+            y: clickY,
+            button,
+            executed: !dryRun,
+            moveResult,
+            clickResult,
+          },
+          verify,
+          verifyImagePath,
+          verifyOverlayPath,
+          attempts: [...attempts, { attempt: attempt + 1, ok: true, imagePath, debugOverlayPath, verify, verifyImagePath, verifyOverlayPath }],
+        };
+
+        const verified = !verify || verify.success !== false;
+        if (verified || attempt >= retries) {
+          return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        }
+
+        attempts.push({ attempt: attempt + 1, ok: false, imagePath, debugOverlayPath, verify, verifyImagePath, verifyOverlayPath, error: "post-click verification failed", match });
+        if (retryDelayMs > 0) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        }
       }
 
-      return { content: [{ type: "text", text: JSON.stringify({
-        ok: true,
-        dryRun,
-        imagePath,
-        templatePath: params.templatePath,
-        confidence,
-        debugOverlayPath,
-        match,
-        click: {
-          x: clickX,
-          y: clickY,
-          button,
-          executed: !dryRun,
-          moveResult,
-          clickResult,
-        },
-      }) }] };
+      return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: "unreachable image click flow" }) }] };
     },
   }, { optional: true });
 

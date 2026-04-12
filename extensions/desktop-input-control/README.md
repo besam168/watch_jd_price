@@ -52,6 +52,12 @@
   - 支持 `dryRun`
   - 支持 `confidence`
   - 支持 `debugOverlayPath`
+  - 支持 `verifyTemplatePath`
+  - 支持 `verifyConfidence`
+  - 支持 `verifyDelayMs`
+  - 支持 `retries`
+  - 支持 `retryDelayMs`
+  - 支持 `archiveScreenshots`
 - 查找并点击屏幕文字 `desktop_click_text_on_screen`
   - 支持 `dryRun`
   - 支持点击后 `verifyQuery`
@@ -97,6 +103,9 @@
 - `debugOverlayPath`
 - 自动输出模板匹配框的调试图
 - 找图失败时把评分和 overlay 一并回传
+- 点击后用 `verifyTemplatePath` 做二次图像复核
+- 失败后自动 `retries` 重试
+- 可归档点击前后截图
 
 当 OCR 命中不稳、点击后验证失败时，可以自动重试，而不是一次失败就结束；同时失败回包会更适合复盘和回放。
 
@@ -210,3 +219,10 @@ python scripts/qq-search-state-machine.py --window-title QQ --contact 新干线
 - 动作日志复盘
 
 这 8 个组合起来，才更接近真正可落地的桌面自动化工具。
+
+补充：如果是模板图像路线，优先顺序建议改为：
+1. `desktop_screen_capture`
+2. `desktop_find_image_on_screen`（先看 score 和 overlay）
+3. `desktop_click_image_on_screen`（先 `dryRun=true`）
+4. 正式点击时带 `verifyTemplatePath`
+5. 需要时启用 `retries` + `archiveScreenshots`
