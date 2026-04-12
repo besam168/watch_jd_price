@@ -8,8 +8,23 @@ import webbrowser
 from ctypes import wintypes
 from typing import List
 
+try:
+    import cv2  # type: ignore
+except Exception:
+    cv2 = None
+
+try:
+    import numpy as np  # type: ignore
+except Exception:
+    np = None
+
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+
+user32.SendInput.argtypes = (wintypes.UINT, ctypes.c_void_p, ctypes.c_int)
+user32.SendInput.restype = wintypes.UINT
+kernel32.GetLastError.argtypes = ()
+kernel32.GetLastError.restype = wintypes.DWORD
 
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
@@ -344,8 +359,12 @@ def recent_action_log(limit: int = 20):
 def send_input(*inputs):
     arr = (INPUT * len(inputs))(*inputs)
     sent = user32.SendInput(len(inputs), ctypes.byref(arr), ctypes.sizeof(INPUT))
-    if sent != len(inputs):
-        raise OSError(f"SendInput failed: sent {sent}/{len(inputs)}")
+    return {
+        "requested": len(inputs),
+        "sent": int(sent),
+        "lastError": int(kernel32.GetLastError()),
+        "inputSize": ctypes.sizeof(INPUT),
+    }
 
 
 def keyboard_vk(vk: int, keyup: bool = False):
@@ -398,9 +417,19 @@ def type_text(text: str):
     for ch in text:
         inputs.append(keyboard_unicode(ch, False))
         inputs.append(keyboard_unicode(ch, True))
+    result = {"text": text, "length": len(text), "events": len(inputs)}
     if inputs:
-        send_input(*inputs)
-    return f"Typed text: {text}"
+        result["sendInput"] = send_input(*inputs)
+    return json.dumps(result, ensure_ascii=False)
+
+
+def type_text_from_file(path: str):
+    file_path = (path or "").strip()
+    if not file_path:
+        raise ValueError("path is required")
+    with open(file_path, "r", encoding="utf-8") as f:
+        text = f.read()
+    return type_text(text)
 
 
 def press_hotkey(keys: str):
@@ -457,6 +486,63 @@ def open_url(url: str):
 def run_command(command: str):
     proc = subprocess.Popen(["cmd.exe", "/c", command], creationflags=0)
     return f"Started command: {command} (PID={proc.pid})"
+
+
+def find_image(screen_path: str, template_path: str, confidence: float = 0.8):
+    if cv2 is None or np is None:
+        raise RuntimeError("OpenCV template matching requires opencv-python and numpy")
+
+    screen_path = (screen_path or "").strip()
+    template_path = (template_path or "").strip()
+    if not screen_path:
+        raise ValueError("screen_path is required")
+    if not template_path:
+        raise ValueError("template_path is required")
+    if not os.path.exists(screen_path):
+        raise FileNotFoundError(f"screen image not found: {screen_path}")
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"template image not found: {template_path}")
+
+    screen = cv2.imread(screen_path, cv2.IMREAD_COLOR)
+    template = cv2.imread(template_path, cv2.IMREAD_COLOR)
+    if screen is None:
+        raise RuntimeError(f"failed to load screen image: {screen_path}")
+    if template is None:
+        raise RuntimeError(f"failed to load template image: {template_path}")
+
+    screen_h, screen_w = screen.shape[:2]
+    template_h, template_w = template.shape[:2]
+    if template_h > screen_h or template_w > screen_w:
+        return {
+            "ok": False,
+            "error": "template larger than screen image",
+            "screenPath": screen_path,
+            "templatePath": template_path,
+            "screenSize": {"width": screen_w, "height": screen_h},
+            "templateSize": {"width": template_w, "height": template_h},
+        }
+
+    result = cv2.matchTemplate(screen, template, cv2.TM_CCOEFF_NORMED)
+    _min_val, max_val, _min_loc, max_loc = cv2.minMaxLoc(result)
+    best = float(max_val)
+    x, y = int(max_loc[0]), int(max_loc[1])
+    match_ok = best >= float(confidence)
+
+    return {
+        "ok": match_ok,
+        "score": best,
+        "confidenceThreshold": float(confidence),
+        "screenPath": screen_path,
+        "templatePath": template_path,
+        "x": x,
+        "y": y,
+        "width": int(template_w),
+        "height": int(template_h),
+        "centerX": int(round(x + template_w / 2)),
+        "centerY": int(round(y + template_h / 2)),
+        "screenSize": {"width": screen_w, "height": screen_h},
+        "templateSize": {"width": template_w, "height": template_h},
+    }
 
 
 def resolve_focus_target(query: str = "", pid: int = 0, foreground: bool = False):
@@ -760,6 +846,14 @@ def main(argv):
         write_action_log(action, {"text": arg1}, result)
         emit(result)
         return 0
+    if action == "type-text-file":
+        if not config.get("allowTyping", True):
+            raise PermissionError("Typing is disabled by safe-config")
+        enforce_window_guard(config, action)
+        result = type_text_from_file(arg1)
+        write_action_log(action, {"path": arg1}, result)
+        emit(result)
+        return 0
     if action == "press-hotkey":
         if not config.get("allowHotkeys", True):
             raise PermissionError("Hotkeys are disabled by safe-config")
@@ -789,6 +883,15 @@ def main(argv):
         write_action_log(action, {"command": arg1}, result)
         emit(result)
         return 0
+    if action == "find-image":
+        screen_path = arg1
+        template_path = arg2
+        confidence = float(arg3 or "0.8")
+        result_obj = find_image(screen_path, template_path, confidence)
+        result_text = json.dumps(result_obj, ensure_ascii=False)
+        write_action_log(action, {"screenPath": screen_path, "templatePath": template_path, "confidence": confidence}, result_text, ok=bool(result_obj.get("ok")))
+        emit(result_text)
+        return 0 if result_obj.get("ok") else 1
     if action in {"focus-window", "focus-window-verified"}:
         raw_args = [str(x or "").strip() for x in argv[2:]]
         truthy = {"true", "yes", "foreground", "fg", "current", "active"}

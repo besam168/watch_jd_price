@@ -132,6 +132,19 @@ function baseFindTextParams() {
   };
 }
 
+function baseFindImageParams() {
+  return {
+    templatePath: Type.String(),
+    confidence: Type.Optional(Type.Number()),
+    virtualScreen: Type.Optional(Type.Boolean()),
+    x: Type.Optional(Type.Number()),
+    y: Type.Optional(Type.Number()),
+    width: Type.Optional(Type.Number()),
+    height: Type.Optional(Type.Number()),
+    path: Type.Optional(Type.String()),
+  };
+}
+
 function createArtifactPath(prefix: string, suffix: string) {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return path.join(__dirname, "artifacts", `${stamp}-${prefix}-${suffix}.png`);
@@ -245,6 +258,16 @@ export default function (api) {
     parameters: Type.Object({ text: Type.String() }),
     async execute(_id, params) {
       const text = await runPy(scriptPath, ["type-text", params.text]);
+      return { content: [{ type: "text", text }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_type_text_file",
+    description: "Type UTF-8 text from a file into the active Windows input focus. Use this to avoid Windows argv encoding issues for Chinese text.",
+    parameters: Type.Object({ path: Type.String() }),
+    async execute(_id, params) {
+      const text = await runPy(scriptPath, ["type-text-file", params.path]);
       return { content: [{ type: "text", text }] };
     },
   }, { optional: true });
@@ -468,6 +491,80 @@ export default function (api) {
         ocr,
       };
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_find_image_on_screen",
+    description: "Capture the screen, find a template image using OpenCV matching, and return the best match with center coordinates.",
+    parameters: Type.Object(baseFindImageParams()),
+    async execute(_id, params) {
+      const imagePath = await captureScreen(captureScriptPath, params);
+      const confidence = typeof params.confidence === "number" ? params.confidence : 0.8;
+      const matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence)]);
+      const match = parseJsonObject(matchText);
+      return { content: [{ type: "text", text: JSON.stringify({
+        ok: Boolean(match?.ok),
+        imagePath,
+        templatePath: params.templatePath,
+        confidence,
+        match,
+      }) }] };
+    },
+  }, { optional: true });
+
+  api.registerTool({
+    name: "desktop_click_image_on_screen",
+    description: "Capture the screen, find a template image using OpenCV matching, and click its center point. Supports dry-run mode.",
+    parameters: Type.Object({
+      ...baseFindImageParams(),
+      button: Type.Optional(Type.Union([Type.Literal("left"), Type.Literal("right"), Type.Literal("middle"), Type.Literal("double")], { default: "left" })),
+      dryRun: Type.Optional(Type.Boolean()),
+    }),
+    async execute(_id, params) {
+      const imagePath = await captureScreen(captureScriptPath, params);
+      const confidence = typeof params.confidence === "number" ? params.confidence : 0.8;
+      const matchText = await runPy(scriptPath, ["find-image", imagePath, params.templatePath, String(confidence)]);
+      const match = parseJsonObject(matchText);
+      if (!match?.ok) {
+        return { content: [{ type: "text", text: JSON.stringify({
+          ok: false,
+          error: "image not found",
+          imagePath,
+          templatePath: params.templatePath,
+          confidence,
+          match,
+        }) }] };
+      }
+
+      const clickX = Math.round(match.centerX);
+      const clickY = Math.round(match.centerY);
+      const button = params.button || "left";
+      const dryRun = Boolean(params.dryRun);
+      let moveResult: string | null = null;
+      let clickResult: string | null = null;
+
+      if (!dryRun) {
+        moveResult = await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
+        clickResult = await runPy(scriptPath, ["mouse-click", button]);
+      }
+
+      return { content: [{ type: "text", text: JSON.stringify({
+        ok: true,
+        dryRun,
+        imagePath,
+        templatePath: params.templatePath,
+        confidence,
+        match,
+        click: {
+          x: clickX,
+          y: clickY,
+          button,
+          executed: !dryRun,
+          moveResult,
+          clickResult,
+        },
+      }) }] };
     },
   }, { optional: true });
 
