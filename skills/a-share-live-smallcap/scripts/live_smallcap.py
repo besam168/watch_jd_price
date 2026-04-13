@@ -309,7 +309,7 @@ def is_smallcap_style(item: dict, max_total_mv_yi: float, max_circ_mv_yi: float,
     return False, '非中小盘风格'
 
 
-def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: float, pick_count: int, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool, min_turnover_ratio: float):
+def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: float, pick_count: int, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool, min_turnover_ratio: float, max_change_pct: float = 999.0):
     live_items, source = try_fetch_live_market(top_n)
     filtered = []
     rejected_largecap = []
@@ -323,6 +323,9 @@ def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: flo
         }
         if item.get('change_pct', 0) < min_change_pct or item.get('amount_yi', 0) < min_amount_yi:
             rejected_live.append({**item, 'reject_reason': '盘中强度不足'})
+            continue
+        if item.get('change_pct', 0) > max_change_pct:
+            rejected_live.append({**item, 'reject_reason': f'盘中涨幅过高>{max_change_pct}%'})
             continue
         if mw.safe_float(item.get('turnover_ratio', 0)) > 0 and mw.safe_float(item.get('turnover_ratio', 0)) < min_turnover_ratio:
             rejected_live.append({**item, 'reject_reason': f'换手不足<{min_turnover_ratio}%'})
@@ -568,10 +571,14 @@ def main():
     parser.add_argument('--max-total-mv-yi', type=float, default=1200, help='总市值上限(亿)')
     parser.add_argument('--max-circ-mv-yi', type=float, default=800, help='流通市值上限(亿)')
     parser.add_argument('--allow-mainboard-60', action='store_true', help='允许60主板在满足阈值时入选')
+    parser.add_argument('--max-change-pct', type=float, default=999.0, help='盘中最大涨幅过滤')
+    parser.add_argument('--under-five-mode', action='store_true', help='盘中只保留涨幅不超过5%的票')
     parser.add_argument('--output-json', default='', help='把结果额外写入指定 JSON 文件')
     parser.add_argument('--boss-brief', action='store_true', help='输出老板播报版（精简）')
     parser.add_argument('--json', action='store_true', help='输出 JSON')
     args = parser.parse_args()
+
+    effective_max_change_pct = 5.0 if args.under_five_mode else args.max_change_pct
 
     candidates, rejected_largecap, rejected_live, source, live_items = first_round_candidates(
         top_n=args.top_n,
@@ -582,6 +589,7 @@ def main():
         max_circ_mv_yi=args.max_circ_mv_yi,
         allow_mainboard_60=args.allow_mainboard_60,
         min_turnover_ratio=args.min_turnover_ratio,
+        max_change_pct=effective_max_change_pct,
     )
     passed, partial, failed = second_round_filter(candidates)
     true_leaders, strong_followers, pseudo_strong = classify_trading_roles(passed, partial, failed)
@@ -601,6 +609,8 @@ def main():
         'min_change_pct': args.min_change_pct,
         'min_amount_yi': args.min_amount_yi,
         'min_turnover_ratio': args.min_turnover_ratio,
+        'max_change_pct': effective_max_change_pct,
+        'under_five_mode': args.under_five_mode,
         'max_total_mv_yi': args.max_total_mv_yi,
         'max_circ_mv_yi': args.max_circ_mv_yi,
         'allow_mainboard_60': args.allow_mainboard_60,
