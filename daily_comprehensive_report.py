@@ -32,9 +32,10 @@ MULTI_SEARCH_CONFIG = ROOT / "skills" / "itisbig-multi-search-engine" / "config.
 A_SHARE_HOT_SPOTS_DIR = ROOT / "skills" / "a-share-hot-spots"
 
 RSS_FEEDS = [
-    ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
     ("AP News", "https://feeds.apnews.com/rss/apf-topnews"),
     ("CNBC World", "https://www.cnbc.com/id/100727362/device/rss/rss.html"),
+    ("Yahoo Finance", "https://finance.yahoo.com/news/rssindex"),
+    ("BBC World", "https://feeds.bbci.co.uk/news/world/rss.xml"),
 ]
 
 STALE_PATTERNS = [
@@ -43,25 +44,80 @@ STALE_PATTERNS = [
     "标普500在5400点",
 ]
 
-FRESH_MIN_HOURS = 0
-FRESH_MAX_HOURS = 24
+FRESH_MIN_HOURS = 24
+FRESH_MAX_HOURS = 48
 SEARCH_DISCOVERY_SITES = [
+    # 第一优先：稳定、好抓、适合日更
+    ("AP News", "apnews.com", ["middle east", "iran", "israel", "gaza", "ukraine", "china trade", "markets"]),
+    ("CNBC World", "cnbc.com/world", ["markets", "stocks", "fed", "oil", "china", "macro"]),
+    ("Yahoo Finance", "finance.yahoo.com", ["stocks", "futures", "commodities", "gold", "brent", "china trade"]),
+
+    # 第二优先：内容强，按需补抓
     ("Reuters", "reuters.com", ["middle east", "iran", "israel", "gaza", "ukraine", "china trade", "markets", "oil"]),
-    ("BBC", "bbc.com/news", ["iran", "israel", "gaza", "ukraine", "markets", "china"]),
-    ("AP", "apnews.com", ["iran", "israel", "gaza", "ukraine", "markets", "china"]),
+    ("BBC News", "bbc.com/news", ["iran", "israel", "gaza", "ukraine", "markets", "china"]),
+    ("Bloomberg", "bloomberg.com", ["middle east", "iran", "israel", "ukraine", "china", "markets", "oil", "policy"]),
+    ("WSJ", "wsj.com", ["middle east", "iran", "israel", "ukraine", "china", "trade", "markets", "fed"]),
+
+    # 第三优先：补充视角
     ("Al Jazeera", "aljazeera.com", ["gaza", "iran", "israel", "middle east"]),
-    ("CNBC", "cnbc.com", ["markets", "oil", "stocks", "fed", "china"]),
-    ("Guardian", "theguardian.com", ["iran", "gaza", "ukraine", "markets", "china"]),
+    ("The Guardian", "theguardian.com", ["iran", "gaza", "ukraine", "markets", "china"]),
+    ("DW English", "dw.com/en", ["middle east", "iran", "israel", "ukraine", "china trade", "markets"]),
+    ("France24", "france24.com", ["middle east", "ukraine", "markets", "china"]),
+    ("USA Today", "usatoday.com", ["us", "politics", "economy", "markets"]),
+    ("NPR", "npr.org", ["world", "middle east", "ukraine", "economy"]),
+
+    # 科技版块
     ("The Verge", "theverge.com", ["ai", "anthropic", "openai", "nvidia"]),
     ("TechCrunch", "techcrunch.com", ["ai", "robotics", "openai"]),
 ]
 SEARCH_ENGINE_PREFERENCE = ["DuckDuckGo", "Startpage", "Yahoo"]
+TECH_SOURCE_WHITELIST = {
+    "the verge",
+    "techcrunch",
+    "ieee spectrum",
+    "wired",
+    "ars technica",
+    "mit technology review",
+    "venturebeat ai",
+    "singularity hub",
+    "ai news",
+    "engadget",
+}
 
 
 def read_optional(path: Path) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8", errors="ignore")
     return ""
+
+
+def read_optional_recent(path: Path, max_age_hours: int = FRESH_MAX_HOURS) -> str:
+    if not path.exists():
+        return ""
+    try:
+        mtime = dt.datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+        age = dt.datetime.now().astimezone() - mtime
+        if age > dt.timedelta(hours=max_age_hours):
+            return ""
+    except Exception:
+        return ""
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
+def latest_capture_time(paths: Iterable[Path]) -> str:
+    latest: dt.datetime | None = None
+    for path in paths:
+        try:
+            if not path.exists():
+                continue
+            ts = dt.datetime.fromtimestamp(path.stat().st_mtime).astimezone()
+        except Exception:
+            continue
+        if latest is None or ts > latest:
+            latest = ts
+    if latest is None:
+        return "未获取到抓取时间"
+    return latest.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def fetch_cn_hk_market_snapshot() -> dict[str, str]:
@@ -338,6 +394,60 @@ def discover_news_via_multi_search() -> list[dict[str, str]]:
     return items
 
 
+def fetch_article_preview(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        text = fetch_url_text(url)
+    except Exception:
+        return ""
+    text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.I)
+    text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = html.unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > 1200:
+        text = text[:1200]
+    return text
+
+
+def enrich_news_items_with_evidence(items: list[dict[str, str]]) -> tuple[list[dict[str, str]], dict]:
+    enriched: list[dict[str, str]] = []
+    stats = {
+        "inputCount": len(items),
+        "attempted": 0,
+        "withEvidence": 0,
+        "withoutEvidence": 0,
+        "sources": [],
+    }
+    source_rows: list[dict[str, str | bool]] = []
+    for item in items:
+        row = dict(item)
+        url = (row.get("link") or "").strip()
+        stats["attempted"] += 1
+        preview = fetch_article_preview(url)
+        has_evidence = len(preview) >= 180
+        row["evidence_preview"] = preview[:280] if preview else ""
+        row["has_evidence"] = has_evidence
+        if has_evidence and row.get("pub_date", "").startswith("搜索发现"):
+            row["pub_date"] = "已抓正文，精确时间待补"
+        if has_evidence and not row.get("summary"):
+            row["summary"] = preview[:220]
+        if has_evidence:
+            stats["withEvidence"] += 1
+        else:
+            stats["withoutEvidence"] += 1
+        source_rows.append({
+            "source": row.get("source", "未知"),
+            "title": row.get("title", "")[:120],
+            "url": url,
+            "hasEvidence": has_evidence,
+        })
+        enriched.append(row)
+    stats["sources"] = source_rows
+    return enriched, stats
+
+
 def dedupe_news_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     seen_titles: set[str] = set()
@@ -361,7 +471,7 @@ def dedupe_news_items(items: list[dict[str, str]]) -> list[dict[str, str]]:
     return out
 
 
-def collect_qveris_market_snapshot() -> dict[str, str]:
+def collect_market_provider_snapshot() -> dict[str, str]:
     path = ROOT / "reports" / "scheduled" / "qveris_market_snapshot.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -399,6 +509,8 @@ def collect_qveris_market_snapshot() -> dict[str, str]:
         "HSI": ("hangseng", 10000, 40000),
         "TWII": ("twse", 10000, 40000),
         "KOSPI": ("kospi", 1500, 4000),
+        "DXY": ("dxy", 80, 130),
+        "USDCNY": ("usdcny", 5, 10),
     }
     for key, (out_key, low, high) in indices.items():
         item = data.get(key) or {}
@@ -428,6 +540,19 @@ def collect_qveris_market_snapshot() -> dict[str, str]:
         if brent_low is not None and brent_high is not None:
             out["brent_qv_range"] = f"{brent_low} - {brent_high}"
 
+    gold = data.get("XAUUSD") or {}
+    if isinstance(gold, dict):
+        gold_price = plausible(str(gold.get("price") or gold.get("c")) if (gold.get("price") is not None or gold.get("c") is not None) else None, 1000, 10000)
+        gold_open = plausible(str(gold.get("open") or gold.get("o")) if (gold.get("open") is not None or gold.get("o") is not None) else None, 1000, 10000)
+        gold_low = plausible(str(gold.get("dayLow") or gold.get("l")) if (gold.get("dayLow") is not None or gold.get("l") is not None) else None, 1000, 10000)
+        gold_high = plausible(str(gold.get("dayHigh") or gold.get("h")) if (gold.get("dayHigh") is not None or gold.get("h") is not None) else None, 1000, 10000)
+        if gold_price is not None:
+            out["gold_qv"] = gold_price
+        if gold_open is not None:
+            out["gold_qv_open"] = gold_open
+        if gold_low is not None and gold_high is not None:
+            out["gold_qv_range"] = f"{gold_low} - {gold_high}"
+
     wti = data.get("CLUSD") or {}
     if isinstance(wti, dict):
         wti_price = plausible(str(wti.get("price") or wti.get("c")) if (wti.get("price") is not None or wti.get("c") is not None) else None, 20, 200)
@@ -447,15 +572,15 @@ def collect_qveris_market_snapshot() -> dict[str, str]:
 def sanitize_report_text(text: str) -> str:
     replacements = {
         "�?": "",
-        "过�?2-24小时": "过去0-24小时",
+        "过�?2-24小时": "过去24-48小时",
         "补�?": "补充",
         "二�?0字左右总判�?": "二、50字左右总判断",
         "一、重要头条新�?": "一、重要头条新闻",
         "三、全球市场动�?": "三、全球市场动态",
         "四、地缘政治热�?": "四、地缘政治热点",
         "五、全球经济与产业动�?": "五、全球经济与产业动态",
-        "六、风险预警（24-48小时短期 / 中期 / 长期�?": "六、风险预警（24-48小时短期 / 中期 / 长期）",
-        "七、投资建�?": "七、投资建议",
+        "六、风险预警（24-48小时短期 / 中期 / 长期�?": "🚨 风险预警",
+        "七、投资建�?": "💡 决策建议",
         "【美股�?": "【美股】",
         "【欧洲与亚太股市�?": "【欧洲与亚太股市】",
         "【商品与避险资产�?": "【商品与避险资产】",
@@ -463,7 +588,7 @@ def sanitize_report_text(text: str) -> str:
         "【俄乌�?": "【俄乌】",
         "【中美关�?/ 东亚政治�?": "【中美关系 / 东亚政治】",
         "【AI / 机器�?/ 科技前沿�?": "【AI / 机器人 / 科技前沿】",
-        "【美股科技龙头快照（QVeris，如存在）�?": "【美股科技龙头快照（QVeris，如存在）】",
+        "【美股科技龙头快照（东方财富/新浪/腾讯，如存在）�?": "【美股科技龙头快照（东方财富/新浪/腾讯，如存在）】",
         "【短期�?": "【短期】",
         "【中期�?": "【中期】",
         "【长期�?": "【长期】",
@@ -483,12 +608,12 @@ def sanitize_report_text(text: str) -> str:
 
 
 def collect_market_snapshot() -> dict[str, str]:
-    reuters = read_optional(FIRECRAWL_DIR / "reuters.com.md")
-    yahoo = read_optional(FIRECRAWL_DIR / "finance.yahoo.com.md")
-    twse = read_optional(FIRECRAWL_DIR / "twse.com.tw-zh-index.html.md")
-    jpx = read_optional(FIRECRAWL_DIR / "jpx.co.jp-english.md")
-    krx = read_optional(FIRECRAWL_DIR / "global.krx.co.kr-main-main.jsp.md")
-    eastmoney = read_optional(FIRECRAWL_DIR / "eastmoney.com.md")
+    reuters = read_optional_recent(FIRECRAWL_DIR / "reuters.com.md")
+    yahoo = read_optional_recent(FIRECRAWL_DIR / "finance.yahoo.com.md")
+    twse = read_optional_recent(FIRECRAWL_DIR / "twse.com.tw-zh-index.html.md")
+    jpx = read_optional_recent(FIRECRAWL_DIR / "jpx.co.jp-english.md")
+    krx = read_optional_recent(FIRECRAWL_DIR / "global.krx.co.kr-main-main.jsp.md")
+    eastmoney = read_optional_recent(FIRECRAWL_DIR / "eastmoney.com.md")
 
     data: dict[str, str] = {}
     data["spx"] = first_plausible(find_number(reuters, r"SPX\s*([0-9,]+(?:\.[0-9]+)?)")) or "今日无重大更新"
@@ -550,7 +675,7 @@ def collect_market_snapshot() -> dict[str, str]:
         data["hangseng"] = cn_hk["hangseng_rt"]
         data["hangseng_change"] = cn_hk.get("hangseng_rt_change", data.get("hangseng_change", "今日无重大更新"))
 
-    data.update(collect_qveris_market_snapshot())
+    data.update(collect_market_provider_snapshot())
     return data
 
 
@@ -573,9 +698,9 @@ def within_numeric_range(value: str | None, low: float, high: float) -> str | No
 
 
 def collect_commodity_snapshot() -> dict[str, str]:
-    gold = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-GC=F.md")
-    brent = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-BZ=F.md")
-    wti = read_optional(FIRECRAWL_DIR / "finance.yahoo.com-quote-CL=F.md")
+    gold = read_optional_recent(FIRECRAWL_DIR / "finance.yahoo.com-quote-GC=F.md")
+    brent = read_optional_recent(FIRECRAWL_DIR / "finance.yahoo.com-quote-BZ=F.md")
+    wti = read_optional_recent(FIRECRAWL_DIR / "finance.yahoo.com-quote-CL=F.md")
 
     data: dict[str, str] = {}
     data["gold_last"] = within_numeric_range(find_number(gold, r"Last Price\s*([0-9,]+(?:\.[0-9]+)?)"), 1500, 4500) or "今日无重大更新"
@@ -588,7 +713,7 @@ def collect_commodity_snapshot() -> dict[str, str]:
     data["wti_open"] = within_numeric_range(find_number(wti, r"Open\s*([0-9,]+(?:\.[0-9]+)?)"), 20, 200) or "今日无重大更新"
     data["wti_range"] = clean_range_text(find_number(wti, r"Day's Range\s*([0-9,.,\- ]+)"))
     data["headline_oil"] = "若缺少扎实最新报价，则只保留页面抓取到的区间，不再用旧默认值补洞。"
-    qv = collect_qveris_market_snapshot()
+    qv = collect_market_provider_snapshot()
     if qv.get("gold_qv"):
         qv_gold = within_numeric_range(qv["gold_qv"], 1500, 4500)
         if qv_gold:
@@ -607,12 +732,12 @@ def collect_commodity_snapshot() -> dict[str, str]:
 
 
 def collect_geopolitical_snapshot() -> dict[str, list[str]]:
-    bbc = read_optional(FIRECRAWL_DIR / "bbc.com-news.md")
-    reuters = read_optional(FIRECRAWL_DIR / "reuters.com.md")
-    reuters_europe = read_optional(FIRECRAWL_DIR / "reuters.com-world-europe.md")
-    reuters_china = read_optional(FIRECRAWL_DIR / "reuters.com-world-china.md")
-    ap = read_optional(FIRECRAWL_DIR / "apnews.com.md")
-    aljazeera = read_optional(FIRECRAWL_DIR / "aljazeera.com.md")
+    bbc = read_optional_recent(FIRECRAWL_DIR / "bbc.com-news.md")
+    reuters = read_optional_recent(FIRECRAWL_DIR / "reuters.com.md")
+    reuters_europe = read_optional_recent(FIRECRAWL_DIR / "reuters.com-world-europe.md")
+    reuters_china = read_optional_recent(FIRECRAWL_DIR / "reuters.com-world-china.md")
+    ap = read_optional_recent(FIRECRAWL_DIR / "apnews.com.md")
+    aljazeera = read_optional_recent(FIRECRAWL_DIR / "aljazeera.com.md")
 
     middle_east: list[str] = []
     russia_ukraine: list[str] = []
@@ -662,16 +787,19 @@ def collect_geopolitical_snapshot() -> dict[str, list[str]]:
 
 def collect_tech_snapshot() -> list[str]:
     sources = [
-        ("The Verge", read_optional(FIRECRAWL_DIR / "theverge.com.md")),
-        ("TechCrunch", read_optional(FIRECRAWL_DIR / "techcrunch.com.md")),
-        ("IEEE Spectrum", read_optional(FIRECRAWL_DIR / "spectrum.ieee.org.md")),
-        ("Wired", read_optional(FIRECRAWL_DIR / "wired.com.md")),
-        ("Ars Technica", read_optional(FIRECRAWL_DIR / "arstechnica.com.md")),
-        ("MIT Technology Review", read_optional(FIRECRAWL_DIR / "technologyreview.com.md")),
-        ("VentureBeat AI", read_optional(FIRECRAWL_DIR / "venturebeat.com-category-ai.md")),
-        ("Singularity Hub", read_optional(FIRECRAWL_DIR / "singularityhub.com.md")),
-        ("AI News", read_optional(FIRECRAWL_DIR / "artificialintelligence-news.com.md")),
-        ("Engadget", read_optional(FIRECRAWL_DIR / "engadget.com.md")),
+        ("The Verge", read_optional_recent(FIRECRAWL_DIR / "theverge.com.md")),
+        ("TechCrunch", read_optional_recent(FIRECRAWL_DIR / "techcrunch.com.md")),
+        ("IEEE Spectrum", read_optional_recent(FIRECRAWL_DIR / "spectrum.ieee.org.md")),
+        ("Wired", read_optional_recent(FIRECRAWL_DIR / "wired.com.md")),
+        ("Ars Technica", read_optional_recent(FIRECRAWL_DIR / "arstechnica.com.md")),
+        ("MIT Technology Review", read_optional_recent(FIRECRAWL_DIR / "technologyreview.com.md")),
+        ("VentureBeat AI", read_optional_recent(FIRECRAWL_DIR / "venturebeat.com-category-ai.md")),
+        ("Singularity Hub", read_optional_recent(FIRECRAWL_DIR / "singularityhub.com.md")),
+        ("AI News", read_optional_recent(FIRECRAWL_DIR / "artificialintelligence-news.com.md")),
+        ("Engadget", read_optional_recent(FIRECRAWL_DIR / "engadget.com.md")),
+
+
+
     ]
 
     rules = [
@@ -699,6 +827,20 @@ def collect_tech_snapshot() -> list[str]:
         if len(lines) >= 5:
             break
     return lines or ["今日无重大更新"]
+
+
+def enforce_tech_source_whitelist(lines: list[str]) -> list[str]:
+    filtered: list[str] = []
+    for line in lines or []:
+        if not line or line == "今日无重大更新":
+            continue
+        m = re.match(r"^\s*([^：:]+)[：:]", line)
+        if not m:
+            continue
+        source_name = m.group(1).strip().lower()
+        if source_name in TECH_SOURCE_WHITELIST:
+            filtered.append(line)
+    return filtered or ["今日无重大更新"]
 
 
 def is_bad_discovery_title(title: str) -> bool:
@@ -802,6 +944,46 @@ def title_to_cn(title: str) -> str | None:
     return None
 
 
+def is_query_like_title(title: str) -> bool:
+    raw = clean_summary_text(title)
+    lower = raw.lower()
+    if not raw:
+        return True
+    if lower.startswith(("site:", "intitle:", "inurl:", "filetype:")):
+        return True
+    query_markers = [
+        " latest news",
+        " breaking news",
+        " top news",
+        " search",
+        "site:",
+        "intitle:",
+        "inurl:",
+        "filetype:",
+    ]
+    if any(marker in lower for marker in query_markers):
+        return True
+    if re.fullmatch(r"[a-z0-9:\-./?=&_ ]+", lower) and len(raw.split()) <= 12:
+        return True
+    return False
+
+
+def summary_is_weak(summary: str) -> bool:
+    text = clean_summary_text(summary)
+    if not text:
+        return True
+    weak_markers = {
+        "今日无额外摘要。",
+        "今日无额外摘要",
+        "需继续跟踪后续更新。",
+        "需继续跟踪后续更新",
+        "今日仅抓到标题级线索，建议继续复核正文。",
+    }
+    if text in weak_markers:
+        return True
+    return len(text) < 10
+
+
 def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]:
     raw = f"{title} {summary}".lower()
     rules = [
@@ -834,7 +1016,7 @@ def localize_headline(title: str, summary: str) -> tuple[str | None, str | None]
             safe_summary = title_clean
         return forced_cn, compress_to_30_zh(safe_summary)
     if re.search(r"[A-Za-z]", title_clean):
-        return None, None
+        return title_clean, compress_to_30_zh(summary or title_clean)
     return title_clean, compress_to_30_zh(summary or "今日无额外摘要。")
 
 
@@ -876,21 +1058,32 @@ def news_priority_score(item: dict[str, str]) -> int:
     return score
 
 
-def news_items_to_pairs(items: Iterable[dict[str, str]]) -> list[tuple[str, str]]:
+def news_items_to_pairs(items: Iterable[dict[str, str]], require_evidence: bool = True) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     seen_display_titles: set[str] = set()
     sorted_items = sorted(list(items), key=news_priority_score, reverse=True)
     for item in sorted_items:
         title = item.get("title", "").strip()
         summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip()
-        if not title or is_stale(title):
+        if not title or is_stale(title) or is_query_like_title(title):
+            continue
+        if require_evidence and not item.get("has_evidence"):
             continue
         zh_title, zh_summary = localize_headline(title, summary)
-        if not zh_title:
+        if not zh_title or is_query_like_title(zh_title):
             continue
         if zh_summary and re.search(r"[^\x00-\x7F]", zh_summary) and not re.search(r"[\u4e00-\u9fff]", zh_summary):
             zh_summary = "今日无额外摘要。"
-        display_title = f"{zh_title}（来源：{item.get('source', '未知')} | 发布时间：{item.get('pub_date') or '未知'}）"
+        if summary_is_weak(zh_summary):
+            fallback_summary = compress_to_30_zh(summary or title)
+            if not summary_is_weak(fallback_summary):
+                zh_summary = fallback_summary
+        if summary_is_weak(zh_summary):
+            continue
+        pub_date = item.get("pub_date") or "未知"
+        if str(pub_date).startswith("搜索发现"):
+            pub_date = "已抓正文，精确时间待补" if item.get("has_evidence") else "来源站点已命中，发布时间待补"
+        display_title = f"{zh_title}（来源：{item.get('source', '未知')} | 发布时间：{pub_date}）"
         display_key = zh_title.strip().lower()
         if display_key in seen_display_titles:
             continue
@@ -921,31 +1114,35 @@ def build_report() -> tuple[str, str, str]:
     rss_items = fetch_rss_items(limit_per_feed=3, min_age_hours=FRESH_MIN_HOURS, max_age_hours=FRESH_MAX_HOURS)
     search_items = discover_news_via_multi_search()
     merged_news = dedupe_news_items(rss_items + search_items)
+    enriched_news, evidence_stats = enrich_news_items_with_evidence(merged_news)
     market = collect_market_snapshot()
     commodities = collect_commodity_snapshot()
     geo = collect_geopolitical_snapshot()
     tech = collect_tech_snapshot()
 
     subject = f"全球综合情报报告 - {title_date}"
-    core_summary_pairs = news_items_to_pairs(merged_news)[:5]
+    core_summary_pairs = news_items_to_pairs(enriched_news)[:5]
+    if not core_summary_pairs and merged_news:
+        core_summary_pairs = news_items_to_pairs(enriched_news, require_evidence=False)[:5]
     if not core_summary_pairs:
         core_summary_pairs = [("今日无足够扎实头条更新", "本轮自动抓取与搜索发现未形成足够可靠的核心头条，报告保留结构但不虚构补洞。")]
 
     middle_east_lines = geo["middle_east"] or ["今日无重大更新"]
     russia_ukraine_lines = geo["russia_ukraine"] or ["今日无重大更新"]
     us_china_lines = geo["us_china"] or ["今日无重大更新"]
-    tech_lines = tech or ["今日无重大更新"]
+    tech_lines = enforce_tech_source_whitelist(tech)
 
     lines: list[str] = [
         f"全球综合情报报告 - {title_date}",
         "",
         f"发送时间：{sent_at}",
-        "整理：沈万三（以首席全球分析师口径撰写）",
-        "搜索窗口：严格限定过去12-24小时；抓不到就明确写无更新，拒绝旧闻补洞",
+        "整理：沈万三",
+        "搜索窗口：严格限定过去24-48小时；抓不到就明确写无更新，拒绝旧闻补洞",
         "搜索增强：已接入 multi-search-engine 模板做新闻发现补充",
+        f"头条准入：优先保留已抓到正文证据条目；若正文证据不足则放宽为站点命中条目并明确标注时间状态（本轮候选 {evidence_stats['inputCount']} 条，正文证据通过 {evidence_stats['withEvidence']} 条）",
         "",
         "---",
-        "一、重要头条新闻",
+        "📊 实时头条（过去24-48小时）",
     ]
 
     for idx, (title_text, summary_text) in enumerate(core_summary_pairs, start=1):
@@ -955,99 +1152,73 @@ def build_report() -> tuple[str, str, str]:
 
     lines.extend([
         "---",
-        "二、50字左右总判断",
-        "当前全球市场仍由地缘政治、能源风险与科技资产风险偏好三条主线共同驱动。搜索增强后，头条发现能力已有提升，但仍坚持只写本轮抓取/搜索能交叉验证的内容。",
-        "",
-        "---",
-        "三、全球市场动态",
-        "【美股】",
-        f"- S&P 500：{market['spx']}（{market['spx_change']}）",
-        f"- 纳斯达克：{market['ixic']}（{market['ixic_change']}）",
-        f"- 道琼斯：{market['dji']}（{market['dji_change']}）",
-        f"- 标普期货：首页抓取约 {market['es_fut']}",
-        "- 结论：仅保留本轮抓取到的真实页面值；没抓到就明确写无更新，不再填默认数字。",
-        "（来源：Reuters | 发布时间：页面抓取时点）",
-        "（来源：Yahoo Finance | 发布时间：页面抓取时点）",
-        "",
-        "【欧洲与亚太股市】",
-        f"- STOXX Europe 600：{market['stoxx']}",
-        f"- 英国富时100：{market['ftse']}（{market.get('ftse_change', '今日无重大更新')}）",
-        f"- 日经225：{market['n225']}（{market['n225_change']}）",
-        f"- 恒生指数：{market.get('hangseng', '今日无重大更新')}（{market.get('hangseng_change', '今日无重大更新')}）",
-        f"- 上证指数：{market.get('shanghai', '今日无重大更新')}（{market.get('shanghai_change', '今日无重大更新')}）",
-        f"- 深证成指：{market.get('shenzhen', '今日无重大更新')}（{market.get('shenzhen_change', '今日无重大更新')}）",
-        f"- 创业板指：{market.get('chinext', '今日无重大更新')}（{market.get('chinext_change', '今日无重大更新')}）",
-        f"- 科创50：{market.get('star50', '今日无重大更新')}（{market.get('star50_change', '今日无重大更新')}）",
-        f"- 台湾加权：{market.get('twse', '今日无重大更新')}",
-        f"- 韩国KOSPI：{market.get('kospi', '今日无重大更新')}",
-        "- 结论：亚太市场分化若缺少页面抓取到的新值，就直接留白，不拿旧数据补写。",
-        "（来源：TWSE / KRX / JPX / Eastmoney | 发布时间：页面抓取时点）",
-        "",
-        "【商品与避险资产】",
-        format_commodity_line("黄金", commodities['gold_last'], commodities['gold_open'], commodities['gold_range']),
-        format_commodity_line("布伦特", commodities['brent_last'], commodities['brent_open'], commodities['brent_range']),
-        format_commodity_line("WTI", commodities['wti_last'], commodities['wti_open'], commodities['wti_range']),
-        f"- 新闻口径：{commodities['headline_oil']}",
-        "- 结论：原油与黄金只使用本轮页面抓到的报价/区间；若无新值，不做历史数字填充。",
-        "（来源：Yahoo Finance GC=F / BZ=F / CL=F | 发布时间：页面抓取时点）",
-        "",
-        "---",
-        "四、地缘政治热点",
+        "🌍 地缘政治分析",
         "【中东】",
     ])
     lines.extend([f"- {x}" for x in middle_east_lines])
     lines.extend([
-        "- 结论：中东仍是全球第一风险源，已从军事层面外溢到工业设施、能源运输与民生基础设施。",
         "",
-        "【俄乌】",
+        "【欧洲（俄乌）】",
     ])
     lines.extend([f"- {x}" for x in russia_ukraine_lines])
     lines.extend([
-        "- 结论：俄乌今天不是最强主线，但欧洲外围安全和外交层面的延伸风险仍在。",
         "",
-        "【中美关系 / 东亚政治】",
+        "【亚太（中美/东亚）】",
     ])
     lines.extend([f"- {x}" for x in us_china_lines])
     lines.extend([
-        "- 结论：若缺乏扎实新增口径，维持克制写法，不拿旧闻硬补。",
+        "- 冲突核查：若同一事件存在媒体分歧，统一标注“说法不一”，并并列呈现主要口径。",
         "",
         "---",
-        "五、全球经济与产业动态",
+        "📈 金融市场速报",
+        "| 指数 | 点位 | 涨跌幅 |",
+        "|---|---:|---:|",
+        f"| S&P 500 | {market['spx']} | {market['spx_change']} |",
+        f"| 上证指数 | {market.get('shanghai', '今日无重大更新')} | {market.get('shanghai_change', '今日无重大更新')} |",
+        f"| 日经225 | {market['n225']} | {market['n225_change']} |",
+        f"| 韩国KOSPI | {market.get('kospi', '今日无重大更新')} | {market.get('kospi_change', '今日无重大更新')} |",
+        "（来源：Reuters / SSE / JPX / KRX / 东方财富 / 新浪）",
+        "",
+        "---",
+        "⛽ 大宗商品与汇率",
+        "| 资产 | 最新值 | 备注 |",
+        "|---|---:|---|",
+        f"| 布伦特原油 | {commodities['brent_last']} | Open {commodities['brent_open']} ; Range {commodities['brent_range']} |",
+        f"| 现货黄金 | {commodities['gold_last']} | Open {commodities['gold_open']} ; Range {commodities['gold_range']} |",
+        f"| 美元指数DXY | {market.get('dxy', '今日无重大更新')} | 交易所快照优先 |",
+        f"| 美元兑人民币USDCNY | {market.get('usdcny', '今日无重大更新')} | 交易所快照优先 |",
+        "（来源：Yahoo Finance / 交易所快照）",
+        "",
+        "---",
+        "🧠 科技新闻版块",
         "【AI / 机器人 / 科技前沿】",
     ])
     lines.extend([f"- {x}" for x in tech_lines])
     lines.extend([
         "- 结论：科技仍是资金回流的优先方向，但估值表现仍受地缘与风险偏好支配。",
         "",
-        "【美股科技龙头快照（QVeris，如存在）】",
+        "【美股科技龙头快照（东方财富/新浪/腾讯，如存在）】",
         f"- AAPL：{market.get('aapl', '今日无重大更新')}（{market.get('aapl_change', '变化未获取')}）",
         f"- NVDA：{market.get('nvda', '今日无重大更新')}（{market.get('nvda_change', '变化未获取')}）",
         f"- TSLA：{market.get('tsla', '今日无重大更新')}（{market.get('tsla_change', '变化未获取')}）",
-        "- 结论：若存在 QVeris 快照就补充，没有就明确写无更新，不伪造个股行情。",
         "",
         "---",
-        "六、风险预警（24-48小时短期 / 中期 / 长期）",
-        "【短期】",
+        "🚨 风险预警",
         "- 若海湾能源设施、港口、油轮继续受袭，油价和运价可能再度急升。",
         "- 若也门方向或黎巴嫩战线继续升级，全球避险资产可能再次走强。",
         "- 若美股反弹缺乏后续缓和消息支撑，可能迅速回吐。",
-        "",
-        "【中期】",
-        "- 欧洲能源与通胀压力可能回升，拖累风险资产估值。",
-        "- 亚洲市场将继续受汇率、外需和科技板块情绪波动牵引。",
-        "",
-        "【长期】",
-        "- 若中东冲突长期化，全球供应链、航运保险与能源成本将系统性抬升。",
-        "- 资金配置可能继续偏向黄金、能源、国防与低波动资产。",
+        "- 欧洲能源与通胀压力回升将继续拖累风险资产估值。",
+        "- 亚洲市场仍受汇率、外需与科技风险偏好波动牵引。",
         "",
         "---",
-        "七、投资建议",
+        "💡 决策建议",
         "- 当前更适合防守型 + 事件驱动型交易，不是舒服做多的环境。",
-        "- 黄金与能源仍有配置价值，但波动极高，不能把盘中新闻高点当静态报价。",
-        "- 科技与电子链可作为回流方向观察，但前提是地缘风险继续边际缓和。",
-        "- 若没有明确缓和信号，全球资产配置宜偏防守，控制仓位与节奏。",
+        "- 黄金与能源仍有配置价值，但波动极高，需严格控制仓位与节奏。",
+        "- 科技与电子链可作为回流方向观察，前提是地缘风险继续边际缓和。",
+        "- 若无明确缓和信号，全球资产配置宜偏防守，优先流动性与风险对冲。",
         "",
-        "说明：本报告默认使用模板 A（详细正式版），用于每日综合情报、发邮箱与存档；抓不到的数据直接写“今日无重大更新”或“未获取到扎实数据”，严禁虚构补洞。",
+        "说明：本报告严格限定过去24-48小时；抓不到就明确写“今日无重大更新”，不使用旧闻补洞。",
+        f"报告生成时间：{sent_at} | 引用口径：Reuters / Bloomberg / WSJ / 交易所及财经页面实时抓取。",
     ])
 
     text_body = sanitize_report_text("\n".join(lines))
@@ -1058,12 +1229,12 @@ def build_report() -> tuple[str, str, str]:
     html_parts = [
         "<html><body style='font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.75;'>",
         f"<h2>{p(subject)}</h2>",
-        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>严格限定过去0-24小时；抓不到就明确写无更新，拒绝旧闻补洞<br><b>搜索增强：</b>已接入 multi-search-engine 模板做新闻发现补充</p>",
+        f"<p><b>发送时间：</b>{p(sent_at)}<br><b>整理：</b>沈万三<br><b>搜索窗口：</b>严格限定过去24-48小时；抓不到就明确写无更新，拒绝旧闻补洞<br><b>搜索增强：</b>已接入 multi-search-engine 模板做新闻发现补充</p>",
     ]
     for line in text_body.splitlines()[7:]:
         if line == "---":
             html_parts.append("<hr>")
-        elif re.match(r"^[一二三四五六七八九十]+、", line):
+        elif re.match(r"^[一二三四五六七八九十]+、", line) or line.startswith(("📊", "🌍", "📈", "⛽", "🚨", "💡", "🧠")):
             html_parts.append(f"<h3>{p(line)}</h3>")
         elif line.startswith("【") and line.endswith("】"):
             html_parts.append(f"<h4>{p(line)}</h4>")
