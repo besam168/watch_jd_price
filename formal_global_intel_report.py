@@ -241,7 +241,36 @@ def chineseize_summary(text: str, title: str = "") -> str:
     return "该条目有新增，但当前仅抓到英文标题或摘要线索，仍需结合正文复核其真实影响与后续发酵。"
 
 
+def is_noise_item(title: str, summary: str, section: str) -> bool:
+    text = f"{title} {summary}".lower()
+    if section == "宏观新闻":
+        noise_markers = [
+            "governor's race",
+            "pope leo",
+            "assault allegations",
+            "jesus-like figure",
+            "celebrity",
+            "sports",
+        ]
+        if any(marker in text for marker in noise_markers):
+            return True
+    return False
+
+
 def make_content(summary: str, title: str) -> str:
+    signal = classify_signal(title)
+    if signal == "generic":
+        signal = classify_signal(summary)
+    if signal == "geo_energy":
+        return "中东与能源相关动态继续升温，若冲突外溢至航运与供应链，油价与避险资产可能进一步受到推升。"
+    if signal == "russia_ukraine":
+        return "俄乌相关线索仍在更新，说明欧洲安全议题尚未降温，后续若伴随制裁或军援表态，市场仍会重新计价。"
+    if signal == "china_trade":
+        return "中美经贸与关税口径继续扰动供应链和风险偏好，出口链、科技链及跨境资产仍需密切跟踪。"
+    if signal == "tech_ai":
+        return "AI 与科技平台竞争继续升温，市场关注焦点仍在产品落地、商业化节奏以及算力资本开支的兑现能力。"
+    if signal == "market_macro":
+        return "金融与市场类动态反映资金仍在围绕宏观预期、价格信号和龙头权重股表现重新定价。"
     base = summary or title or ""
     return cap_text(chineseize_summary(base, title=title), 78)
 
@@ -249,7 +278,8 @@ def make_content(summary: str, title: str) -> str:
 def make_short_comment(section: str, summary: str, title: str) -> str:
     signal = classify_signal(title)
     if signal == "generic":
-        signal = classify_signal(f"{title} {summary}")
+        signal = classify_signal(summary)
+
     if signal == "geo_energy":
         return "说明地缘风险仍会持续牵动能源与避险资产。"
     if signal == "russia_ukraine":
@@ -284,6 +314,8 @@ def collect_news():
                 continue
         for item in items:
             if not within_24h(item.get("published_dt")):
+                continue
+            if is_noise_item(item.get("title", ""), item.get("summary", ""), feed["section"]):
                 continue
             item["source"] = feed["name"]
             item["section"] = feed["section"]
