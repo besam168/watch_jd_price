@@ -123,6 +123,10 @@ function baseFindTextParams() {
     groupBy: Type.Optional(groupBySchema),
     topN: Type.Optional(Type.Number()),
     debugOverlayPath: Type.Optional(Type.String()),
+    targetOffsetX: Type.Optional(Type.Number()),
+    targetOffsetY: Type.Optional(Type.Number()),
+    clickBiasX: Type.Optional(Type.Number()),
+    clickBiasY: Type.Optional(Type.Number()),
     virtualScreen: Type.Optional(Type.Boolean()),
     x: Type.Optional(Type.Number()),
     y: Type.Optional(Type.Number()),
@@ -174,6 +178,33 @@ function buildFocusGuardFailure(params: { query?: string; steps?: any[]; focusRe
     steps: params.steps,
     lockState: params.lockState,
     focusResult: params.focusResult,
+  };
+}
+
+function applyTargetOffsets(match: any, params: any) {
+  if (!match) return null;
+  const width = Number(match.w ?? match.width ?? 0);
+  const height = Number(match.h ?? match.height ?? 0);
+  const baseCenterX = Number(match.centerX ?? (Number(match.x ?? 0) + width / 2));
+  const baseCenterY = Number(match.centerY ?? (Number(match.y ?? 0) + height / 2));
+  const targetOffsetX = typeof params?.targetOffsetX === "number" ? params.targetOffsetX : 0;
+  const targetOffsetY = typeof params?.targetOffsetY === "number" ? params.targetOffsetY : 0;
+  const clickBiasX = typeof params?.clickBiasX === "number" ? params.clickBiasX : 0;
+  const clickBiasY = typeof params?.clickBiasY === "number" ? params.clickBiasY : 0;
+  const targetX = Math.round(baseCenterX + width * targetOffsetX + clickBiasX);
+  const targetY = Math.round(baseCenterY + height * targetOffsetY + clickBiasY);
+  return {
+    ...match,
+    width,
+    height,
+    baseCenterX,
+    baseCenterY,
+    targetOffsetX,
+    targetOffsetY,
+    clickBiasX,
+    clickBiasY,
+    targetX,
+    targetY,
   };
 }
 
@@ -475,7 +506,7 @@ export default function (api) {
         topN: params.topN,
         debugOverlay: params.debugOverlayPath,
       });
-      const matches = pickTopMatches(ocr, params.topN ?? 1);
+      const matches = pickTopMatches(ocr, params.topN ?? 1).map((item) => applyTargetOffsets(item, params));
       const match = matches[0] || null;
       const result = {
         ok: Boolean(match),
@@ -776,7 +807,7 @@ export default function (api) {
           topN: params.topN,
           debugOverlay: params.debugOverlayPath,
         });
-        const matches = pickTopMatches(ocr, params.topN ?? 1);
+        const matches = pickTopMatches(ocr, params.topN ?? 1).map((item) => applyTargetOffsets(item, params));
         const match = matches[0] || null;
         if (!match) {
           attempts.push({ attempt: attempt + 1, ok: false, imagePath, error: "text not found", foregroundBefore, lockStateBefore });
@@ -809,8 +840,8 @@ export default function (api) {
           };
         }
 
-        const clickX = Math.round(match.centerX);
-        const clickY = Math.round(match.centerY);
+        const clickX = Math.round(match.targetX ?? match.centerX);
+        const clickY = Math.round(match.targetY ?? match.centerY);
         const button = params.button || "left";
         const dryRun = Boolean(params.dryRun);
         let clickText = "DRY_RUN";
