@@ -2,7 +2,6 @@ import smtplib
 import ssl
 import json
 import sys
-import webbrowser
 from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +9,7 @@ from email.header import Header
 from email.utils import formatdate, parsedate_to_datetime
 from datetime import datetime, timezone, timedelta
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
 import html
 import re
@@ -26,8 +26,8 @@ NOW = datetime.now(TZ_CN)
 WINDOW_START = NOW - timedelta(hours=24)
 
 FEEDS = [
-    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "browser_fallback": "https://www.reuters.com/world/"},
-    {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "browser_fallback": "https://apnews.com/"},
+    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "browser_fallback": "https://www.reuters.com/world/", "fallback_kind": "reuters"},
+    {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "browser_fallback": "https://apnews.com/", "fallback_kind": "ap"},
     {"name": "BBC国际", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "section": "宏观新闻"},
     {"name": "半岛电视台", "url": "https://www.aljazeera.com/xml/rss/all.xml", "section": "宏观新闻"},
     {"name": "CNBC国际", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html", "section": "财经市场"},
@@ -55,12 +55,93 @@ def strip_html(text: str) -> str:
     return text
 
 
-def try_browser_fallback(url: str) -> None:
-    try:
-        webbrowser.open(url)
-        time.sleep(5)
-    except Exception:
-        pass
+def fetch_text(url: str, timeout: int = 20) -> str:
+    return fetch_url(url, timeout=timeout).decode("utf-8", errors="ignore")
+
+
+def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
+    title = strip_html(raw_title)
+    title_cn = title_to_cn(title)
+    if title_cn != "国际要闻更新":
+        return title_cn
+    if re.search(r"[\u4e00-\u9fff]", title):
+        return cap_text(title, 36)
+    if title:
+        return cap_text(title, 50)
+    return cap_text(strip_html(raw_summary) or "国际要闻更新", 36)
+
+
+def fallback_reuters_world(limit: int = 14):
+    html_text = fetch_text("https://www.reuters.com/world/", timeout=20)
+    items = []
+    seen = set()
+
+    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+        link = href.strip()
+        if link.startswith("/"):
+            link = urllib.parse.urljoin("https://www.reuters.com", link)
+        if not link.startswith("https://www.reuters.com/"):
+            continue
+        if "/world/" not in link and "/markets/" not in link and "/business/" not in link:
+            continue
+        text = strip_html(title)
+        if len(text) < 20:
+            continue
+        key = (link, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({
+            "title": text,
+            "link": link,
+            "summary": text,
+            "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}",
+            "published_dt": NOW,
+        })
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fallback_ap_home(limit: int = 14):
+    html_text = fetch_text("https://apnews.com/", timeout=20)
+    items = []
+    seen = set()
+
+    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+        link = href.strip()
+        if link.startswith("/"):
+            link = urllib.parse.urljoin("https://apnews.com", link)
+        if not link.startswith("https://apnews.com/"):
+            continue
+        if "/article/" not in link and "/hub/" not in link and "/live/" not in link:
+            continue
+        text = strip_html(title)
+        if len(text) < 20:
+            continue
+        key = (link, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({
+            "title": text,
+            "link": link,
+            "summary": text,
+            "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}",
+            "published_dt": NOW,
+        })
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fallback_items(feed: dict, limit: int = 14):
+    kind = (feed.get("fallback_kind") or "").strip().lower()
+    if kind == "reuters":
+        return fallback_reuters_world(limit=limit)
+    if kind == "ap":
+        return fallback_ap_home(limit=limit)
+    return []
 
 
 def fetch_url(url: str, timeout: int = 20) -> bytes:
@@ -204,36 +285,47 @@ def collect_news():
     grouped = {"宏观新闻": [], "财经市场": [], "科技产业": []}
     errors = []
     for feed in FEEDS:
+        source_name = feed["name"]
+        section = feed["section"]
         try:
             items = parse_feed(feed["url"], limit=14)
         except Exception as e:
-            if feed.get("browser_fallback"):
-                try:
-                    try_browser_fallback(feed["browser_fallback"])
-                    items = parse_feed(feed["url"], limit=14)
-                except Exception as e2:
-                    errors.append(f"{feed['name']}: {e2}")
+            try:
+                items = fallback_items(feed, limit=14)
+                if items:
+                    errors.append(f"{source_name}: RSS失败，已切换页面回退")
+                else:
+                    errors.append(f"{source_name}: RSS失败且回退无可用条目: {e}")
                     time.sleep(0.5)
                     continue
-            else:
-                errors.append(f"{feed['name']}: {e}")
+            except Exception as e2:
+                errors.append(f"{source_name}: RSS失败且回退异常: {e2}")
                 time.sleep(0.5)
                 continue
+
         for item in items:
             if not within_24h(item.get("published_dt")):
                 continue
-            item["source"] = feed["name"]
-            item["section"] = feed["section"]
-            item["title_cn"] = title_to_cn(item.get("title", ""))
-            item["内容摘要"] = make_content(item.get("summary", ""), item.get("title", ""))
-            item["评论"] = cap_text(make_short_comment(feed["section"], item.get("summary", ""), item.get("title", "")), 42)
-            grouped[feed["section"]].append(item)
+            raw_title = item.get("title", "")
+            raw_summary = item.get("summary", "")
+            normalized_title = normalize_headline_title(raw_title, raw_summary)
+            content = make_content(raw_summary, raw_title)
+            comment = cap_text(make_short_comment(section, raw_summary, raw_title), 42)
+            grouped[section].append({
+                **item,
+                "source": source_name,
+                "section": section,
+                "标题": normalized_title,
+                "内容": content,
+                "评论": comment,
+            })
         time.sleep(0.5)
+
     for section in grouped:
         dedup = []
         seen = set()
         for item in grouped[section]:
-            key = (item.get("title_cn"), item.get("source"))
+            key = ((item.get("link") or "").strip(), (item.get("title") or "").strip(), item.get("source"))
             if key in seen:
                 continue
             seen.add(key)
@@ -309,6 +401,7 @@ def select_top_headlines(grouped, limit: int = 12):
     all_items = []
     for section in ("宏观新闻", "财经市场", "科技产业"):
         all_items.extend(grouped.get(section, []))
+
     def score(item):
         text = f"{item.get('title','')} {item.get('summary','')}".lower()
         pts = 0
@@ -320,10 +413,11 @@ def select_top_headlines(grouped, limit: int = 12):
             if keyword in text:
                 pts = max(pts, val)
         return pts
+
     selected = []
     seen = set()
     for item in sorted(all_items, key=score, reverse=True):
-        title = item.get("title_cn") or title_to_cn(item.get("title", ""))
+        title = item.get("标题") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
         if title in seen:
             continue
         seen.add(title)
@@ -331,7 +425,7 @@ def select_top_headlines(grouped, limit: int = 12):
             "标题": title,
             "来源": item.get("source", "未知来源"),
             "时间": item.get("published", "未明确给出"),
-            "内容": item.get("内容摘要") or make_content(item.get("summary", ""), item.get("title", "")),
+            "内容": item.get("内容") or make_content(item.get("summary", ""), item.get("title", "")),
             "评论": item.get("评论") or make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")),
         })
         if len(selected) >= limit:
