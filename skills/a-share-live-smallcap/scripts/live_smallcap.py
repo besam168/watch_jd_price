@@ -562,6 +562,7 @@ def main():
     parser.add_argument('--max-circ-mv-yi', type=float, default=800, help='流通市值上限(亿)')
     parser.add_argument('--allow-mainboard-60', action='store_true', help='允许60主板在满足阈值时入选')
     parser.add_argument('--output-json', default='', help='把结果额外写入指定 JSON 文件')
+    parser.add_argument('--boss-brief', action='store_true', help='输出老板播报版（精简）')
     parser.add_argument('--json', action='store_true', help='输出 JSON')
     args = parser.parse_args()
 
@@ -645,6 +646,10 @@ def main():
         print("观察:")
         for x in role_board['observe']:
             print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
+
+    if args.boss_brief:
+        return
+
     print('真龙头：')
     for x in true_leaders:
         print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{format_turnover_display(x)}")
