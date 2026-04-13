@@ -464,7 +464,7 @@ def main():
     parser.add_argument('--pick-count', type=int, default=24, help='中小盘候选池上限')
     parser.add_argument('--min-change-pct', type=float, default=1.5, help='最小涨幅过滤')
     parser.add_argument('--min-amount-yi', type=float, default=2.0, help='最小成交额(亿)过滤')
-    parser.add_argument('--min-turnover-ratio', type=float, default=0.0, help='最小换手率过滤(%)')
+    parser.add_argument('--min-turnover-ratio', type=float, default=0.0, help='最小换手率过滤(%%)')
     parser.add_argument('--max-total-mv-yi', type=float, default=1200, help='总市值上限(亿)')
     parser.add_argument('--max-circ-mv-yi', type=float, default=800, help='流通市值上限(亿)')
     parser.add_argument('--allow-mainboard-60', action='store_true', help='允许60主板在满足阈值时入选')
