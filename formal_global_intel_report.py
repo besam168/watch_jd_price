@@ -241,8 +241,18 @@ def chineseize_summary(text: str, title: str = "") -> str:
     return "该条目有新增，但当前仅抓到英文标题或摘要线索，仍需结合正文复核其真实影响与后续发酵。"
 
 
-def is_noise_item(title: str, summary: str, section: str) -> bool:
+def is_noise_item(title: str, summary: str, section: str, source: str = "") -> bool:
     text = f"{title} {summary}".lower()
+    if source.startswith("Google News"):
+        whitelist = [
+            "gaza", "israel", "iran", "hormuz", "oil", "brent",
+            "ukraine", "russia", "moscow", "kyiv",
+            "china", "tariff", "trade", "commerce",
+            "market", "sell-off", "pricing in", "stocks", "bond", "fed", "goldman",
+            "ai", "openai", "anthropic", "nvidia", "chip", "robot", "claude"
+        ]
+        if not any(marker in text for marker in whitelist):
+            return True
     if section == "宏观新闻":
         noise_markers = [
             "governor's race",
@@ -315,7 +325,7 @@ def collect_news():
         for item in items:
             if not within_24h(item.get("published_dt")):
                 continue
-            if is_noise_item(item.get("title", ""), item.get("summary", ""), feed["section"]):
+            if is_noise_item(item.get("title", ""), item.get("summary", ""), feed["section"], feed["name"]):
                 continue
             item["source"] = feed["name"]
             item["section"] = feed["section"]
