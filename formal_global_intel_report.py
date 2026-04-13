@@ -1,5 +1,6 @@
 import smtplib
 import ssl
+import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -124,20 +125,79 @@ def cap_text(text: str, max_len: int) -> str:
     return text[:max_len].rstrip("，。；;,. ") + "。"
 
 
+def title_to_cn(title: str) -> str:
+    raw = strip_html(title)
+    lower = raw.lower()
+    rules = [
+        (("tariff", "china"), "美国对华关税口径再度收紧"),
+        (("trade", "china"), "中美经贸博弈出现新动向"),
+        (("hormuz",), "霍尔木兹海峡风险再度牵动全球能源预期"),
+        (("iran", "blockade"), "伊朗相关封锁风险推升能源与地缘担忧"),
+        (("oil",), "国际油价与能源风险溢价继续升温"),
+        (("gaza",), "加沙局势仍牵动中东风险定价"),
+        (("israel",), "以色列相关动态继续牵动中东局势"),
+        (("ukraine",), "俄乌局势仍在持续发酵"),
+        (("russia",), "俄罗斯相关动态继续牵动欧洲安全预期"),
+        (("openai",), "OpenAI 新动向继续牵动科技板块预期"),
+        (("anthropic",), "Anthropic 动向继续反映企业级 AI 竞争"),
+        (("nvidia",), "NVIDIA 相关动态继续影响算力板块"),
+        (("robot",), "机器人主题继续升温"),
+        (("ai",), "AI 产业动态继续升温"),
+    ]
+    for keywords, zh in rules:
+        if all(k in lower for k in keywords):
+            return zh
+    cleaned = re.sub(r"\s+", " ", raw).strip(" -|:;,.，。；：")
+    if re.search(r"[\u4e00-\u9fff]", cleaned):
+        return cleaned
+    return cleaned or "未命名条目"
+
+
+def chineseize_summary(text: str) -> str:
+    text = strip_html(text)
+    if not text:
+        return "今日仅抓到标题级线索，建议继续复核正文。"
+    lower = text.lower()
+    rules = [
+        (("tariff", "china"), "美国对华关税口径继续收紧，说明经贸摩擦仍可能扰动出口链、科技链与全球风险偏好。"),
+        (("hormuz", "blockade"), "霍尔木兹相关封锁风险若继续升温，最直接的冲击会落在原油、航运和避险资产上。"),
+        (("oil", "price"), "油价上行反映市场仍在计入地缘冲突外溢与供应扰动的风险溢价。"),
+        (("gaza",), "加沙局势若继续升级，市场会重新评估中东风险外溢与避险需求。"),
+        (("ukraine",), "俄乌相关动态说明欧洲安全风险仍未退出主要视野。"),
+        (("openai",), "OpenAI 的动作显示大模型竞争仍在加速，市场继续关注商业化和落地节奏。"),
+        (("anthropic",), "Anthropic 相关动态反映企业级 AI 竞争仍在深化。"),
+        (("nvidia",), "NVIDIA 动向继续影响算力资本开支与科技股风险偏好。"),
+        (("robot",), "机器人主题热度延续，市场继续关注真实商用落地。"),
+        (("ai",), "AI 仍是科技板块主线之一，重点在采用速度、产品化与真实付费场景。"),
+    ]
+    for keywords, zh in rules:
+        if all(k in lower for k in keywords):
+            return zh
+    if re.search(r"[\u4e00-\u9fff]", text):
+        return cap_text(text, 60)
+    return cap_text(text, 60)
+
+
 def make_content(summary: str, title: str) -> str:
     base = summary or title or ""
-    return cap_text(base, 50) or "今日仅抓到标题级线索，建议继续复核正文。"
+    return cap_text(chineseize_summary(base), 70)
 
 
 def make_conclusion(section: str, summary: str, title: str) -> str:
-    base = summary or title or ""
+    base = f"{title} {summary}".lower()
     if section == "宏观新闻":
-        text = f"该消息影响地缘风险预期与政策情绪，需关注后续官方表态。{base}"
-    elif section == "财经市场":
-        text = f"该动态关系市场风险偏好与资产价格方向，宜结合后续报价复核。{base}"
-    else:
-        text = f"该消息反映科技与产业趋势变化，可跟踪平台与产品落地节奏。{base}"
-    return cap_text(text, 40) or "需继续跟踪后续更新。"
+        if any(k in base for k in ["gaza", "israel", "iran", "ukraine", "russia"]):
+            return "地缘政治仍是当前最容易触发全球风险偏好再定价的变量，需继续盯住官方表态与冲突外溢。"
+        if any(k in base for k in ["tariff", "trade", "china"]):
+            return "经贸与政策口径仍可能扰动全球供应链预期，市场对风险资产的容忍度不会太高。"
+        return "该宏观条目有跟踪价值，但暂未显示足以单独扭转全球资产定价的决定性新变量。"
+    if section == "财经市场":
+        if any(k in base for k in ["oil", "hormuz", "blockade", "market", "stocks", "bond"]):
+            return "市场仍在围绕能源、风险偏好与宏观预期重新定价，短线高波动特征尚未解除。"
+        return "该财经动态更多体现边际变化，需结合后续价格与成交反馈再判断持续性。"
+    if any(k in base for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip"]):
+        return "科技主线仍有效，但更应区分真正有产业兑现能力的方向与纯情绪炒作。"
+    return "该科技条目反映行业仍在演进，但是否形成更强行情，还要看后续产品化与业绩验证。"
 
 
 def collect_news():
@@ -152,6 +212,7 @@ def collect_news():
                     continue
                 item["source"] = feed["name"]
                 item["section"] = feed["section"]
+                item["title_cn"] = title_to_cn(item.get("title", ""))
                 item["内容摘要"] = make_content(item.get("summary", ""), item.get("title", ""))
                 item["结论"] = make_conclusion(feed["section"], item.get("summary", ""), item.get("title", ""))
                 grouped[feed["section"]].append(item)
@@ -170,7 +231,7 @@ def collect_news():
         dedup = []
         seen = set()
         for item in focus_hits[topic]:
-            key = (item.get("title"), item.get("source"))
+            key = (item.get("title_cn") or item.get("title"), item.get("source"))
             if key in seen:
                 continue
             seen.add(key)
@@ -216,11 +277,11 @@ def build_focus_assessment(title: str, items):
     if not items:
         return "过去24小时未抓到足够扎实的新条目，当前更适合维持跟踪而不是做过度推断。"
     titles = " ".join((item.get("title") or "") for item in items).lower()
-    if title.startswith("加沙"):
-        if any(k in titles for k in ["gaza", "israel", "hamas", "rafah"]):
+    if title.startswith("加沙") or title == "中东":
+        if any(k in titles for k in ["gaza", "israel", "hamas", "rafah", "iran", "hormuz"]):
             return "中东线仍具扰动性，若后续再出现军事升级、能源设施受威胁或人道冲突加剧，油价与避险情绪都可能迅速放大。"
         return "中东条目虽有新增，但还需等待更高等级官方口径确认其外溢强度。"
-    if title.startswith("乌克兰"):
+    if title.startswith("乌克兰") or title == "俄乌":
         if any(k in titles for k in ["ukraine", "russia", "kyiv", "moscow"]):
             return "俄乌线说明欧洲安全议题没有降温，后续若伴随制裁、军援或能源表态，市场仍会重新计价。"
         return "俄乌相关素材有限，当前更适合作为持续跟踪项，而非单独主导市场判断。"
@@ -243,7 +304,7 @@ def build_section_assessment(section: str, items):
             return "宏观主线仍由地缘政治与经贸口径驱动，风险偏好容易被突发事件反复拉扯。"
         return "宏观条目有更新，但暂未看到足以单独重定价全球资产的大级别新增变量。"
     if section == "财经市场":
-        if any(k in merged for k in ["stocks", "market", "fed", "oil", "bond", "tariff", "trade"]):
+        if any(k in merged for k in ["stocks", "market", "fed", "oil", "bond", "tariff", "trade", "hormuz"]):
             return "财经市场板块说明资金仍在围绕宏观预期、风险偏好与商品价格重新定价。"
         return "财经条目存在，但更多是边际变化，尚不足以形成单边市场共识。"
     if any(k in merged for k in ["ai", "openai", "anthropic", "nvidia", "chip", "robot"]):
@@ -258,7 +319,7 @@ def build_risk_alerts(grouped, focus_hits):
         for item in section_items
     ).lower()
     alerts = []
-    if any(k in merged for k in ["gaza", "israel", "hamas", "rafah", "iran", "houthi"]):
+    if any(k in merged for k in ["gaza", "israel", "hamas", "rafah", "iran", "houthi", "hormuz"]):
         alerts.append("若中东冲突继续外溢至能源设施、港口或航运链，原油、运价与避险资产可能同步上冲。")
     if any(k in merged for k in ["ukraine", "russia", "moscow", "kyiv"]):
         alerts.append("若俄乌线再出现制裁升级、军援表态或基础设施打击，欧洲风险资产与能源预期可能重新承压。")
@@ -278,7 +339,7 @@ def build_action_points(grouped, focus_hits):
         for item in section_items
     ).lower()
     actions = []
-    if any(k in merged for k in ["gaza", "israel", "hamas", "iran", "oil", "brent"]):
+    if any(k in merged for k in ["gaza", "israel", "hamas", "iran", "oil", "brent", "hormuz"]):
         actions.append("当前配置更适合保留一部分能源、黄金或其他避险对冲仓位，但不宜在情绪最高点无脑追高。")
     if any(k in merged for k in ["china", "trade", "tariff", "commerce"]):
         actions.append("对出口链、科技制造链与跨境风险资产，宜把政策口径变化纳入仓位节奏，而不是只看短线反弹。")
@@ -288,8 +349,12 @@ def build_action_points(grouped, focus_hits):
     return actions[:5]
 
 
+def html_escape(s: str) -> str:
+    return html.escape(s or "")
 
-    title = html_escape(item.get("title") or "无标题")
+
+def render_news_card(item):
+    title = html_escape(item.get("title_cn") or item.get("title") or "无标题")
     source = html_escape(item.get("source") or "未知来源")
     published = html_escape(item.get("published") or "未明确给出")
     content = html_escape(item.get("内容摘要") or "")
@@ -304,6 +369,89 @@ def build_action_points(grouped, focus_hits):
     </div>
     """
 
+def collect_market_snapshot():
+    snapshot = {
+        "美股指数": "今日无重大更新",
+        "黄金": "今日无重大更新",
+        "布伦特原油": "今日无重大更新",
+        "汇率": "今日无重大更新",
+    }
+    try:
+        raw = fetch_url("https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,%5EDJI,%5EIXIC,GC%3DF,BZ%3DF,CNY%3DX,DX-Y.NYB", timeout=20).decode("utf-8", errors="ignore")
+        data = json.loads(raw)
+        results = (((data or {}).get("quoteResponse") or {}).get("result") or [])
+        by_symbol = {str(item.get("symbol") or ""): item for item in results if isinstance(item, dict)}
+        if by_symbol:
+            parts = []
+            for label, key in [("标普500", "^GSPC"), ("道指", "^DJI"), ("纳指", "^IXIC")]:
+                obj = by_symbol.get(key)
+                if obj and obj.get("regularMarketPrice") is not None:
+                    parts.append(f"{label} {obj['regularMarketPrice']}")
+            if parts:
+                snapshot["美股指数"] = "；".join(parts)
+            gold = by_symbol.get("GC=F")
+            if gold and gold.get("regularMarketPrice") is not None:
+                snapshot["黄金"] = f"近似 {gold['regularMarketPrice']}"
+            brent = by_symbol.get("BZ=F")
+            if brent and brent.get("regularMarketPrice") is not None:
+                snapshot["布伦特原油"] = f"近似 {brent['regularMarketPrice']}"
+            fx_parts = []
+            cny = by_symbol.get("CNY=X")
+            dxy = by_symbol.get("DX-Y.NYB")
+            if cny and cny.get("regularMarketPrice") is not None:
+                fx_parts.append(f"美元兑离岸人民币近似 {cny['regularMarketPrice']}")
+            if dxy and dxy.get("regularMarketPrice") is not None:
+                fx_parts.append(f"美元指数近似 {dxy['regularMarketPrice']}")
+            if fx_parts:
+                snapshot["汇率"] = "；".join(fx_parts)
+    except Exception:
+        pass
+    return snapshot
+
+
+def select_top_headlines(grouped, limit: int = 5):
+    all_items = []
+    for section in ("宏观新闻", "财经市场", "科技产业"):
+        for item in grouped.get(section, []):
+            all_items.append(item)
+
+    def score(item):
+        text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+        pts = 0
+        priority = [
+            ("gaza", 120), ("iran", 118), ("hormuz", 116), ("israel", 110), ("ukraine", 108),
+            ("russia", 100), ("tariff", 98), ("trade", 94), ("oil", 90), ("market", 80),
+            ("openai", 60), ("anthropic", 58), ("nvidia", 56), ("ai", 50),
+        ]
+        for keyword, val in priority:
+            if keyword in text:
+                pts = max(pts, val)
+        source = str(item.get("source") or "")
+        if "路透" in source:
+            pts += 10
+        elif "美联社" in source:
+            pts += 8
+        elif "BBC" in source:
+            pts += 6
+        return pts
+
+    selected = []
+    seen = set()
+    for item in sorted(all_items, key=score, reverse=True):
+        zh_title = item.get("title_cn") or title_to_cn(item.get("title", ""))
+        if zh_title in seen:
+            continue
+        seen.add(zh_title)
+        selected.append({
+            "标题": zh_title,
+            "来源": item.get("source", "未知来源"),
+            "时间": item.get("published", "未明确给出"),
+            "结论": cap_text(chineseize_summary(item.get("summary") or item.get("title") or ""), 52),
+        })
+        if len(selected) >= limit:
+            break
+    return selected
+
 
 def render_focus_section(title, items):
     if not items:
@@ -312,169 +460,148 @@ def render_focus_section(title, items):
     return f"<div style='margin-bottom:18px;'><h4 style='margin:0 0 10px 0;color:#111827;'>{html_escape(title)}</h4>{cards}</div>"
 
 
-def build_html_report(grouped, focus_hits, errors):
+def build_template_a_report(grouped, focus_hits, errors):
     now_str = NOW.strftime("%Y-%m-%d %H:%M")
-    total = sum(len(v) for v in grouped.values())
+    market_snapshot = collect_market_snapshot()
+    headline_items = select_top_headlines(grouped, limit=5)
     summary_points = summarize_signals(grouped, focus_hits)
-    focus_assessments = {
-        "加沙 / 以色列 / 哈马斯": build_focus_assessment("加沙 / 以色列 / 哈马斯", focus_hits["加沙/以色列/哈马斯"]),
-        "乌克兰 / 俄罗斯": build_focus_assessment("乌克兰 / 俄罗斯", focus_hits["乌克兰/俄罗斯"]),
-        "美中贸易 / 关税 / 商业": build_focus_assessment("美中贸易 / 关税 / 商业", focus_hits["美中贸易/关税/商业"]),
-    }
-    section_assessments = {
-        "宏观新闻": build_section_assessment("宏观新闻", grouped["宏观新闻"]),
-        "财经市场": build_section_assessment("财经市场", grouped["财经市场"]),
-        "科技产业": build_section_assessment("科技产业", grouped["科技产业"]),
-    }
     risk_alerts = build_risk_alerts(grouped, focus_hits)
     action_points = build_action_points(grouped, focus_hits)
 
-    html_parts = [
-        "<html><body style='margin:0;padding:0;background:#f3f4f6;font-family:Arial,Microsoft YaHei,sans-serif;'>",
-        "<div style='max-width:980px;margin:0 auto;padding:24px;'>",
-        "<div style='background:#111827;color:#fff;padding:24px 28px;border-radius:14px 14px 0 0;'>",
-        f"<div style='font-size:30px;font-weight:800;'>全球综合情报报告</div>",
-        f"<div style='margin-top:8px;font-size:14px;color:#d1d5db;'>报告时间：{html_escape(now_str)} | 时间窗口：过去 24 小时</div>",
-        "</div>",
-        "<div style='background:#fff;padding:24px 28px;border-radius:0 0 14px 14px;'>",
-        "<h3 style='margin-top:0;color:#111827;'>一、执行摘要</h3>",
-        f"<ul style='color:#1f2937;line-height:1.8;'><li>本轮共纳入 <b>{total}</b> 条过去24小时内的公开资讯。</li><li>重点盯梢：加沙/以色列/哈马斯、乌克兰/俄罗斯、美中贸易/关税/商业。</li><li>对未抓到的权威实时报价，明确标注缺口，不用旧数据硬补。</li></ul>",
-        "<div style='margin:0 0 18px 0;padding:14px 16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;'>",
+    geo_lines = []
+    for title, items in [
+        ("中东", focus_hits["加沙/以色列/哈马斯"]),
+        ("俄乌", focus_hits["乌克兰/俄罗斯"]),
+        ("中美关系", focus_hits["美中贸易/关税/商业"]),
+    ]:
+        geo_lines.append((title, build_focus_assessment(title, items), items[:2]))
+
+    industry_points = [
+        ("全球宏观", build_section_assessment("宏观新闻", grouped["宏观新闻"])),
+        ("财经市场", build_section_assessment("财经市场", grouped["财经市场"])),
+        ("科技产业", build_section_assessment("科技产业", grouped["科技产业"])),
     ]
+
+    text_lines = [
+        f"全球综合情报报告 - {NOW.strftime('%Y-%m-%d')}",
+        f"报告时间：{now_str}",
+        "",
+        "一、重要头条新闻",
+    ]
+    if headline_items:
+        for idx, item in enumerate(headline_items, start=1):
+            text_lines.append(f"{idx}. {item['标题']}（来源：{item['来源']} | 发布时间：{item['时间']}）")
+            text_lines.append(f"   结论：{item['结论']}")
+            text_lines.append("")
+    else:
+        text_lines.append("- 今日无足够扎实的头条更新")
+        text_lines.append("")
+
+    text_lines.append("二、50字左右总判断")
     for point in summary_points:
-        html_parts.append(f"<div style='color:#1f2937;line-height:1.9;'>- {html_escape(point)}</div>")
-    html_parts.append("</div>")
-    html_parts.append("<h3 style='color:#111827;'>二、专项聚焦</h3>")
-    html_parts.append(render_focus_section("加沙 / 以色列 / 哈马斯", focus_hits["加沙/以色列/哈马斯"]))
-    html_parts.append(f"<p style='margin:-6px 0 18px 0;color:#92400e;line-height:1.8;'><b>判断：</b>{html_escape(focus_assessments['加沙 / 以色列 / 哈马斯'])}</p>")
-    html_parts.append(render_focus_section("乌克兰 / 俄罗斯", focus_hits["乌克兰/俄罗斯"]))
-    html_parts.append(f"<p style='margin:-6px 0 18px 0;color:#92400e;line-height:1.8;'><b>判断：</b>{html_escape(focus_assessments['乌克兰 / 俄罗斯'])}</p>")
-    html_parts.append(render_focus_section("美中贸易 / 关税 / 商业", focus_hits["美中贸易/关税/商业"]))
-    html_parts.append(f"<p style='margin:-6px 0 18px 0;color:#92400e;line-height:1.8;'><b>判断：</b>{html_escape(focus_assessments['美中贸易 / 关税 / 商业'])}</p>")
-    html_parts.append("<h3 style='color:#111827;'>三、宏观新闻</h3>")
+        text_lines.append(f"- {point}")
+    text_lines.append("")
 
-    if grouped["宏观新闻"]:
-        html_parts.append("".join(render_news_card(item) for item in grouped["宏观新闻"]))
+    text_lines.append("三、全球市场动态")
+    for k, v in market_snapshot.items():
+        text_lines.append(f"- {k}：{v}")
+    text_lines.append(f"- 市场判断：{build_section_assessment('财经市场', grouped['财经市场'])}")
+    text_lines.append("")
+
+    text_lines.append("四、地缘政治热点")
+    for title, assessment, items in geo_lines:
+        text_lines.append(f"【{title}】")
+        text_lines.append(f"- 判断：{assessment}")
+        if items:
+            for item in items:
+                text_lines.append(f"- 线索：{title_to_cn(item.get('title', ''))}（来源：{item.get('source', '未知来源')}）")
+        else:
+            text_lines.append("- 今日无重大更新")
+        text_lines.append("")
+
+    text_lines.append("五、全球经济与产业动态")
+    for title, assessment in industry_points:
+        text_lines.append(f"- {title}：{assessment}")
+    text_lines.append("")
+
+    text_lines.append("六、风险预警（24-48小时短期 / 中期 / 长期）")
+    for item in risk_alerts:
+        text_lines.append(f"- {item}")
+    text_lines.append("")
+
+    text_lines.append("七、投资建议")
+    for item in action_points:
+        text_lines.append(f"- {item}")
+    text_lines.append("")
+
+    text_lines.append("说明：本报告优先保留过去24小时内公开可验证新增；若关键报价未稳定抓到，则直接标注缺口，不使用旧数据补洞。")
+
+    html_parts = [
+        "<html><body style='font-family:Microsoft YaHei,Arial,sans-serif;line-height:1.8;background:#f5f6f8;margin:0;padding:24px;'>",
+        "<div style='max-width:960px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 32px;border:1px solid #e5e7eb;'>",
+        f"<h2 style='margin-top:0;'>全球综合情报报告 - {NOW.strftime('%Y-%m-%d')}</h2>",
+        f"<p><b>报告时间：</b>{html.escape(now_str)}</p>",
+        "<h3>一、重要头条新闻</h3>",
+    ]
+    if headline_items:
+        for item in headline_items:
+            html_parts.append(f"<p><b>{html.escape(item['标题'])}（来源：{html.escape(item['来源'])} | 发布时间：{html.escape(item['时间'])}）</b><br>结论：{html.escape(item['结论'])}</p>")
     else:
-        html_parts.append("<p style='color:#6b7280;'>过去24小时未抓到足够扎实的宏观新闻更新。</p>")
-    html_parts.append(f"<p style='margin-top:-4px;color:#92400e;line-height:1.8;'><b>本节判断：</b>{html_escape(section_assessments['宏观新闻'])}</p>")
+        html_parts.append("<p>今日无足够扎实的头条更新</p>")
 
-    html_parts.append("<h3 style='color:#111827;'>四、财经市场</h3>")
-    if grouped["财经市场"]:
-        html_parts.append("".join(render_news_card(item) for item in grouped["财经市场"]))
-    else:
-        html_parts.append("<p style='color:#6b7280;'>过去24小时未抓到足够扎实的财经市场更新。</p>")
-    html_parts.append(f"<p style='margin-top:-4px;color:#92400e;line-height:1.8;'><b>本节判断：</b>{html_escape(section_assessments['财经市场'])}</p>")
+    html_parts.append("<h3>二、50字左右总判断</h3><ul>")
+    for point in summary_points:
+        html_parts.append(f"<li>{html.escape(point)}</li>")
+    html_parts.append("</ul><h3>三、全球市场动态</h3><ul>")
+    for k, v in market_snapshot.items():
+        html_parts.append(f"<li><b>{html.escape(k)}：</b>{html.escape(v)}</li>")
+    html_parts.append(f"<li><b>市场判断：</b>{html.escape(build_section_assessment('财经市场', grouped['财经市场']))}</li>")
+    html_parts.append("</ul><h3>四、地缘政治热点</h3>")
+    for title, assessment, items in geo_lines:
+        html_parts.append(f"<h4>【{html.escape(title)}】</h4><p><b>判断：</b>{html.escape(assessment)}</p>")
+        if items:
+            html_parts.append("<ul>")
+            for item in items:
+                html_parts.append(f"<li>{html.escape(title_to_cn(item.get('title', '')))}（来源：{html.escape(item.get('source', '未知来源'))}）</li>")
+            html_parts.append("</ul>")
+        else:
+            html_parts.append("<p>今日无重大更新</p>")
 
-    html_parts.append("<h3 style='color:#111827;'>五、科技产业</h3>")
-    if grouped["科技产业"]:
-        html_parts.append("".join(render_news_card(item) for item in grouped["科技产业"]))
-    else:
-        html_parts.append("<p style='color:#6b7280;'>过去24小时未抓到足够扎实的科技产业更新。</p>")
-    html_parts.append(f"<p style='margin-top:-4px;color:#92400e;line-height:1.8;'><b>本节判断：</b>{html_escape(section_assessments['科技产业'])}</p>")
-
-    html_parts.append("<h3 style='color:#111827;'>六、风险预警</h3><ul style='color:#1f2937;line-height:1.9;'>")
-    for alert in risk_alerts:
-        html_parts.append(f"<li>{html_escape(alert)}</li>")
+    html_parts.append("<h3>五、全球经济与产业动态</h3><ul>")
+    for title, assessment in industry_points:
+        html_parts.append(f"<li><b>{html.escape(title)}：</b>{html.escape(assessment)}</li>")
+    html_parts.append("</ul><h3>六、风险预警（24-48小时短期 / 中期 / 长期）</h3><ul>")
+    for item in risk_alerts:
+        html_parts.append(f"<li>{html.escape(item)}</li>")
+    html_parts.append("</ul><h3>七、投资建议</h3><ul>")
+    for item in action_points:
+        html_parts.append(f"<li>{html.escape(item)}</li>")
     html_parts.append("</ul>")
-
-    html_parts.append("<h3 style='color:#111827;'>七、决策建议</h3><ul style='color:#1f2937;line-height:1.9;'>")
-    for action in action_points:
-        html_parts.append(f"<li>{html_escape(action)}</li>")
-    html_parts.append("</ul>")
-
-    html_parts.append("<h3 style='color:#111827;'>八、权威报价补抓状态</h3><ul style='color:#1f2937;line-height:1.9;'>")
-    for k, v in MARKET_SNAPSHOT.items():
-        html_parts.append(f"<li><b>{html_escape(k)}：</b>{html_escape(v)}</li>")
-    html_parts.append("</ul>")
-
-    html_parts.append("<h3 style='color:#111827;'>九、异常与缺口</h3><ul style='color:#1f2937;line-height:1.9;'>")
     if errors:
+        html_parts.append("<h3>八、异常与缺口</h3><ul>")
         for err in errors:
-            html_parts.append(f"<li>{html_escape(err)}</li>")
-    else:
-        html_parts.append("<li>本轮未记录明显抓取异常。</li>")
-    html_parts.append("</ul>")
+            html_parts.append(f"<li>{html.escape(err)}</li>")
+        html_parts.append("</ul>")
+    html_parts.append("<p><b>说明：</b>本报告优先保留过去24小时内公开可验证新增；若关键报价未稳定抓到，则直接标注缺口，不使用旧数据补洞。</p>")
+    html_parts.append("</div></body></html>")
+    return "\n".join(text_lines), "".join(html_parts)
 
-    html_parts.append("<div style='margin-top:28px;padding:16px;background:#fff7ed;border:1px solid #fdba74;border-radius:10px;color:#7c2d12;'>")
-    html_parts.append("<b>反幻想说明：</b> 本报告只保留过去24小时内能从公开 feed 解析出的条目；对未抓到的官方发言、交易所点位、黄金、布伦特和汇率，不做虚构补写。")
-    html_parts.append("</div>")
-    html_parts.append("</div></div></body></html>")
-    return "".join(html_parts)
+
+def render_news_card(item):
+    if not items:
+        return f"<div style='margin-bottom:16px;'><h4 style='margin:0 0 8px 0;color:#111827;'>{html_escape(title)}</h4><p style='margin:0;color:#6b7280;'>过去24小时未抓到足够扎实的新条目。</p></div>"
+    cards = "".join(render_news_card(item) for item in items)
+    return f"<div style='margin-bottom:18px;'><h4 style='margin:0 0 10px 0;color:#111827;'>{html_escape(title)}</h4>{cards}</div>"
+
+
+def build_html_report(grouped, focus_hits, errors):
+    _, html_body = build_template_a_report(grouped, focus_hits, errors)
+    return html_body
 
 
 def build_text_report(grouped, focus_hits, errors):
-    now_str = NOW.strftime("%Y-%m-%d %H:%M")
-    total = sum(len(v) for v in grouped.values())
-    summary_points = summarize_signals(grouped, focus_hits)
-    focus_map = [
-        ("加沙 / 以色列 / 哈马斯", focus_hits["加沙/以色列/哈马斯"]),
-        ("乌克兰 / 俄罗斯", focus_hits["乌克兰/俄罗斯"]),
-        ("美中贸易 / 关税 / 商业", focus_hits["美中贸易/关税/商业"]),
-    ]
-    risk_alerts = build_risk_alerts(grouped, focus_hits)
-    action_points = build_action_points(grouped, focus_hits)
-
-    lines = [
-        f"全球综合情报报告 - {now_str}",
-        f"报告时间：{now_str}",
-        f"本轮共纳入 {total} 条过去24小时内的公开资讯。",
-        "重点盯梢：加沙/以色列/哈马斯、乌克兰/俄罗斯、美中贸易/关税/商业。",
-        "抓不到就明确写缺口，不用旧数据硬补。",
-        "",
-        "一、执行摘要",
-    ]
-    lines.extend([f"- {point}" for point in summary_points])
-    lines.append("")
-    lines.append("二、专项聚焦")
-
-    for title, items in focus_map:
-        lines.append(f"【{title}】")
-        if not items:
-            lines.append("- 过去24小时未抓到足够扎实的新条目。")
-        else:
-            for item in items[:3]:
-                lines.append(f"- {item.get('title', '无标题')}（来源：{item.get('source', '未知来源')} | 发布时间：{item.get('published', '未明确给出')}）")
-                lines.append(f"  摘要：{item.get('内容摘要', '今日仅抓到标题级线索，建议继续复核正文。')}")
-                lines.append(f"  结论：{item.get('结论', '需继续跟踪后续更新。')}")
-        lines.append(f"  判断：{build_focus_assessment(title, items)}")
-        lines.append("")
-
-    section_titles = [("三、宏观新闻", "宏观新闻"), ("四、财经市场", "财经市场"), ("五、科技产业", "科技产业")]
-    for section_title, key in section_titles:
-        lines.append(section_title)
-        if not grouped[key]:
-            lines.append("- 过去24小时未抓到足够扎实的新条目。")
-        else:
-            for item in grouped[key][:5]:
-                lines.append(f"- {item.get('title', '无标题')}（来源：{item.get('source', '未知来源')} | 发布时间：{item.get('published', '未明确给出')}）")
-                lines.append(f"  内容摘要：{item.get('内容摘要', '今日仅抓到标题级线索，建议继续复核正文。')}")
-                lines.append(f"  结论：{item.get('结论', '需继续跟踪后续更新。')}")
-        lines.append(f"本节判断：{build_section_assessment(key, grouped[key])}")
-        lines.append("")
-
-    lines.append("六、风险预警")
-    lines.extend([f"- {alert}" for alert in risk_alerts])
-    lines.append("")
-
-    lines.append("七、决策建议")
-    lines.extend([f"- {action}" for action in action_points])
-    lines.append("")
-
-    lines.append("八、权威报价补抓状态")
-    for k, v in MARKET_SNAPSHOT.items():
-        lines.append(f"- {k}：{v}")
-    lines.append("")
-
-    lines.append("九、异常与缺口")
-    if errors:
-        for err in errors:
-            lines.append(f"- {err}")
-    else:
-        lines.append("- 本轮未记录明显抓取异常。")
-    lines.append("")
-    lines.append("说明：本报告只保留过去24小时内能从公开 feed 解析出的条目；对未抓到的官方发言、交易所点位、黄金、布伦特和汇率，不做虚构补写。")
-    return "\n".join(lines)
+    text_body, _ = build_template_a_report(grouped, focus_hits, errors)
+    return text_body
 
 
 def send_email(subject: str, text_body: str, html_body: str):
