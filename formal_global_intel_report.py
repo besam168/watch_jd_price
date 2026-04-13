@@ -28,7 +28,6 @@ WINDOW_START = NOW - timedelta(hours=24)
 FEEDS = [
     {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters"},
     {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "fallback_kind": "ap"},
-    {"name": "Google News World", "url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News Gaza", "url": "https://news.google.com/rss/search?q=Gaza%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News Ukraine", "url": "https://news.google.com/rss/search?q=Ukraine%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News China Trade", "url": "https://news.google.com/rss/search?q=China%20tariff%20trade%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
