@@ -12,6 +12,14 @@ from pathlib import Path
 
 import pandas as pd
 
+try:
+    import io
+    from contextlib import redirect_stderr, redirect_stdout
+except Exception:
+    io = None
+    redirect_stderr = None
+    redirect_stdout = None
+
 PLUGIN_NAME = 'A股盘中中小盘强势股插件（实时版）'
 WORKSPACE = Path(__file__).resolve().parents[3]
 HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
@@ -327,7 +335,11 @@ def second_round_filter(candidates):
     for item in candidates:
         code = item['code']
         try:
-            df = v6.fetch_daily_df(code)
+            if io is not None and redirect_stdout is not None and redirect_stderr is not None:
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    df = v6.fetch_daily_df(code)
+            else:
+                df = v6.fetch_daily_df(code)
             last = df.tail(4).copy()
             if len(last) < 4:
                 raise RuntimeError('not enough rows')
