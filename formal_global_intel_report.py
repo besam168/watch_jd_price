@@ -26,7 +26,7 @@ NOW = datetime.now(TZ_CN)
 WINDOW_START = NOW - timedelta(hours=24)
 
 FEEDS = [
-    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters"},
+    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters_page"},
     {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "fallback_kind": "ap"},
     {"name": "Google News Gaza", "url": "https://news.google.com/rss/search?q=Gaza%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News Ukraine", "url": "https://news.google.com/rss/search?q=Ukraine%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
@@ -104,23 +104,51 @@ def parse_feed(url: str, limit: int = 16):
 
 
 def fallback_reuters(limit: int = 16):
-    html_text = fetch_text("https://www.reuters.com/world/", timeout=20)
     items = []
     seen = set()
-    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
-        link = href.strip()
-        if link.startswith("/"):
-            link = urllib.parse.urljoin("https://www.reuters.com", link)
-        text = strip_html(title)
-        if not link.startswith("https://www.reuters.com/") or len(text) < 25:
+    for page in [
+        "https://www.reuters.com/world/",
+        "https://www.reuters.com/world/middle-east/",
+        "https://www.reuters.com/world/europe/",
+        "https://www.reuters.com/world/china/",
+        "https://www.reuters.com/markets/",
+    ]:
+        try:
+            html_text = fetch_text(page, timeout=20)
+        except Exception:
             continue
-        key = (link, text)
-        if key in seen:
-            continue
-        seen.add(key)
-        items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+        for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+            link = href.strip()
+            if link.startswith("/"):
+                link = urllib.parse.urljoin("https://www.reuters.com", link)
+            text = strip_html(title)
+            if not link.startswith("https://www.reuters.com/") or len(text) < 25:
+                continue
+            key = (link, text)
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+            if len(items) >= limit:
+                break
         if len(items) >= limit:
             break
+    if len(items) < limit:
+        try:
+            gitems = parse_feed("https://news.google.com/rss/search?q=site%3Areuters.com%20when%3A1d&hl=en-US&gl=US&ceid=US%3Aen", limit=limit)
+            for item in gitems:
+                title = strip_html(item.get("title", ""))
+                if "Reuters" not in title and "reuters" not in item.get("link", "").lower():
+                    continue
+                key = (item.get("link", ""), title)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append(item)
+                if len(items) >= limit:
+                    break
+        except Exception:
+            pass
     return items
 
 
@@ -146,7 +174,7 @@ def fallback_ap(limit: int = 16):
 
 
 def fallback_items(kind: str, limit: int = 16):
-    if kind == "reuters":
+    if kind == "reuters_page":
         return fallback_reuters(limit)
     if kind == "ap":
         return fallback_ap(limit)
@@ -189,16 +217,11 @@ def title_to_cn(title: str) -> str:
 
 def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
     title = strip_html(raw_title)
-    if re.search(r"[\u4e00-\u9fff]", title):
-        return cap_text(title, 48)
-    mapped = title_to_cn(title)
-    if mapped != "国际要闻更新" and len(mapped) >= 8:
-        return cap_text(mapped, 48)
     if title:
-        return cap_text(title, 72)
+        return cap_text(title, 88)
     summary = strip_html(raw_summary)
     if summary:
-        return cap_text(summary, 48)
+        return cap_text(summary, 60)
     return "国际要闻更新"
 
 
