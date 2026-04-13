@@ -501,6 +501,17 @@ def build_watchlist(true_leaders: list, strong_followers: list) -> list:
     return merged[:5]
 
 
+def format_turnover_display(item: dict) -> str:
+    raw = mw.safe_float(item.get('turnover_ratio', 0))
+    effective = mw.safe_float(item.get('turnover_ratio_effective', 0))
+    estimated = mw.safe_float(item.get('turnover_ratio_est', 0))
+    if raw > 0:
+        return f"{raw}%"
+    if estimated > 0:
+        return f"≈{effective}%"
+    return "0.0%"
+
+
 def main():
     try:
         if hasattr(sys.stdout, 'reconfigure'):
@@ -590,10 +601,10 @@ def main():
     print(f"结论: {chinese_summary['overall']}")
     print('真龙头：')
     for x in true_leaders:
-        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x.get('turnover_ratio', 0)}%")
+        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{format_turnover_display(x)}")
     print('\n强跟风：')
     for x in strong_followers:
-        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x.get('turnover_ratio', 0)}%")
+        print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{format_turnover_display(x)}")
     print('\n伪强票：')
     for x in pseudo_strong[:10]:
         print(f"- {x['name']} {x['code']}  {x.get('change_pct', 0)}%  score={x.get('score', 'NA')}")
