@@ -51,8 +51,8 @@ LARGE_CAP_CODES = {
     '000977', '002230', '603019', '600900', '601127', '601919', '601336', '600031', '002241', '002714',
     '600438', '603501', '002371', '603986', '002463', '600019', '601857', '601088', '000001', '000002'
 }
-HIGH_BETA_PREFIX = ('300', '301', '688')
-SMALLCAP_ACCEPT_PREFIX = ('300', '301', '688', '002', '003', '603', '605')
+HIGH_BETA_PREFIX = ('300', '301')
+SMALLCAP_ACCEPT_PREFIX = ('300', '301', '002', '003', '603', '605')
 SINA_ALL_MARKET_URL = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num={num}&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=page'
 
 
@@ -250,8 +250,6 @@ def infer_style(item: dict) -> list[str]:
         tags += ['创业板', '次新']
     elif code.startswith('300'):
         tags += ['创业板', '弹性票']
-    elif code.startswith('688'):
-        tags += ['科创板', '弹性票']
     elif code.startswith(('002', '003')):
         tags += ['中小盘主板']
     elif code.startswith(('603', '605')):
@@ -276,11 +274,20 @@ def classify_cap_bucket(item: dict) -> str:
     return 'mega'
 
 
+def is_st_stock(item: dict) -> bool:
+    name = str(item.get('name', '') or '').upper().replace(' ', '')
+    return 'ST' in name or '＊ST' in name or '*ST' in name
+
+
 def is_smallcap_style(item: dict, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool) -> tuple[bool, str]:
     code = item.get('code', '')
     total_mv = mw.safe_float(item.get('total_mv_yi', 0))
     circ_mv = mw.safe_float(item.get('circ_mv_yi', 0))
 
+    if is_st_stock(item):
+        return False, '排除ST/*ST股票'
+    if code.startswith('688'):
+        return False, '排除科创板股票'
     if code in LARGE_CAP_CODES:
         return False, '命中大票/权重黑名单'
     if total_mv > 0 and total_mv > max_total_mv_yi:
