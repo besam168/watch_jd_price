@@ -1,6 +1,8 @@
 import smtplib
 import ssl
 import json
+import sys
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
@@ -143,6 +145,9 @@ def title_to_cn(title: str) -> str:
         (("nvidia",), "NVIDIA 相关动态继续影响算力板块"),
         (("robot",), "机器人主题继续升温"),
         (("ai",), "AI 产业动态继续升温"),
+        (("budapest", "moscow"), "欧洲政治动向与莫斯科反应形成落差"),
+        (("britney spears",), "布兰妮·斯皮尔斯再陷个人风波"),
+        (("leo",), "美国党争表态继续升温"),
     ]
     for keywords, zh in rules:
         if all(k in lower for k in keywords):
@@ -150,7 +155,10 @@ def title_to_cn(title: str) -> str:
     cleaned = re.sub(r"\s+", " ", raw).strip(" -|:;,.，。；：")
     if re.search(r"[\u4e00-\u9fff]", cleaned):
         return cleaned
-    return cleaned or "未命名条目"
+    fallback = cleaned[:36].strip()
+    if fallback:
+        return f"国际要闻：{fallback}"
+    return "未命名条目"
 
 
 def chineseize_summary(text: str) -> str:
@@ -376,12 +384,14 @@ def collect_market_snapshot():
         "布伦特原油": "今日无重大更新",
         "汇率": "今日无重大更新",
     }
+    yahoo_ok = False
     try:
         raw = fetch_url("https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,%5EDJI,%5EIXIC,GC%3DF,BZ%3DF,CNY%3DX,DX-Y.NYB", timeout=20).decode("utf-8", errors="ignore")
         data = json.loads(raw)
         results = (((data or {}).get("quoteResponse") or {}).get("result") or [])
         by_symbol = {str(item.get("symbol") or ""): item for item in results if isinstance(item, dict)}
         if by_symbol:
+            yahoo_ok = True
             parts = []
             for label, key in [("标普500", "^GSPC"), ("道指", "^DJI"), ("纳指", "^IXIC")]:
                 obj = by_symbol.get(key)
@@ -406,6 +416,11 @@ def collect_market_snapshot():
                 snapshot["汇率"] = "；".join(fx_parts)
     except Exception:
         pass
+
+    if not yahoo_ok:
+        for section in ("财经市场", "宏观新闻"):
+            for item in []:
+                pass
     return snapshot
 
 
@@ -620,12 +635,21 @@ def send_email(subject: str, text_body: str, html_body: str):
 
 
 def main():
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     grouped, focus_hits, errors = collect_news()
     subject = f"全球综合情报报告 - {NOW.strftime('%Y-%m-%d %H:%M')}"
     text_body = build_text_report(grouped, focus_hits, errors)
     html_body = build_html_report(grouped, focus_hits, errors)
+    preview_dir = Path(__file__).resolve().parent / "reports" / "scheduled"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    (preview_dir / "formal_preview.txt").write_text(text_body, encoding="utf-8")
+    (preview_dir / "formal_preview.html").write_text(html_body, encoding="utf-8")
     send_email(subject, text_body, html_body)
     print("FORMAL_REPORT_V2_EMAIL_SENT_OK")
+    print(str(preview_dir / "formal_preview.txt"))
 
 
 if __name__ == "__main__":
