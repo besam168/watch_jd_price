@@ -373,34 +373,60 @@ def second_round_filter(candidates):
     return passed, partial, failed
 
 
+def estimate_turnover_ratio(item: dict) -> float:
+    turnover = mw.safe_float(item.get('turnover_ratio', 0))
+    if turnover > 0:
+        return round(turnover, 2)
+
+    amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    circ_mv_yi = mw.safe_float(item.get('circ_mv_yi', 0))
+    current = mw.safe_float(item.get('current', 0))
+    change = mw.safe_float(item.get('change', 0))
+    prev_close = current - change if current > 0 else 0.0
+
+    est = 0.0
+    if circ_mv_yi > 0 and amount_yi > 0:
+        est = (amount_yi / circ_mv_yi) * 100.0
+    elif prev_close > 0 and amount_yi > 0:
+        est = (amount_yi / (prev_close * 10.0)) * 0.01
+
+    if est <= 0:
+        return 0.0
+    return round(est, 2)
+
+
 def compute_intraday_score(item: dict) -> float:
     change_pct = mw.safe_float(item.get('change_pct', 0))
     amount_yi = mw.safe_float(item.get('amount_yi', 0))
-    turnover = mw.safe_float(item.get('turnover_ratio', 0))
+    turnover = estimate_turnover_ratio(item)
     code = item.get('code', '')
     bonus = 0.0
     if code.startswith(HIGH_BETA_PREFIX):
         bonus += 0.8
     elif code.startswith(('002', '003', '603', '605')):
         bonus += 0.4
-    if amount_yi >= 10:
-        bonus += 0.8
-    elif amount_yi >= 5:
-        bonus += 0.4
-    if turnover >= 20:
+    if amount_yi >= 15:
         bonus += 1.0
-    elif turnover >= 8:
-        bonus += 0.5
+    elif amount_yi >= 8:
+        bonus += 0.7
+    elif amount_yi >= 4:
+        bonus += 0.4
+    if turnover >= 25:
+        bonus += 1.2
+    elif turnover >= 12:
+        bonus += 0.7
+    elif turnover >= 5:
+        bonus += 0.3
     return round(change_pct * 1.2 + bonus, 2)
 
 
 def compute_conviction(item: dict) -> str:
     change_pct = mw.safe_float(item.get('change_pct', 0))
     amount_yi = mw.safe_float(item.get('amount_yi', 0))
-    turnover = mw.safe_float(item.get('turnover_ratio', 0))
-    if change_pct >= 6 and amount_yi >= 10 and turnover >= 8:
+    turnover = estimate_turnover_ratio(item)
+    if change_pct >= 8 and amount_yi >= 8 and turnover >= 5:
         return '高'
-    if change_pct >= 3 and amount_yi >= 4:
+    if change_pct >= 4 and amount_yi >= 3:
         return '中'
     return '一般'
 
@@ -408,8 +434,11 @@ def compute_conviction(item: dict) -> str:
 def attach_intraday_metrics(items: list) -> list:
     out = []
     for item in items:
+        est_turnover = estimate_turnover_ratio(item)
         out.append({
             **item,
+            'turnover_ratio_est': est_turnover,
+            'turnover_ratio_effective': est_turnover,
             'intraday_score': compute_intraday_score(item),
             'conviction': compute_conviction(item),
         })
