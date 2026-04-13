@@ -205,22 +205,27 @@ def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
 
 def classify_signal(text: str) -> str:
     lower = (text or "").lower()
-    if any(k in lower for k in ["gaza", "israel", "iran", "hormuz", "oil", "brent", "middle east"]):
-        return "geo_energy"
+    if any(k in lower for k in ["china", "tariff", "trade", "commerce", "duties"]):
+        return "china_trade"
+    if any(k in lower for k in ["market", "sell-off", "pricing in", "panic", "stocks", "bond", "fed", "goldman sachs"]):
+        return "market_macro"
+    if any(k in lower for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip", "claude"]):
+        return "tech_ai"
     if any(k in lower for k in ["ukraine", "russia", "moscow", "kyiv"]):
         return "russia_ukraine"
-    if any(k in lower for k in ["china", "tariff", "trade", "commerce"]):
-        return "china_trade"
-    if any(k in lower for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip"]):
-        return "tech_ai"
-    if any(k in lower for k in ["goldman sachs", "stocks", "market", "bond", "fed"]):
+    if any(k in lower for k in ["gaza", "israel", "iran", "hormuz", "oil", "brent", "middle east"]):
+        return "geo_energy"
+    if any(k in lower for k in ["trump", "white house", "u.s. foreign policy", "politics", "pope leo"]):
         return "market_macro"
     return "generic"
 
 
-def chineseize_summary(text: str) -> str:
+def chineseize_summary(text: str, title: str = "") -> str:
+    merged = f"{title} {text}".strip()
     text = strip_html(text)
-    signal = classify_signal(text)
+    signal = classify_signal(title or merged)
+    if signal == "generic":
+        signal = classify_signal(merged)
     if signal == "geo_energy":
         return "中东与能源相关动态继续升温，若冲突外溢至航运与供应链，油价与避险资产可能进一步受到推升。"
     if signal == "russia_ukraine":
@@ -238,11 +243,13 @@ def chineseize_summary(text: str) -> str:
 
 def make_content(summary: str, title: str) -> str:
     base = summary or title or ""
-    return cap_text(chineseize_summary(base), 78)
+    return cap_text(chineseize_summary(base, title=title), 78)
 
 
 def make_short_comment(section: str, summary: str, title: str) -> str:
-    signal = classify_signal(f"{title} {summary}")
+    signal = classify_signal(title)
+    if signal == "generic":
+        signal = classify_signal(f"{title} {summary}")
     if signal == "geo_energy":
         return "说明地缘风险仍会持续牵动能源与避险资产。"
     if signal == "russia_ukraine":
@@ -390,8 +397,8 @@ def select_top_headlines(grouped, limit: int = 12):
             "标题": title,
             "来源": item.get("source", "未知来源"),
             "时间": item.get("published", "未明确给出"),
-            "内容": cap_text(item.get("内容摘要") or make_content(item.get("summary", ""), item.get("title", "")), 78),
-            "评论": cap_text(item.get("评论") or make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
+            "内容": cap_text(make_content(item.get("summary", ""), item.get("title", "")), 78),
+            "评论": cap_text(make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
         })
         if len(selected) >= limit:
             break
