@@ -166,6 +166,49 @@ function parseJsonObject(text: unknown) {
   }
 }
 
+function summarizeOcrTexts(ocr: any) {
+  const items = Array.isArray(ocr?.items) ? ocr.items : [];
+  const texts = items
+    .map((item: any) => String(item?.normalizedText || item?.text || "").trim())
+    .filter(Boolean);
+  return texts.slice(0, 100);
+}
+
+function buildVisualVerification(params: {
+  beforeImagePath?: string | null;
+  afterImagePath?: string | null;
+  beforeOcr?: any;
+  afterOcr?: any;
+  verifyQuery?: string | null;
+  verifyAbsentQuery?: string | null;
+}) {
+  const beforeTexts = summarizeOcrTexts(params.beforeOcr);
+  const afterTexts = summarizeOcrTexts(params.afterOcr);
+  const beforeSet = new Set(beforeTexts);
+  const afterSet = new Set(afterTexts);
+  const addedTexts = afterTexts.filter((t) => !beforeSet.has(t)).slice(0, 20);
+  const removedTexts = beforeTexts.filter((t) => !afterSet.has(t)).slice(0, 20);
+  const verifyQuery = String(params.verifyQuery || "").trim().toLowerCase();
+  const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
+  const queryAppeared = verifyQuery ? afterTexts.some((t) => t.includes(verifyQuery)) : null;
+  const absentSatisfied = verifyAbsentQuery ? !afterTexts.some((t) => t.includes(verifyAbsentQuery)) : null;
+  const changed = addedTexts.length > 0 || removedTexts.length > 0;
+  const successChecks = [queryAppeared, absentSatisfied].filter((v) => v !== null);
+  const success = successChecks.length > 0 ? successChecks.every(Boolean) : changed;
+  return {
+    ok: Boolean(success),
+    changed,
+    beforeImagePath: params.beforeImagePath || null,
+    afterImagePath: params.afterImagePath || null,
+    queryAppeared,
+    absentSatisfied,
+    addedTexts,
+    removedTexts,
+    beforeCount: beforeTexts.length,
+    afterCount: afterTexts.length,
+  };
+}
+
 function buildFocusGuardFailure(params: { query?: string; steps?: any[]; focusResult: unknown; lockState?: unknown }) {
   return {
     ok: false,
@@ -725,6 +768,7 @@ export default function (api) {
       verifyQuery: Type.Optional(Type.String()),
       verifyAbsentQuery: Type.Optional(Type.String()),
       verifyDelayMs: Type.Optional(Type.Number()),
+      verifyByDiff: Type.Optional(Type.Boolean()),
       retries: Type.Optional(Type.Number()),
       retryDelayMs: Type.Optional(Type.Number()),
       archiveScreenshots: Type.Optional(Type.Boolean()),
@@ -807,6 +851,7 @@ export default function (api) {
           topN: params.topN,
           debugOverlay: params.debugOverlayPath,
         });
+        const beforeOcr = ocr;
         const matches = pickTopMatches(ocr, params.topN ?? 1).map((item) => applyTargetOffsets(item, params));
         const match = matches[0] || null;
         if (!match) {
@@ -851,7 +896,7 @@ export default function (api) {
           await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
           clickText = await runPy(scriptPath, ["mouse-click", button]);
 
-          const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery);
+          const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery || params.verifyByDiff);
           if (shouldVerify) {
             const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
             if (delayMs > 0) {
@@ -866,7 +911,7 @@ export default function (api) {
               lang: params.lang,
               preprocess: params.preprocess,
               groupBy: params.groupBy,
-              topN: Math.max(params.topN ?? 1, 3),
+              topN: Math.max(params.topN ?? 1, 6),
             });
             const verifyItems = Array.isArray(verifyOcr?.items) ? verifyOcr.items : [];
             const normalizedTexts = verifyItems.map((item: any) => String(item?.normalizedText || ""));
@@ -874,6 +919,15 @@ export default function (api) {
             const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
             const present = verifyQuery ? normalizedTexts.some((t: string) => t.includes(verifyQuery)) : null;
             const absent = verifyAbsentQuery ? !normalizedTexts.some((t: string) => t.includes(verifyAbsentQuery)) : null;
+            const visual = buildVisualVerification({
+              beforeImagePath: imagePath,
+              afterImagePath: verifyImagePath,
+              beforeOcr,
+              afterOcr: verifyOcr,
+              verifyQuery: params.verifyQuery || null,
+              verifyAbsentQuery: params.verifyAbsentQuery || null,
+            });
+            const success = [present, absent].filter((v) => v !== null).every(Boolean);
             verify = {
               imagePath: verifyImagePath,
               verifyQuery: params.verifyQuery || null,
@@ -881,7 +935,8 @@ export default function (api) {
               verifyDelayMs: delayMs,
               present,
               absent,
-              success: [present, absent].filter((v) => v !== null).every(Boolean),
+              success: [present, absent].filter((v) => v !== null).length > 0 ? success : visual.ok,
+              visual,
               engine: verifyOcr?.engine || null,
               count: verifyOcr?.count || 0,
             };
