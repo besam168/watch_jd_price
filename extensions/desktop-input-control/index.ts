@@ -209,6 +209,24 @@ function buildVisualVerification(params: {
   };
 }
 
+function suggestNextTargetAdjustment(visual: any, params: any) {
+  if (!visual || visual.ok) {
+    return null;
+  }
+  const currentOffsetX = typeof params?.targetOffsetX === "number" ? params.targetOffsetX : 0;
+  const currentOffsetY = typeof params?.targetOffsetY === "number" ? params.targetOffsetY : 0;
+  const currentBiasX = typeof params?.clickBiasX === "number" ? params.clickBiasX : 0;
+  const currentBiasY = typeof params?.clickBiasY === "number" ? params.clickBiasY : 0;
+  return {
+    reason: visual.changed ? "visual changed but target verification failed" : "visual unchanged after click",
+    suggestedTargetOffsetX: currentOffsetX,
+    suggestedTargetOffsetY: currentOffsetY,
+    suggestedClickBiasX: currentBiasX,
+    suggestedClickBiasY: currentBiasY + 6,
+    note: "If clicking a text label misses the actionable hotspot, try nudging targetOffsetY or clickBiasY downward.",
+  };
+}
+
 function buildFocusGuardFailure(params: { query?: string; steps?: any[]; focusResult: unknown; lockState?: unknown }) {
   return {
     ok: false,
@@ -937,6 +955,7 @@ export default function (api) {
               absent,
               success: [present, absent].filter((v) => v !== null).length > 0 ? success : visual.ok,
               visual,
+              suggestedAdjustment: suggestNextTargetAdjustment(visual, params),
               engine: verifyOcr?.engine || null,
               count: verifyOcr?.count || 0,
             };
