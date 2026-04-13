@@ -787,6 +787,7 @@ export default function (api) {
       verifyAbsentQuery: Type.Optional(Type.String()),
       verifyDelayMs: Type.Optional(Type.Number()),
       verifyByDiff: Type.Optional(Type.Boolean()),
+      autoCalibrate: Type.Optional(Type.Boolean()),
       retries: Type.Optional(Type.Number()),
       retryDelayMs: Type.Optional(Type.Number()),
       archiveScreenshots: Type.Optional(Type.Boolean()),
@@ -855,22 +856,26 @@ export default function (api) {
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         const prefix = `click-text-attempt-${attempt + 1}`;
+        const tunedParams: any = { ...params };
+        if (params.autoCalibrate && attempt > 0) {
+          tunedParams.clickBiasY = (typeof params.clickBiasY === "number" ? params.clickBiasY : 0) + attempt * 6;
+        }
         const imagePath = await captureScreen(captureScriptPath, {
-          ...params,
-          path: archiveScreenshots ? createArtifactPath(prefix, "before") : params.path,
+          ...tunedParams,
+          path: archiveScreenshots ? createArtifactPath(prefix, "before") : tunedParams.path,
         });
         const ocr = await runOcr(ocrScriptPath, {
           imagePath,
-          lang: params.lang,
-          preprocess: params.preprocess,
-          query: params.query,
-          queryMode: params.queryMode,
-          groupBy: params.groupBy,
-          topN: params.topN,
-          debugOverlay: params.debugOverlayPath,
+          lang: tunedParams.lang,
+          preprocess: tunedParams.preprocess,
+          query: tunedParams.query,
+          queryMode: tunedParams.queryMode,
+          groupBy: tunedParams.groupBy,
+          topN: tunedParams.topN,
+          debugOverlay: tunedParams.debugOverlayPath,
         });
         const beforeOcr = ocr;
-        const matches = pickTopMatches(ocr, params.topN ?? 1).map((item) => applyTargetOffsets(item, params));
+        const matches = pickTopMatches(ocr, tunedParams.topN ?? 1).map((item) => applyTargetOffsets(item, tunedParams));
         const match = matches[0] || null;
         if (!match) {
           attempts.push({ attempt: attempt + 1, ok: false, imagePath, error: "text not found", foregroundBefore, lockStateBefore });
@@ -883,8 +888,8 @@ export default function (api) {
               type: "text",
               text: JSON.stringify({
                 ok: false,
-                query: params.query,
-                queryMode: params.queryMode || "contains",
+                query: tunedParams.query,
+                queryMode: tunedParams.queryMode || "contains",
                 error: "text not found",
                 attempts,
                 imagePath,
@@ -905,8 +910,8 @@ export default function (api) {
 
         const clickX = Math.round(match.targetX ?? match.centerX);
         const clickY = Math.round(match.targetY ?? match.centerY);
-        const button = params.button || "left";
-        const dryRun = Boolean(params.dryRun);
+        const button = tunedParams.button || "left";
+        const dryRun = Boolean(tunedParams.dryRun);
         let clickText = "DRY_RUN";
         let verify: any = null;
         let verifyImagePath: string | null = null;
@@ -914,27 +919,27 @@ export default function (api) {
           await runPy(scriptPath, ["mouse-move", String(clickX), String(clickY)]);
           clickText = await runPy(scriptPath, ["mouse-click", button]);
 
-          const shouldVerify = Boolean(params.verifyQuery || params.verifyAbsentQuery || params.verifyByDiff);
+          const shouldVerify = Boolean(tunedParams.verifyQuery || tunedParams.verifyAbsentQuery || tunedParams.verifyByDiff);
           if (shouldVerify) {
-            const delayMs = Math.max(0, Math.round(params.verifyDelayMs ?? 700));
+            const delayMs = Math.max(0, Math.round(tunedParams.verifyDelayMs ?? 700));
             if (delayMs > 0) {
               await new Promise((resolve) => setTimeout(resolve, delayMs));
             }
             verifyImagePath = await captureScreen(captureScriptPath, {
-              ...params,
-              path: archiveScreenshots ? createArtifactPath(prefix, "after") : params.path,
+              ...tunedParams,
+              path: archiveScreenshots ? createArtifactPath(prefix, "after") : tunedParams.path,
             });
             const verifyOcr = await runOcr(ocrScriptPath, {
               imagePath: verifyImagePath,
-              lang: params.lang,
-              preprocess: params.preprocess,
-              groupBy: params.groupBy,
-              topN: Math.max(params.topN ?? 1, 6),
+              lang: tunedParams.lang,
+              preprocess: tunedParams.preprocess,
+              groupBy: tunedParams.groupBy,
+              topN: Math.max(tunedParams.topN ?? 1, 6),
             });
             const verifyItems = Array.isArray(verifyOcr?.items) ? verifyOcr.items : [];
             const normalizedTexts = verifyItems.map((item: any) => String(item?.normalizedText || ""));
-            const verifyQuery = String(params.verifyQuery || "").trim().toLowerCase();
-            const verifyAbsentQuery = String(params.verifyAbsentQuery || "").trim().toLowerCase();
+            const verifyQuery = String(tunedParams.verifyQuery || "").trim().toLowerCase();
+            const verifyAbsentQuery = String(tunedParams.verifyAbsentQuery || "").trim().toLowerCase();
             const present = verifyQuery ? normalizedTexts.some((t: string) => t.includes(verifyQuery)) : null;
             const absent = verifyAbsentQuery ? !normalizedTexts.some((t: string) => t.includes(verifyAbsentQuery)) : null;
             const visual = buildVisualVerification({
@@ -942,20 +947,20 @@ export default function (api) {
               afterImagePath: verifyImagePath,
               beforeOcr,
               afterOcr: verifyOcr,
-              verifyQuery: params.verifyQuery || null,
-              verifyAbsentQuery: params.verifyAbsentQuery || null,
+              verifyQuery: tunedParams.verifyQuery || null,
+              verifyAbsentQuery: tunedParams.verifyAbsentQuery || null,
             });
             const success = [present, absent].filter((v) => v !== null).every(Boolean);
             verify = {
               imagePath: verifyImagePath,
-              verifyQuery: params.verifyQuery || null,
-              verifyAbsentQuery: params.verifyAbsentQuery || null,
+              verifyQuery: tunedParams.verifyQuery || null,
+              verifyAbsentQuery: tunedParams.verifyAbsentQuery || null,
               verifyDelayMs: delayMs,
               present,
               absent,
               success: [present, absent].filter((v) => v !== null).length > 0 ? success : visual.ok,
               visual,
-              suggestedAdjustment: suggestNextTargetAdjustment(visual, params),
+              suggestedAdjustment: suggestNextTargetAdjustment(visual, tunedParams),
               engine: verifyOcr?.engine || null,
               count: verifyOcr?.count || 0,
             };
@@ -967,9 +972,15 @@ export default function (api) {
         const result = {
           ok: true,
           dryRun,
-          query: params.query,
-          queryMode: params.queryMode || "contains",
+          query: tunedParams.query,
+          queryMode: tunedParams.queryMode || "contains",
           imagePath,
+          tunedParams: {
+            targetOffsetX: tunedParams.targetOffsetX ?? 0,
+            targetOffsetY: tunedParams.targetOffsetY ?? 0,
+            clickBiasX: tunedParams.clickBiasX ?? 0,
+            clickBiasY: tunedParams.clickBiasY ?? 0,
+          },
           click: {
             x: clickX,
             y: clickY,
