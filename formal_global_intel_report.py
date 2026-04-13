@@ -26,8 +26,12 @@ NOW = datetime.now(TZ_CN)
 WINDOW_START = NOW - timedelta(hours=24)
 
 FEEDS = [
-    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "browser_fallback": "https://www.reuters.com/world/", "fallback_kind": "reuters"},
-    {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "browser_fallback": "https://apnews.com/", "fallback_kind": "ap"},
+    {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters"},
+    {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "fallback_kind": "ap"},
+    {"name": "Google News World", "url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
+    {"name": "Google News Gaza", "url": "https://news.google.com/rss/search?q=Gaza%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
+    {"name": "Google News Ukraine", "url": "https://news.google.com/rss/search?q=Ukraine%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
+    {"name": "Google News China Trade", "url": "https://news.google.com/rss/search?q=China%20tariff%20trade%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "BBC国际", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "section": "宏观新闻"},
     {"name": "半岛电视台", "url": "https://www.aljazeera.com/xml/rss/all.xml", "section": "宏观新闻"},
     {"name": "CNBC国际", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html", "section": "财经市场"},
@@ -35,17 +39,6 @@ FEEDS = [
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "section": "科技产业"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "section": "科技产业"},
 ]
-
-REPORT_SPEC = """
-角色：首席全球分析师。
-时间窗口：仅限过去0-24小时内公开可验证信息。
-真实性约束：拒绝虚构、拒绝脑补、拒绝把搜索残片当新闻；抓不到就明确写缺口。
-新版输出结构：
-1. 重要头条新闻（约12条，每条带内容摘要约70字、评论约40字、来源时间）
-2. 全球市场动态（只报数据与变化，不写市场判断）
-3. 风险预警
-4. 投资建议
-"""
 
 
 def strip_html(text: str) -> str:
@@ -55,99 +48,14 @@ def strip_html(text: str) -> str:
     return text
 
 
-def fetch_text(url: str, timeout: int = 20) -> str:
-    return fetch_url(url, timeout=timeout).decode("utf-8", errors="ignore")
-
-
-def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
-    title = strip_html(raw_title)
-    title_cn = title_to_cn(title)
-    if title_cn != "国际要闻更新":
-        return title_cn
-    if re.search(r"[\u4e00-\u9fff]", title):
-        return cap_text(title, 36)
-    if title:
-        return cap_text(title, 50)
-    return cap_text(strip_html(raw_summary) or "国际要闻更新", 36)
-
-
-def fallback_reuters_world(limit: int = 14):
-    html_text = fetch_text("https://www.reuters.com/world/", timeout=20)
-    items = []
-    seen = set()
-
-    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
-        link = href.strip()
-        if link.startswith("/"):
-            link = urllib.parse.urljoin("https://www.reuters.com", link)
-        if not link.startswith("https://www.reuters.com/"):
-            continue
-        if "/world/" not in link and "/markets/" not in link and "/business/" not in link:
-            continue
-        text = strip_html(title)
-        if len(text) < 20:
-            continue
-        key = (link, text)
-        if key in seen:
-            continue
-        seen.add(key)
-        items.append({
-            "title": text,
-            "link": link,
-            "summary": text,
-            "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}",
-            "published_dt": NOW,
-        })
-        if len(items) >= limit:
-            break
-    return items
-
-
-def fallback_ap_home(limit: int = 14):
-    html_text = fetch_text("https://apnews.com/", timeout=20)
-    items = []
-    seen = set()
-
-    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
-        link = href.strip()
-        if link.startswith("/"):
-            link = urllib.parse.urljoin("https://apnews.com", link)
-        if not link.startswith("https://apnews.com/"):
-            continue
-        if "/article/" not in link and "/hub/" not in link and "/live/" not in link:
-            continue
-        text = strip_html(title)
-        if len(text) < 20:
-            continue
-        key = (link, text)
-        if key in seen:
-            continue
-        seen.add(key)
-        items.append({
-            "title": text,
-            "link": link,
-            "summary": text,
-            "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}",
-            "published_dt": NOW,
-        })
-        if len(items) >= limit:
-            break
-    return items
-
-
-def fallback_items(feed: dict, limit: int = 14):
-    kind = (feed.get("fallback_kind") or "").strip().lower()
-    if kind == "reuters":
-        return fallback_reuters_world(limit=limit)
-    if kind == "ap":
-        return fallback_ap_home(limit=limit)
-    return []
-
-
 def fetch_url(url: str, timeout: int = 20) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 OpenClawFormalIntelV4/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 OpenClawFormalIntelV5/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def fetch_text(url: str, timeout: int = 20) -> str:
+    return fetch_url(url, timeout=timeout).decode("utf-8", errors="ignore")
 
 
 def parse_time(pub_text: str):
@@ -167,24 +75,24 @@ def within_24h(dt):
     return bool(dt and WINDOW_START <= dt <= NOW)
 
 
-def parse_feed(url: str, limit: int = 14):
+def parse_feed(url: str, limit: int = 16):
     raw = fetch_url(url)
     root = ET.fromstring(raw)
     items = []
     channel = root.find("channel")
     if channel is not None:
         for item in channel.findall("item")[:limit]:
-            items.append({
-                "title": strip_html(item.findtext("title", default="")),
-                "link": (item.findtext("link", default="") or "").strip(),
-                "summary": strip_html(item.findtext("description", default="")),
-                "published": strip_html(item.findtext("pubDate", default="")),
-            })
-        for item in items:
-            item["published_dt"] = parse_time(item["published"])
+            title = strip_html(item.findtext("title", default=""))
+            link = (item.findtext("link", default="") or "").strip()
+            desc = strip_html(item.findtext("description", default=""))
+            pub = strip_html(item.findtext("pubDate", default=""))
+            items.append({"title": title, "link": link, "summary": desc, "published": pub, "published_dt": parse_time(pub)})
         return items
     ns_atom = "{http://www.w3.org/2005/Atom}"
     for entry in root.findall(f"{ns_atom}entry")[:limit]:
+        title = strip_html(entry.findtext(f"{ns_atom}title", default=""))
+        summary = strip_html(entry.findtext(f"{ns_atom}summary", default="") or entry.findtext(f"{ns_atom}content", default=""))
+        published = strip_html(entry.findtext(f"{ns_atom}updated", default="") or entry.findtext(f"{ns_atom}published", default=""))
         link = ""
         for link_node in entry.findall(f"{ns_atom}link"):
             href = link_node.attrib.get("href", "").strip()
@@ -192,15 +100,58 @@ def parse_feed(url: str, limit: int = 14):
             if href and rel == "alternate":
                 link = href
                 break
-        published = strip_html(entry.findtext(f"{ns_atom}updated", default="") or entry.findtext(f"{ns_atom}published", default=""))
-        items.append({
-            "title": strip_html(entry.findtext(f"{ns_atom}title", default="")),
-            "link": link,
-            "summary": strip_html(entry.findtext(f"{ns_atom}summary", default="") or entry.findtext(f"{ns_atom}content", default="")),
-            "published": published,
-            "published_dt": parse_time(published),
-        })
+        items.append({"title": title, "link": link, "summary": summary, "published": published, "published_dt": parse_time(published)})
     return items
+
+
+def fallback_reuters(limit: int = 16):
+    html_text = fetch_text("https://www.reuters.com/world/", timeout=20)
+    items = []
+    seen = set()
+    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+        link = href.strip()
+        if link.startswith("/"):
+            link = urllib.parse.urljoin("https://www.reuters.com", link)
+        text = strip_html(title)
+        if not link.startswith("https://www.reuters.com/") or len(text) < 25:
+            continue
+        key = (link, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fallback_ap(limit: int = 16):
+    html_text = fetch_text("https://apnews.com/", timeout=20)
+    items = []
+    seen = set()
+    for href, title in re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html_text, flags=re.I | re.S):
+        link = href.strip()
+        if link.startswith("/"):
+            link = urllib.parse.urljoin("https://apnews.com", link)
+        text = strip_html(title)
+        if not link.startswith("https://apnews.com/") or len(text) < 25:
+            continue
+        key = (link, text)
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fallback_items(kind: str, limit: int = 16):
+    if kind == "reuters":
+        return fallback_reuters(limit)
+    if kind == "ap":
+        return fallback_ap(limit)
+    return []
 
 
 def cap_text(text: str, max_len: int) -> str:
@@ -218,7 +169,6 @@ def title_to_cn(title: str) -> str:
         (("trade", "china"), "中美经贸博弈出现新动向"),
         (("hormuz",), "霍尔木兹海峡风险再度牵动全球能源预期"),
         (("iran",), "伊朗相关动态继续推升中东风险溢价"),
-        (("oil",), "国际油价与能源风险溢价继续升温"),
         (("gaza",), "加沙局势仍牵动中东风险定价"),
         (("israel",), "以色列相关动态继续牵动中东局势"),
         (("ukraine",), "俄乌局势仍在持续发酵"),
@@ -229,7 +179,6 @@ def title_to_cn(title: str) -> str:
         (("robot",), "机器人主题继续升温"),
         (("ai",), "AI 产业动态继续升温"),
         (("goldman sachs",), "高盛业绩与投行业务恢复情况受市场关注"),
-        (("budapest", "moscow"), "欧洲政治动向与莫斯科反应形成落差"),
     ]
     for keywords, zh in rules:
         if all(k in lower for k in keywords):
@@ -239,44 +188,70 @@ def title_to_cn(title: str) -> str:
     return "国际要闻更新"
 
 
+def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
+    title = strip_html(raw_title)
+    if re.search(r"[\u4e00-\u9fff]", title):
+        return cap_text(title, 48)
+    mapped = title_to_cn(title)
+    if mapped != "国际要闻更新" and len(mapped) >= 8:
+        return cap_text(mapped, 48)
+    if title:
+        return cap_text(title, 72)
+    summary = strip_html(raw_summary)
+    if summary:
+        return cap_text(summary, 48)
+    return "国际要闻更新"
+
+
+def classify_signal(text: str) -> str:
+    lower = (text or "").lower()
+    if any(k in lower for k in ["gaza", "israel", "iran", "hormuz", "oil", "brent", "middle east"]):
+        return "geo_energy"
+    if any(k in lower for k in ["ukraine", "russia", "moscow", "kyiv"]):
+        return "russia_ukraine"
+    if any(k in lower for k in ["china", "tariff", "trade", "commerce"]):
+        return "china_trade"
+    if any(k in lower for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip"]):
+        return "tech_ai"
+    if any(k in lower for k in ["goldman sachs", "stocks", "market", "bond", "fed"]):
+        return "market_macro"
+    return "generic"
+
+
 def chineseize_summary(text: str) -> str:
     text = strip_html(text)
-    lower = text.lower()
-    rules = [
-        (("tariff", "china"), "美国对华关税口径继续收紧，说明经贸摩擦仍可能扰动出口链、科技链与全球风险偏好。"),
-        (("hormuz",), "霍尔木兹相关风险若继续升温，最直接的冲击会落在原油、航运和避险资产上。"),
-        (("gaza",), "加沙局势若继续升级，市场会重新评估中东风险外溢与避险需求。"),
-        (("ukraine",), "俄乌相关动态说明欧洲安全风险仍未退出主要视野。"),
-        (("openai",), "OpenAI 的动作显示大模型竞争仍在加速，市场继续关注商业化与落地节奏。"),
-        (("anthropic",), "Anthropic 相关动态反映企业级 AI 竞争仍在深化。"),
-        (("nvidia",), "NVIDIA 动向继续影响算力资本开支与科技股风险偏好。"),
-        (("ai",), "AI 仍是科技板块主线之一，重点在采用速度、产品化与真实付费场景。"),
-        (("goldman sachs",), "高盛最新业绩与业务恢复情况被市场重点关注，金融权重股表现仍会影响风险偏好。"),
-        (("president donald trump",), "特朗普相关表态继续扰动市场对关税、能源与外交政策的预期。"),
-    ]
-    for keywords, zh in rules:
-        if all(k in lower for k in keywords):
-            return zh
+    signal = classify_signal(text)
+    if signal == "geo_energy":
+        return "中东与能源相关动态继续升温，若冲突外溢至航运与供应链，油价与避险资产可能进一步受到推升。"
+    if signal == "russia_ukraine":
+        return "俄乌相关线索仍在更新，说明欧洲安全议题尚未降温，后续若伴随制裁或军援表态，市场仍会重新计价。"
+    if signal == "china_trade":
+        return "中美经贸与关税口径继续扰动供应链和风险偏好，出口链、科技链及跨境资产仍需密切跟踪。"
+    if signal == "tech_ai":
+        return "AI 与科技平台竞争继续升温，市场关注焦点仍在产品落地、商业化节奏以及算力资本开支的兑现能力。"
+    if signal == "market_macro":
+        return "金融与市场类动态反映资金仍在围绕宏观预期、价格信号和龙头权重股表现重新定价。"
     if re.search(r"[\u4e00-\u9fff]", text):
         return cap_text(text, 78)
-    return "该条目有新增，但当前仅抓到英文摘要线索，需结合正文进一步复核其实际影响。"
+    return "该条目有新增，但当前仅抓到英文标题或摘要线索，仍需结合正文复核其真实影响与后续发酵。"
 
 
 def make_content(summary: str, title: str) -> str:
-    return cap_text(chineseize_summary(summary or title or ""), 78)
+    base = summary or title or ""
+    return cap_text(chineseize_summary(base), 78)
 
 
 def make_short_comment(section: str, summary: str, title: str) -> str:
-    base = f"{title} {summary}".lower()
-    if any(k in base for k in ["china", "tariff", "trade", "commerce"]):
-        return "说明经贸摩擦仍可能扰动出口链和风险偏好。"
-    if any(k in base for k in ["gaza", "israel", "iran", "hormuz", "oil"]):
+    signal = classify_signal(f"{title} {summary}")
+    if signal == "geo_energy":
         return "说明地缘风险仍会持续牵动能源与避险资产。"
-    if any(k in base for k in ["ukraine", "russia", "moscow", "kyiv"]):
+    if signal == "russia_ukraine":
         return "说明欧洲安全议题仍未退出市场视野。"
-    if any(k in base for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip"]):
+    if signal == "china_trade":
+        return "说明经贸摩擦仍可能扰动出口链和风险偏好。"
+    if signal == "tech_ai":
         return "说明科技主线仍活跃，但需警惕纯情绪炒作。"
-    if section == "财经市场":
+    if signal == "market_macro" or section == "财经市场":
         return "说明资金仍在围绕宏观与价格信号重新定价。"
     return "说明该条目仍值得继续跟踪其后续发酵。"
 
@@ -285,52 +260,41 @@ def collect_news():
     grouped = {"宏观新闻": [], "财经市场": [], "科技产业": []}
     errors = []
     for feed in FEEDS:
-        source_name = feed["name"]
-        section = feed["section"]
         try:
-            items = parse_feed(feed["url"], limit=14)
+            items = parse_feed(feed["url"], limit=16)
         except Exception as e:
-            try:
-                items = fallback_items(feed, limit=14)
-                if items:
-                    errors.append(f"{source_name}: RSS失败，已切换页面回退")
-                else:
-                    errors.append(f"{source_name}: RSS失败且回退无可用条目: {e}")
-                    time.sleep(0.5)
+            kind = feed.get("fallback_kind")
+            if kind:
+                try:
+                    items = fallback_items(kind, limit=16)
+                except Exception as e2:
+                    errors.append(f"{feed['name']}: {e2}")
+                    time.sleep(0.3)
                     continue
-            except Exception as e2:
-                errors.append(f"{source_name}: RSS失败且回退异常: {e2}")
-                time.sleep(0.5)
+            else:
+                errors.append(f"{feed['name']}: {e}")
+                time.sleep(0.3)
                 continue
-
         for item in items:
             if not within_24h(item.get("published_dt")):
                 continue
-            raw_title = item.get("title", "")
-            raw_summary = item.get("summary", "")
-            normalized_title = normalize_headline_title(raw_title, raw_summary)
-            content = make_content(raw_summary, raw_title)
-            comment = cap_text(make_short_comment(section, raw_summary, raw_title), 42)
-            grouped[section].append({
-                **item,
-                "source": source_name,
-                "section": section,
-                "标题": normalized_title,
-                "内容": content,
-                "评论": comment,
-            })
-        time.sleep(0.5)
-
+            item["source"] = feed["name"]
+            item["section"] = feed["section"]
+            item["title_cn"] = normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+            item["内容摘要"] = make_content(item.get("summary", ""), item.get("title", ""))
+            item["评论"] = cap_text(make_short_comment(feed["section"], item.get("summary", ""), item.get("title", "")), 42)
+            grouped[feed["section"]].append(item)
+        time.sleep(0.3)
     for section in grouped:
         dedup = []
         seen = set()
         for item in grouped[section]:
-            key = ((item.get("link") or "").strip(), (item.get("title") or "").strip(), item.get("source"))
+            key = ((item.get("title_cn") or "").lower(), item.get("source"))
             if key in seen:
                 continue
             seen.add(key)
             dedup.append(item)
-        grouped[section] = dedup[:12]
+        grouped[section] = dedup[:18]
     return grouped, {}, errors
 
 
@@ -401,7 +365,6 @@ def select_top_headlines(grouped, limit: int = 12):
     all_items = []
     for section in ("宏观新闻", "财经市场", "科技产业"):
         all_items.extend(grouped.get(section, []))
-
     def score(item):
         text = f"{item.get('title','')} {item.get('summary','')}".lower()
         pts = 0
@@ -412,28 +375,30 @@ def select_top_headlines(grouped, limit: int = 12):
         ]:
             if keyword in text:
                 pts = max(pts, val)
+        if item.get("source", "").startswith("Google News"):
+            pts += 5
         return pts
-
     selected = []
     seen = set()
     for item in sorted(all_items, key=score, reverse=True):
-        title = item.get("标题") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
-        if title in seen:
+        title = item.get("title_cn") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+        key = title.lower()
+        if key in seen:
             continue
-        seen.add(title)
+        seen.add(key)
         selected.append({
             "标题": title,
             "来源": item.get("source", "未知来源"),
             "时间": item.get("published", "未明确给出"),
-            "内容": item.get("内容") or make_content(item.get("summary", ""), item.get("title", "")),
-            "评论": item.get("评论") or make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")),
+            "内容": cap_text(item.get("内容摘要") or make_content(item.get("summary", ""), item.get("title", "")), 78),
+            "评论": cap_text(item.get("评论") or make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
         })
         if len(selected) >= limit:
             break
     return selected
 
 
-def build_template_a_report(grouped, focus_hits, errors):
+def build_template_report(grouped, focus_hits, errors):
     now_str = NOW.strftime("%Y-%m-%d %H:%M")
     market_snapshot = collect_market_snapshot()
     headline_items = select_top_headlines(grouped, limit=12)
@@ -449,8 +414,8 @@ def build_template_a_report(grouped, focus_hits, errors):
     if headline_items:
         for idx, item in enumerate(headline_items, start=1):
             lines.append(f"{idx}. {item['标题']}")
-            lines.append(f"   内容：{cap_text(item['内容'], 78)}")
-            lines.append(f"   评论：{cap_text(item['评论'], 42)}")
+            lines.append(f"   内容：{item['内容']}")
+            lines.append(f"   评论：{item['评论']}")
             lines.append(f"   （来源：{item['来源']} | 发布时间：{item['时间']}）")
             lines.append("")
     else:
@@ -480,11 +445,11 @@ def build_template_a_report(grouped, focus_hits, errors):
 
 
 def build_text_report(grouped, focus_hits, errors):
-    return build_template_a_report(grouped, focus_hits, errors)[0]
+    return build_template_report(grouped, focus_hits, errors)[0]
 
 
 def build_html_report(grouped, focus_hits, errors):
-    return build_template_a_report(grouped, focus_hits, errors)[1]
+    return build_template_report(grouped, focus_hits, errors)[1]
 
 
 def send_email(subject: str, text_body: str, html_body: str):
