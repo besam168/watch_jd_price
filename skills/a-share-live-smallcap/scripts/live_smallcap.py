@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import os
+os.environ.setdefault('PYTHONUTF8', '1')
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
 import argparse
 import json
 import re
@@ -458,6 +461,14 @@ def build_watchlist(true_leaders: list, strong_followers: list) -> list:
 
 
 def main():
+    try:
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'reconfigure'):
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
     parser = argparse.ArgumentParser(description=PLUGIN_NAME)
     parser.add_argument('--date', default='today', help='交易日')
     parser.add_argument('--top-n', type=int, default=120, help='实时市场初始抓取范围')
