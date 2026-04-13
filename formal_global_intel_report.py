@@ -41,6 +41,23 @@ KEYWORDS = {
     "乌克兰/俄罗斯": ["ukraine", "russia", "kyiv", "moscow"],
     "美中贸易/关税/商业": ["china", "u.s.", "us-china", "tariff", "trade", "commerce"],
 }
+REPORT_SPEC = """
+角色：首席全球分析师。
+时间窗口：仅限过去0-24小时内公开可验证信息。
+真实性约束：拒绝虚构、拒绝脑补、拒绝把搜索残片当新闻；抓不到就明确写缺口。
+重点数据源：Reuters、AP News、BBC、Al Jazeera、NYSE、TWSE、SSE、JPX、KRX、CNBC、Yahoo Finance、Investing.com。
+必须核查：美股点位、黄金、布伦特原油、关键汇率；加沙、乌克兰、以及中美经贸的最新动态，优先写官方发言。
+输出结构：
+1. 重要头条新闻（约5条，每条带50字左右结论与来源时间）
+2. 50字左右总判断
+3. 全球市场动态
+4. 地缘政治热点
+5. 全球经济与产业动态
+6. 风险预警（24-48小时）
+7. 投资建议
+溯源格式：（来源：媒体名 | 发布时间：YYYY-MM-DD HH:MM）
+缺口规则：若未抓到扎实数据，必须明确写“今日无重大更新”或“暂未稳定抓到权威快照”。
+"""
 
 
 def strip_html(text: str) -> str:
@@ -440,6 +457,7 @@ def build_template_a_report(grouped, focus_hits, errors):
     text_lines = [
         f"全球综合情报报告 - {NOW.strftime('%Y-%m-%d')}",
         f"报告时间：{now_str}",
+        f"执行规范：{REPORT_SPEC.splitlines()[0]} 时间窗口仅限过去24小时；抓不到就写缺口。",
         "",
         "一、重要头条新闻",
     ]
