@@ -446,6 +446,36 @@ def attach_intraday_metrics(items: list) -> list:
     return out
 
 
+def build_role_board(true_leaders: list, strong_followers: list, pseudo_strong: list) -> dict:
+    dragon_one = true_leaders[0] if len(true_leaders) >= 1 else None
+    dragon_two = true_leaders[1] if len(true_leaders) >= 2 else None
+    followers = strong_followers[:3]
+    if len(followers) < 3:
+        need = 3 - len(followers)
+        extra = true_leaders[2:2 + need]
+        followers = followers + extra
+    observe = pseudo_strong[:5]
+
+    def brief(item):
+        if not item:
+            return None
+        return {
+            'name': item.get('name'),
+            'code': item.get('code'),
+            'change_pct': item.get('change_pct'),
+            'amount_yi': item.get('amount_yi'),
+            'turnover': format_turnover_display(item),
+            'conviction': item.get('conviction'),
+        }
+
+    return {
+        'dragon_one': brief(dragon_one),
+        'dragon_two': brief(dragon_two),
+        'followers': [brief(x) for x in followers if x],
+        'observe': [brief(x) for x in observe if x],
+    }
+
+
 def build_chinese_summary(true_leaders: list, strong_followers: list, pseudo_strong: list, watchlist: list) -> dict:
     def pack(items):
         return [f"{x['name']} {x['code']}" for x in items[:3]]
@@ -548,6 +578,7 @@ def main():
     passed, partial, failed = second_round_filter(candidates)
     true_leaders, strong_followers, pseudo_strong = classify_trading_roles(passed, partial, failed)
     watchlist = build_watchlist(true_leaders, strong_followers)
+    role_board = build_role_board(true_leaders, strong_followers, pseudo_strong)
     chinese_summary = build_chinese_summary(true_leaders, strong_followers, pseudo_strong, watchlist)
 
     payload = {
@@ -574,6 +605,7 @@ def main():
         'strong_followers': strong_followers,
         'pseudo_strong': pseudo_strong,
         'watchlist': watchlist,
+        'role_board': role_board,
         'chinese_summary': chinese_summary,
         'rejected_largecap': rejected_largecap,
         'rejected_live': rejected_live,
@@ -599,6 +631,20 @@ def main():
     print(f'策略: {payload["strategy"]}')
     print(f'实时来源: {source}')
     print(f"结论: {chinese_summary['overall']}")
+    if role_board.get('dragon_one'):
+        x = role_board['dragon_one']
+        print(f"龙一: {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
+    if role_board.get('dragon_two'):
+        x = role_board['dragon_two']
+        print(f"龙二: {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
+    if role_board.get('followers'):
+        print("跟随:")
+        for x in role_board['followers']:
+            print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
+    if role_board.get('observe'):
+        print("观察:")
+        for x in role_board['observe']:
+            print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
     print('真龙头：')
     for x in true_leaders:
         print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{format_turnover_display(x)}")
