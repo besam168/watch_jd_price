@@ -101,20 +101,82 @@ def fmt_yi(value):
         return f"{value}亿"
 
 
+def pick_focus_list(stage_time: str, payload: dict):
+    if stage_time == '09:25':
+        return payload.get('first_round_candidates', [])[:3]
+    if stage_time == '09:33':
+        return payload.get('first_round_candidates', [])[:3]
+    if stage_time == '09:38':
+        items = payload.get('passed', [])[:3]
+        return items if items else payload.get('partial', [])[:3]
+    if stage_time == '09:45':
+        items = payload.get('resonance_core', [])[:3]
+        return items if items else payload.get('resonance_follow', [])[:3]
+    return []
+
+
+def build_stage_summary(stage_time: str, payload: dict):
+    if stage_time == '09:25':
+        sectors = payload.get('top_sectors', [])[:2]
+        names = '、'.join([x.get('name', '') for x in sectors if x.get('name')]) or '板块尚在轮动'
+        return f'竞价阶段最强方向集中在{name}，先看板块热度是否能在开盘后转成个股承接。'
+    if stage_time == '09:33':
+        candidates = payload.get('first_round_candidates', [])[:3]
+        names = '、'.join([x.get('name', '') for x in candidates if x.get('name')]) or '候选池前排'
+        return f'初筛阶段前排已开始分化，当前优先盯{name}，重点看量价延续与分时承接。'
+    if stage_time == '09:38':
+        passed = payload.get('passed', [])[:3]
+        names = '、'.join([x.get('name', '') for x in passed if x.get('name')]) or '通过票'
+        return f'二筛后强弱已拉开，当前通过票里优先看{name}，其余只保留观察，不追杂毛。'
+    if stage_time == '09:45':
+        core = payload.get('resonance_core', [])[:3]
+        names = '、'.join([x.get('name', '') for x in core if x.get('name')]) or '核心票'
+        return f'上午主看名单已经成形，当前核心优先盯{name}，后续只做留强去弱。'
+    return '阶段结果已生成。'
+
+
+def render_focus_text(row):
+    parts = [f"{row.get('name', '')} {row.get('code', '')}"]
+    if row.get('change_pct') is not None:
+        parts.append(f"涨幅{fmt_pct(row.get('change_pct', 0))}")
+    if row.get('amount_yi') not in (None, ''):
+        parts.append(f"成交额{fmt_yi(row.get('amount_yi', 0))}")
+    if row.get('score') is not None:
+        parts.append(f"score={row.get('score', 0)}")
+    return '｜'.join(parts)
+
+
 def render_stage_email(stage_time: str, stage_name: str, payload: dict):
     date_str = datetime.now().strftime('%Y-%m-%d')
-    subject = f'【A股早盘自动盯盘】{date_str} {stage_time} {stage_name}'
+    focus = pick_focus_list(stage_time, payload)
+    focus_names = '、'.join([f"{x.get('name', '')}{x.get('code', '')}" for x in focus if x.get('name') and x.get('code')]) or '暂无明确前三'
+    subject = f'【A股早盘盯盘-{stage_time}】{date_str} {stage_name}｜前三：{focus_names}'
+    summary = build_stage_summary(stage_time, payload)
     lines = [
-        f'{PLUGIN_NAME}',
+        'A股早盘自动盯盘分阶段简报',
+        f'插件：{PLUGIN_NAME}',
         f'日期：{date_str}',
         f'阶段：{stage_time} {stage_name}',
+        f'阶段结论：{summary}',
         '',
+        '本阶段最值得盯的前3只',
     ]
+    for row in focus:
+        lines.append(f'- {render_focus_text(row)}')
+    lines.append('')
     html_parts = [
-        '<html><body style="font-family:Arial,Microsoft YaHei,sans-serif;line-height:1.6;">',
-        f'<h2>【A股早盘自动盯盘】{date_str} {stage_time} {stage_name}</h2>',
-        f'<p><b>插件：</b>{PLUGIN_NAME}<br><b>日期：</b>{date_str}<br><b>阶段：</b>{stage_time} {stage_name}</p>'
+        '<html><body style="font-family:Arial,Microsoft YaHei,sans-serif;line-height:1.7;color:#222;">',
+        f'<h2 style="margin-bottom:8px;">【A股早盘盯盘-{stage_time}】{date_str} {stage_name}</h2>',
+        '<div style="padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;background:#f8fafc;">',
+        f'<p style="margin:0 0 8px 0;"><b>插件：</b>{PLUGIN_NAME}<br><b>日期：</b>{date_str}<br><b>阶段：</b>{stage_time} {stage_name}</p>',
+        f'<p style="margin:0;"><b>阶段结论：</b>{summary}</p>',
+        '</div>',
+        '<h3 style="margin-top:18px;">本阶段最值得盯的前3只</h3>',
+        '<ol>'
     ]
+    for row in focus:
+        html_parts.append(f'<li>{render_focus_text(row)}</li>')
+    html_parts.append('</ol>')
 
     def add_section(title: str, rows, row_to_text, row_to_html=None):
         if not rows:
@@ -183,8 +245,18 @@ def render_stage_email(stage_time: str, stage_name: str, payload: dict):
     return subject, '\n'.join(lines).strip() + '\n', ''.join(html_parts)
 
 
+def save_email_preview(stage_time: str, subject: str, text_body: str, html_body: str):
+    preview_dir = STATE_DIR / 'mail_previews'
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime('%Y%m%d')
+    base = preview_dir / f'{stamp}_{stage_time.replace(":", "")}'
+    (base.with_suffix('.txt')).write_text(f'Subject: {subject}\n\n{text_body}', encoding='utf-8')
+    (base.with_suffix('.html')).write_text(html_body, encoding='utf-8')
+
+
 def send_stage_email(stage_time: str, stage_name: str, payload: dict):
     subject, text_body, html_body = render_stage_email(stage_time, stage_name, payload)
+    save_email_preview(stage_time, subject, text_body, html_body)
     msg = MIMEMultipart('alternative')
     msg['Subject'] = str(Header(subject, 'utf-8'))
     msg['From'] = SENDER_EMAIL
