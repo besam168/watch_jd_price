@@ -35,16 +35,44 @@ def part_score(part: Dict[str, Any]) -> float:
     text = part.get("text", "") or ""
     conf = float(part.get("confidence", 0.0) or 0.0)
     x = float(part.get("x", 0.0) or 0.0)
+    w = float(part.get("w", 0.0) or 0.0)
 
     score = conf
     if not is_ascii_like(text):
         score += 35.0
+    else:
+        score -= 18.0
     if looks_like_noise(text):
         score -= 50.0
     if any(ord(ch) > 127 for ch in text):
         score += 15.0
+    if re.search(r"[A-Za-z0-9]{3,}", text):
+        score -= 35.0
+    if len(text.strip()) >= 6 and is_ascii_like(text):
+        score -= 30.0
+    if w >= 80 and is_ascii_like(text):
+        score -= 25.0
     score -= x * 0.002
     return score
+
+
+def should_split(prev: Dict[str, Any], curr: Dict[str, Any]) -> bool:
+    prev_text = prev.get("text", "") or ""
+    curr_text = curr.get("text", "") or ""
+    prev_right = float(prev.get("x", 0)) + float(prev.get("w", 0))
+    gap = float(curr.get("x", 0)) - prev_right
+    y_delta = abs(float(curr.get("centerY", 0)) - float(prev.get("centerY", 0)))
+    h_ref = max(float(prev.get("h", 1)), float(curr.get("h", 1)))
+
+    if y_delta > max(18.0, h_ref * 0.6):
+        return True
+    if gap > max(26.0, h_ref * 0.8):
+        return True
+    if (not is_ascii_like(prev_text)) and is_ascii_like(curr_text) and len(curr_text.strip()) >= 2:
+        return True
+    if re.search(r"^[\(\[A-Za-z0-9_-]", curr_text):
+        return True
+    return False
 
 
 def cluster_parts(parts: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
@@ -54,14 +82,10 @@ def cluster_parts(parts: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
     clusters: List[List[Dict[str, Any]]] = [[ordered[0]]]
     for part in ordered[1:]:
         prev = clusters[-1][-1]
-        prev_right = float(prev.get("x", 0)) + float(prev.get("w", 0))
-        gap = float(part.get("x", 0)) - prev_right
-        y_delta = abs(float(part.get("centerY", 0)) - float(prev.get("centerY", 0)))
-        h_ref = max(float(prev.get("h", 1)), float(part.get("h", 1)))
-        if gap <= max(26.0, h_ref * 0.8) and y_delta <= max(18.0, h_ref * 0.6):
-            clusters[-1].append(part)
-        else:
+        if should_split(prev, part):
             clusters.append([part])
+        else:
+            clusters[-1].append(part)
     return clusters
 
 
@@ -71,11 +95,20 @@ def cluster_score(cluster: List[Dict[str, Any]]) -> float:
     score = sum(part_score(p) for p in cluster)
     text = "".join((p.get("text", "") or "") for p in cluster)
     width = max(float(p.get("x", 0)) + float(p.get("w", 0)) for p in cluster) - min(float(p.get("x", 0)) for p in cluster)
+    non_ascii_parts = sum(1 for p in cluster if not is_ascii_like(p.get("text", "") or ""))
+    ascii_parts = sum(1 for p in cluster if is_ascii_like(p.get("text", "") or ""))
+
     score += min(40.0, len(text) * 6.0)
     if not is_ascii_like(text):
         score += 25.0
-    if width > 260:
+    if non_ascii_parts >= 2:
+        score += 30.0
+    if ascii_parts >= 2 and non_ascii_parts >= 1:
         score -= 25.0
+    if width > 180:
+        score -= 35.0
+    elif width > 120:
+        score -= 15.0
     return score
 
 
