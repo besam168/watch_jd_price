@@ -37,6 +37,9 @@ FEEDS = [
     {"name": "雅虎财经", "url": "https://finance.yahoo.com/news/rssindex", "section": "财经市场"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "section": "科技产业"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "section": "科技产业"},
+    {"name": "IEEE Spectrum", "url": "https://spectrum.ieee.org/feeds/feed.rss", "section": "科技产业"},
+    {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "section": "科技产业"},
+    {"name": "Engadget", "url": "https://www.engadget.com/rss.xml", "section": "科技产业"},
 ]
 
 
@@ -341,16 +344,80 @@ def make_short_comment(section: str, summary: str, title: str) -> str:
         signal = classify_signal(summary)
 
     if signal == "geo_energy":
-        return "说明地缘风险仍会持续牵动能源与避险资产。"
+        return "说明地缘风险仍会持续牵动能源、航运与避险资产。"
     if signal == "russia_ukraine":
-        return "说明欧洲安全议题仍未退出市场视野。"
+        return "说明欧洲安全与制裁预期仍可能继续影响区域风险资产。"
     if signal == "china_trade":
-        return "说明经贸摩擦仍可能扰动出口链和风险偏好。"
+        return "说明经贸摩擦仍可能扰动出口链、制造链与风险偏好。"
     if signal == "tech_ai":
-        return "说明科技主线仍活跃，但需警惕纯情绪炒作。"
+        lower = f"{title} {summary}".lower()
+        if "openai" in lower:
+            return "说明大模型平台竞争正继续影响软件与算力链估值。"
+        if "anthropic" in lower:
+            return "说明企业级 AI 赛道竞争仍在加速，商业化节奏值得跟踪。"
+        if "nvidia" in lower or "chip" in lower:
+            return "说明算力与芯片链条仍是科技板块核心定价主线。"
+        if "robot" in lower:
+            return "说明机器人主题正从概念热度向产业兑现逻辑过渡。"
+        return "说明科技主线仍活跃，但要区分平台、应用与算力受益顺序。"
     if signal == "market_macro" or section == "财经市场":
-        return "说明资金仍在围绕宏观与价格信号重新定价。"
-    return "说明该条目仍值得继续跟踪其后续发酵。"
+        return "说明资金仍在围绕宏观预期、政策信号和价格变化重新定价。"
+    return "说明该条新闻仍值得继续跟踪其后续发酵与资产影响。"
+
+
+def select_ai_headlines(grouped, limit: int = 3):
+    preferred_sources = ["The Verge", "TechCrunch", "IEEE Spectrum", "Ars Technica", "Engadget"]
+    preferred_set = set(preferred_sources)
+    items = []
+    for item in grouped.get("科技产业", []):
+        source = item.get("source", "")
+        text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+        if source not in preferred_set:
+            continue
+        if not any(k in text for k in ["ai", "openai", "anthropic", "nvidia", "robot", "chip", "model", "llm"]):
+            continue
+        items.append(item)
+
+    def score(item):
+        text = f"{item.get('title','')} {item.get('summary','')}".lower()
+        pts = 0
+        for keyword, val in [
+            ("openai", 100), ("anthropic", 96), ("nvidia", 94), ("chip", 90),
+            ("robot", 86), ("ai", 82), ("model", 78), ("llm", 76),
+        ]:
+            if keyword in text:
+                pts = max(pts, val)
+        source = item.get("source", "")
+        if source == "The Verge":
+            pts += 8
+        elif source == "TechCrunch":
+            pts += 7
+        elif source == "IEEE Spectrum":
+            pts += 6
+        elif source == "Ars Technica":
+            pts += 5
+        elif source == "Engadget":
+            pts += 4
+        return pts
+
+    selected = []
+    seen = set()
+    for item in sorted(items, key=score, reverse=True):
+        title = normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+        key = (title.lower(), item.get("source", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append({
+            "标题": title,
+            "来源": item.get("source", "未知来源"),
+            "时间": item.get("published", "未明确给出"),
+            "内容": cap_text(make_content(item.get("summary", ""), item.get("title", "")), 78),
+            "评论": cap_text(make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
+        })
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def collect_news():
@@ -706,6 +773,7 @@ def build_template_report(grouped, focus_hits, errors):
     now_str = NOW.strftime("%Y-%m-%d %H:%M")
     market_snapshot = collect_market_snapshot()
     headline_items = select_top_headlines(grouped, limit=12)
+    ai_headline_items = select_ai_headlines(grouped, limit=3)
     risk_alerts = build_risk_alerts(grouped, focus_hits)
     action_points = build_action_points(grouped, focus_hits)
     lines = [
@@ -725,20 +793,33 @@ def build_template_report(grouped, focus_hits, errors):
     else:
         lines.append("- 今日无足够扎实的头条更新")
         lines.append("")
-    lines.append("二、全球市场动态")
+
+    lines.append("二、AI科技专栏头条")
+    if ai_headline_items:
+        for offset, item in enumerate(ai_headline_items, start=13):
+            lines.append(f"{offset}. {item['标题']}")
+            lines.append(f"   内容：{item['内容']}")
+            lines.append(f"   评论：{item['评论']}")
+            lines.append(f"   （来源：{item['来源']} | 发布时间：{item['时间']}）")
+            lines.append("")
+    else:
+        lines.append("- 今日未抓到足够扎实的 AI 科技头条")
+        lines.append("")
+
+    lines.append("三、全球市场动态")
     for k, v in market_snapshot.items():
         lines.append(f"- {k}：{v}")
     lines.append("")
-    lines.append("三、风险预警")
+    lines.append("四、风险预警")
     for item in risk_alerts:
         lines.append(f"- {item}")
     lines.append("")
-    lines.append("四、投资建议")
+    lines.append("五、投资建议")
     for item in action_points:
         lines.append(f"- {item}")
     lines.append("")
     if errors:
-        lines.append("五、抓取缺口说明")
+        lines.append("六、抓取缺口说明")
         for err in errors:
             lines.append(f"- {err}")
         lines.append("")
