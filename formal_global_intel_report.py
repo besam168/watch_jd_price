@@ -194,12 +194,19 @@ def title_to_cn(title: str) -> str:
     rules = [
         (("tariff", "china"), "美国对华关税口径再度收紧"),
         (("trade", "china"), "中美经贸博弈出现新动向"),
+        (("exports", "china"), "中国外贸数据变化引发市场关注"),
         (("hormuz",), "霍尔木兹海峡风险再度牵动全球能源预期"),
+        (("iran", "dialogue"), "美伊接触释放新一轮外交信号"),
+        (("iran", "talk"), "伊朗问题谈判预期再度升温"),
         (("iran",), "伊朗相关动态继续推升中东风险溢价"),
         (("gaza",), "加沙局势仍牵动中东风险定价"),
         (("israel",), "以色列相关动态继续牵动中东局势"),
         (("ukraine",), "俄乌局势仍在持续发酵"),
         (("russia",), "俄罗斯相关动态继续牵动欧洲安全预期"),
+        (("oil",), "国际油价波动继续受地缘局势牵动"),
+        (("dollar",), "美元走势继续反映避险与政策预期"),
+        (("market", "rise"), "全球市场风险偏好出现修复迹象"),
+        (("stocks", "rebound"), "全球股市反弹带动风险偏好修复"),
         (("openai",), "OpenAI 新动向继续牵动科技板块预期"),
         (("anthropic",), "Anthropic 动向继续反映企业级 AI 竞争"),
         (("nvidia",), "NVIDIA 相关动态继续影响算力板块"),
@@ -212,21 +219,38 @@ def title_to_cn(title: str) -> str:
             return zh
     if re.search(r"[\u4e00-\u9fff]", raw):
         return raw
-    return "国际要闻更新"
+    signal = classify_signal(raw)
+    fallback_map = {
+        "china_trade": "中美经贸与关税线索持续扰动市场预期",
+        "market_macro": "全球市场与宏观预期出现新变化",
+        "tech_ai": "科技与 AI 主线继续升温",
+        "russia_ukraine": "俄乌局势出现新的跟踪线索",
+        "geo_energy": "中东局势与能源风险继续升温",
+        "generic": "国际要闻出现新变化",
+    }
+    return fallback_map.get(signal, "国际要闻出现新变化")
+
+
+def force_chinese_text(text: str, *, fallback: str = "国际要闻出现新变化", max_len: int = 88) -> str:
+    clean = strip_html(text)
+    if clean and re.search(r"[\u4e00-\u9fff]", clean):
+        return cap_text(clean, max_len)
+    zh = title_to_cn(clean)
+    if zh and re.search(r"[\u4e00-\u9fff]", zh):
+        return cap_text(zh, max_len)
+    return fallback
 
 
 def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
     title = strip_html(raw_title)
     summary = strip_html(raw_summary)
-    base = title or summary
-    if not base:
-        return "国际要闻更新"
-    if re.search(r"[\u4e00-\u9fff]", base):
-        return cap_text(base, 88)
-    zh = title_to_cn(base)
-    if zh and re.search(r"[\u4e00-\u9fff]", zh):
-        return cap_text(zh, 88)
-    return "国际要闻更新"
+    if title and re.search(r"[\u4e00-\u9fff]", title):
+        return cap_text(title, 88)
+    if title:
+        return force_chinese_text(title, fallback="国际要闻出现新变化", max_len=88)
+    if summary:
+        return force_chinese_text(summary, fallback="国际要闻出现新变化", max_len=60)
+    return "国际要闻出现新变化"
 
 
 def classify_signal(text: str) -> str:
@@ -308,7 +332,7 @@ def make_content(summary: str, title: str) -> str:
     if signal == "market_macro":
         return "金融与市场类动态反映资金仍在围绕宏观预期、价格信号和龙头权重股表现重新定价。"
     base = summary or title or ""
-    return cap_text(chineseize_summary(base, title=title), 78)
+    return force_chinese_text(chineseize_summary(base, title=title), fallback="国际要闻出现新变化", max_len=78)
 
 
 def make_short_comment(section: str, summary: str, title: str) -> str:
