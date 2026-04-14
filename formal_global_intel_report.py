@@ -36,7 +36,7 @@ FEEDS = [
     {"name": "BBC国际", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "section": "宏观新闻"},
     {"name": "半岛电视台", "url": "https://www.aljazeera.com/xml/rss/all.xml", "section": "宏观新闻"},
     {"name": "CNBC国际", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html", "section": "财经市场"},
-    {"name": "CNBC世界", "url": "https://www.cnbc.com/world/?region=world", "section": "财经市场"},
+    {"name": "CNBC世界", "url": "https://www.cnbc.com/world/?region=world", "section": "财经市场", "fallback_kind": "cnbc_world"},
     {"name": "雅虎财经", "url": "https://finance.yahoo.com/news/rssindex", "section": "财经市场"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "section": "科技产业"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "section": "科技产业"},
@@ -109,6 +109,28 @@ def parse_feed(url: str, limit: int = 16):
     return items
 
 
+
+
+def fallback_cnbc_world(limit: int = 16):
+    text = fetch_text("https://www.cnbc.com/world/?region=world", timeout=20)
+    items = []
+    seen = set()
+    patterns = [
+        r'\[(.*?)\]\((https://www\.cnbc\.com/2026/[^)]+)\)',
+        r'## \[(.*?)\]\((https://www\.cnbc\.com/2026/[^)]+)\)',
+    ]
+    for pat in patterns:
+        for title, link in re.findall(pat, text, flags=re.S):
+            title = strip_html(title)
+            link = link.strip()
+            key = (title, link)
+            if not title or key in seen:
+                continue
+            seen.add(key)
+            items.append({"title": title, "link": link, "summary": title, "published": NOW.strftime("%a, %d %b %Y %H:%M:%S GMT"), "published_dt": NOW})
+            if len(items) >= limit:
+                return items
+    return items
 def fallback_reuters(limit: int = 16):
     items = []
     seen = set()
