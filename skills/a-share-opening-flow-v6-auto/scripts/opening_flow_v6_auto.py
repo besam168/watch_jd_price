@@ -131,7 +131,7 @@ def build_stage_summary(stage_time: str, payload: dict):
     if stage_time == '09:45':
         core = payload.get('resonance_core', [])[:3]
         names = '、'.join([x.get('name', '') for x in core if x.get('name')]) or '核心票'
-        return f'上午主看名单已经成形，当前核心优先盯{name}，后续只做留强去弱。'
+        return f'上午主看名单已经成形，当前核心优先盯{names}，后续只做留强去弱。'
     return '阶段结果已生成。'
 
 
