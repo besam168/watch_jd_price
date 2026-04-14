@@ -396,39 +396,244 @@ def build_action_points(grouped, _focus_hits):
     return actions[:5]
 
 
-def collect_market_snapshot():
-    snapshot = {
-        "美股指数": "暂未稳定抓到权威快照",
-        "黄金": "暂未稳定抓到权威快照",
-        "布伦特原油": "暂未稳定抓到权威快照",
-        "汇率": "暂未稳定抓到权威快照",
-    }
+def extract_yahoo_quote_page(symbol: str):
+    url = f"https://finance.yahoo.com/quote/{urllib.parse.quote(symbol, safe='')}"
+    html_text = fetch_text(url, timeout=20)
+    patterns = [
+        r'"regularMarketPrice"\s*:\s*\{[^\}]*"raw"\s*:\s*([-0-9.]+)',
+        r'"currentPrice"\s*:\s*\{[^\}]*"raw"\s*:\s*([-0-9.]+)',
+    ]
+    change_patterns = [
+        r'"regularMarketChangePercent"\s*:\s*\{[^\}]*"raw"\s*:\s*([-0-9.]+)',
+        r'"regularMarketChange"\s*:\s*\{[^\}]*"raw"\s*:\s*([-0-9.]+)',
+    ]
+    price = None
+    change_pct = None
+    for pat in patterns:
+        m = re.search(pat, html_text)
+        if m:
+            price = float(m.group(1))
+            break
+    for pat in change_patterns:
+        m = re.search(pat, html_text)
+        if m:
+            change_pct = float(m.group(1))
+            break
+    return price, change_pct
+
+
+def _fmt_num(v):
     try:
-        raw = fetch_url("https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EGSPC,%5EDJI,%5EIXIC,GC%3DF,BZ%3DF,CNY%3DX,DX-Y.NYB", timeout=20).decode("utf-8", errors="ignore")
+        num = float(v)
+        if abs(num) >= 100:
+            return f"{num:.2f}"
+        if abs(num) >= 1:
+            return f"{num:.4f}".rstrip('0').rstrip('.')
+        return f"{num:.6f}".rstrip('0').rstrip('.')
+    except Exception:
+        return str(v)
+
+
+def _fmt_change(v):
+    try:
+        return f"{float(v):+.2f}%"
+    except Exception:
+        text = str(v or "").strip()
+        if not text:
+            return ""
+        return text if text.endswith('%') else f"{text}%"
+
+
+def _safe_float(v):
+    try:
+        return float(str(v).replace(',', '').strip())
+    except Exception:
+        return None
+
+
+def _fetch_text_with_headers(url: str, headers: dict[str, str], encoding: str):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return resp.read().decode(encoding, errors='ignore')
+
+
+def _collect_eastmoney_snapshot():
+    out = {"lines": {}, "sources": []}
+    try:
+        url = (
+            "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3"
+            "&secids=1.000001,0.399001,0.399006,100.HSI,100.NDX,100.NKY,133.USDCNH"
+        )
+        raw = _fetch_text_with_headers(url, {"User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com"}, "utf-8")
         data = json.loads(raw)
-        results = (((data or {}).get("quoteResponse") or {}).get("result") or [])
-        by_symbol = {str(item.get("symbol") or ""): item for item in results if isinstance(item, dict)}
-        if by_symbol:
-            parts = []
-            for label, key in [("标普500", "^GSPC"), ("道指", "^DJI"), ("纳指", "^IXIC")]:
-                obj = by_symbol.get(key)
-                if obj and obj.get("regularMarketPrice") is not None:
-                    parts.append(f"{label} {obj['regularMarketPrice']}")
-            if parts:
-                snapshot["美股指数"] = "；".join(parts)
-            if by_symbol.get("GC=F", {}).get("regularMarketPrice") is not None:
-                snapshot["黄金"] = f"近似 {by_symbol['GC=F']['regularMarketPrice']}"
-            if by_symbol.get("BZ=F", {}).get("regularMarketPrice") is not None:
-                snapshot["布伦特原油"] = f"近似 {by_symbol['BZ=F']['regularMarketPrice']}"
-            fx_parts = []
-            if by_symbol.get("CNY=X", {}).get("regularMarketPrice") is not None:
-                fx_parts.append(f"美元兑离岸人民币近似 {by_symbol['CNY=X']['regularMarketPrice']}")
-            if by_symbol.get("DX-Y.NYB", {}).get("regularMarketPrice") is not None:
-                fx_parts.append(f"美元指数近似 {by_symbol['DX-Y.NYB']['regularMarketPrice']}")
-            if fx_parts:
-                snapshot["汇率"] = "；".join(fx_parts)
+        rows = ((data or {}).get("data") or {}).get("diff") or []
+        by_code = {str(x.get("f12") or ""): x for x in rows if isinstance(x, dict)}
+        cn = []
+        for label, code in [("上证指数", "000001"), ("深证成指", "399001"), ("创业板指", "399006")]:
+            row = by_code.get(code)
+            if row and row.get("f2") is not None:
+                cn.append(f"{label} {_fmt_num(row['f2'])} ({_fmt_change(row.get('f3'))})")
+        if cn:
+            out["lines"]["国内指数"] = "；".join(cn)
+        global_idx = []
+        for label, code in [("恒生", "HSI"), ("纳指100", "NDX"), ("日经", "NKY")]:
+            row = by_code.get(code)
+            if row and row.get("f2") is not None:
+                global_idx.append(f"{label} {_fmt_num(row['f2'])} ({_fmt_change(row.get('f3'))})")
+        if global_idx:
+            out["lines"]["全球指数补充"] = "；".join(global_idx)
+        row = by_code.get("USDCNH")
+        if row and row.get("f2") is not None:
+            out["lines"]["汇率补充"] = f"美元兑离岸人民币 {_fmt_num(row['f2'])} ({_fmt_change(row.get('f3'))})"
+        out["sources"].append("东方财富")
     except Exception:
         pass
+    return out
+
+
+def _collect_sina_snapshot():
+    out = {"lines": {}, "sources": []}
+    try:
+        url = (
+            "http://hq.sinajs.cn/list="
+            "s_sh000001,s_sz399001,s_sz399006,rt_hkHSI,int_dji,int_nasdaq,int_sp500,int_nikkei,"
+            "hf_GC,hf_CL,USDCNY,fx_susdcnh,DINIW"
+        )
+        raw = _fetch_text_with_headers(
+            url,
+            {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"},
+            "gbk",
+        )
+        vals = {}
+        for line in raw.splitlines():
+            m = re.search(r'var hq_str_([^=]+)="([^"]*)";', line)
+            if m:
+                vals[m.group(1)] = m.group(2).split(',')
+        cn = []
+        for sym, label in [("s_sh000001", "上证指数"), ("s_sz399001", "深证成指"), ("s_sz399006", "创业板指")]:
+            parts = vals.get(sym, [])
+            if len(parts) >= 4:
+                cn.append(f"{label} {_fmt_num(parts[1])} ({_fmt_change(parts[3])})")
+        if cn:
+            out["lines"]["国内指数"] = "；".join(cn)
+        global_idx = []
+        for sym, label in [("rt_hkHSI", "恒生"), ("int_dji", "道指"), ("int_nasdaq", "纳指"), ("int_sp500", "标普500"), ("int_nikkei", "日经")]:
+            parts = vals.get(sym, [])
+            if len(parts) >= 4:
+                price = parts[6] if sym == "rt_hkHSI" and len(parts) > 6 else parts[1]
+                chg = parts[8] if sym == "rt_hkHSI" and len(parts) > 8 else parts[3]
+                global_idx.append(f"{label} {_fmt_num(price)} ({_fmt_change(chg)})")
+        if global_idx:
+            out["lines"]["全球指数"] = "；".join(global_idx)
+        gc = vals.get("hf_GC", [])
+        cl = vals.get("hf_CL", [])
+        commodity = []
+        if len(gc) >= 1:
+            commodity.append(f"纽约黄金 {_fmt_num(gc[0])}")
+        if len(cl) >= 1:
+            commodity.append(f"纽约原油 {_fmt_num(cl[0])}")
+        if commodity:
+            out["lines"]["商品贵金属原油"] = "；".join(commodity)
+        fx = []
+        usdcny = vals.get("USDCNY", [])
+        usdcnh = vals.get("fx_susdcnh", [])
+        dxy = vals.get("DINIW", [])
+        if len(usdcny) >= 2:
+            fx.append(f"美元兑人民币 {_fmt_num(usdcny[1])}")
+        if len(usdcnh) >= 2:
+            fx.append(f"美元兑离岸人民币 {_fmt_num(usdcnh[1])}")
+        if len(dxy) >= 2:
+            fx.append(f"美元指数 {_fmt_num(dxy[1])}")
+        if fx:
+            out["lines"]["汇率"] = "；".join(fx)
+        out["sources"].append("新浪财经")
+    except Exception:
+        pass
+    return out
+
+
+def _collect_tencent_snapshot():
+    out = {"lines": {}, "sources": []}
+    try:
+        url = (
+            "http://qt.gtimg.cn/q="
+            "s_sh000001,s_sz399001,s_sz399006,r_hkHSI,usDJI,usIXIC,usINX,hf_GC,hf_CL,fx_susdcnh,USDCNY"
+        )
+        raw = _fetch_text_with_headers(
+            url,
+            {"User-Agent": "Mozilla/5.0", "Referer": "https://gu.qq.com"},
+            "gbk",
+        )
+        vals = {}
+        for line in raw.splitlines():
+            m = re.search(r'v_([^=]+)="([^"]*)";', line)
+            if m:
+                vals[m.group(1)] = m.group(2).split('~') if '~' in m.group(2) else m.group(2).split(',')
+        cn = []
+        for sym, label in [("s_sh000001", "上证指数"), ("s_sz399001", "深证成指"), ("s_sz399006", "创业板指")]:
+            parts = vals.get(sym, [])
+            if len(parts) >= 6:
+                cn.append(f"{label} {_fmt_num(parts[3])} ({_fmt_change(parts[5])})")
+        if cn:
+            out["lines"]["国内指数"] = "；".join(cn)
+        global_idx = []
+        for sym, label in [("r_hkHSI", "恒生"), ("usDJI", "道指"), ("usIXIC", "纳指"), ("usINX", "标普500")]:
+            parts = vals.get(sym, [])
+            if len(parts) >= 5:
+                change = parts[32] if sym == "r_hkHSI" and len(parts) > 32 else parts[32] if len(parts) > 32 else ""
+                global_idx.append(f"{label} {_fmt_num(parts[3])} ({_fmt_change(change or parts[4])})")
+        if global_idx:
+            out["lines"]["全球指数"] = "；".join(global_idx)
+        gc = vals.get("hf_GC", [])
+        cl = vals.get("hf_CL", [])
+        commodity = []
+        if len(gc) >= 1:
+            commodity.append(f"纽约黄金 {_fmt_num(gc[0])}")
+        if len(cl) >= 1:
+            commodity.append(f"纽约原油 {_fmt_num(cl[0])}")
+        if commodity:
+            out["lines"]["商品贵金属原油"] = "；".join(commodity)
+        fx = []
+        cnh = vals.get("fx_susdcnh", [])
+        cny = vals.get("USDCNY", [])
+        if len(cnh) >= 2:
+            fx.append(f"美元兑离岸人民币 {_fmt_num(cnh[1])}")
+        if len(cny) >= 4:
+            fx.append(f"美元兑人民币 {_fmt_num(cny[3])}")
+        if fx:
+            out["lines"]["汇率"] = "；".join(fx)
+        out["sources"].append("腾讯财经")
+    except Exception:
+        pass
+    return out
+
+
+def collect_market_snapshot():
+    snapshot = {
+        "国内指数": "暂未稳定抓到三方行情快照",
+        "全球指数": "暂未稳定抓到三方行情快照",
+        "全球指数补充": "暂未稳定抓到三方行情快照",
+        "商品贵金属原油": "暂未稳定抓到三方行情快照",
+        "汇率": "暂未稳定抓到三方行情快照",
+        "汇率补充": "暂未稳定抓到三方行情快照",
+        "港股/台股/期货外汇说明": "港股已纳入恒生；台股与更细分期货/外汇品种待继续补充映射。",
+        "数据源": "东方财富 / 新浪财经 / 腾讯财经",
+    }
+
+    collectors = [_collect_eastmoney_snapshot, _collect_sina_snapshot, _collect_tencent_snapshot]
+    merged_sources = []
+    for collector in collectors:
+        try:
+            result = collector()
+        except Exception:
+            continue
+        for key, value in (result.get("lines") or {}).items():
+            if value:
+                snapshot[key] = value
+        merged_sources.extend(result.get("sources") or [])
+
+    if merged_sources:
+        snapshot["数据源"] = " / ".join(dict.fromkeys(merged_sources))
     return snapshot
 
 
