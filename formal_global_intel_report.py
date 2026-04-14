@@ -217,11 +217,15 @@ def title_to_cn(title: str) -> str:
 
 def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
     title = strip_html(raw_title)
-    if title:
-        return cap_text(title, 88)
     summary = strip_html(raw_summary)
-    if summary:
-        return cap_text(summary, 60)
+    base = title or summary
+    if not base:
+        return "国际要闻更新"
+    if re.search(r"[\u4e00-\u9fff]", base):
+        return cap_text(base, 88)
+    zh = title_to_cn(base)
+    if zh and re.search(r"[\u4e00-\u9fff]", zh):
+        return cap_text(zh, 88)
     return "国际要闻更新"
 
 
