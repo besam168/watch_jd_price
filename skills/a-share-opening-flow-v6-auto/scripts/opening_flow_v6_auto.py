@@ -2,10 +2,16 @@
 import argparse
 import json
 import os
+import smtplib
+import ssl
 import subprocess
 import sys
 import time
 from datetime import datetime
+from email.header import Header
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.utils import formatdate
 from pathlib import Path
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -22,6 +28,13 @@ TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts' 
 STATE_DIR = BASE_DIR / 'output'
 STATE_FILE = STATE_DIR / 'auto_state.json'
 HEARTBEAT_SECONDS = 30
+
+SMTP_SERVER = 'smtp.qq.com'
+SMTP_PORT = 465
+SENDER_EMAIL = '910633260@qq.com'
+SMTP_PASSWORD = 'sghqeeeeyuzjbcbb'
+RECIPIENTS = ['besam168168@gmail.com', '758622673@qq.com']
+EMAIL_STAGE_TIMES = {'09:25', '09:33', '09:38', '09:45'}
 
 PYTHON_EXE = sys.executable
 
@@ -41,12 +54,23 @@ def ensure_state_dir():
 
 def load_state():
     ensure_state_dir()
+    default_state = {
+        'trading_day': datetime.now().strftime('%Y-%m-%d'),
+        'executed': [],
+        'emailed': [],
+    }
     if not STATE_FILE.exists():
-        return {'trading_day': datetime.now().strftime('%Y-%m-%d'), 'executed': []}
+        return default_state
     try:
-        return json.loads(STATE_FILE.read_text(encoding='utf-8'))
+        data = json.loads(STATE_FILE.read_text(encoding='utf-8'))
+        if not isinstance(data, dict):
+            return default_state
+        data.setdefault('trading_day', default_state['trading_day'])
+        data.setdefault('executed', [])
+        data.setdefault('emailed', [])
+        return data
     except Exception:
-        return {'trading_day': datetime.now().strftime('%Y-%m-%d'), 'executed': []}
+        return default_state
 
 
 def save_state(state):
@@ -58,9 +82,120 @@ def save_state(state):
 def refresh_state_for_today(state):
     today = datetime.now().strftime('%Y-%m-%d')
     if state.get('trading_day') != today:
-        state = {'trading_day': today, 'executed': []}
+        state = {'trading_day': today, 'executed': [], 'emailed': []}
         save_state(state)
     return state
+
+
+def fmt_pct(value):
+    try:
+        return f"{float(value):.2f}%"
+    except Exception:
+        return str(value)
+
+
+def fmt_yi(value):
+    try:
+        return f"{float(value):.2f}亿"
+    except Exception:
+        return f"{value}亿"
+
+
+def render_stage_email(stage_time: str, stage_name: str, payload: dict):
+    date_str = datetime.now().strftime('%Y-%m-%d')
+    subject = f'【A股早盘自动盯盘】{date_str} {stage_time} {stage_name}'
+    lines = [
+        f'{PLUGIN_NAME}',
+        f'日期：{date_str}',
+        f'阶段：{stage_time} {stage_name}',
+        '',
+    ]
+    html_parts = [
+        '<html><body style="font-family:Arial,Microsoft YaHei,sans-serif;line-height:1.6;">',
+        f'<h2>【A股早盘自动盯盘】{date_str} {stage_time} {stage_name}</h2>',
+        f'<p><b>插件：</b>{PLUGIN_NAME}<br><b>日期：</b>{date_str}<br><b>阶段：</b>{stage_time} {stage_name}</p>'
+    ]
+
+    def add_section(title: str, rows, row_to_text, row_to_html=None):
+        if not rows:
+            return
+        lines.append(title)
+        for row in rows:
+            lines.append(f'- {row_to_text(row)}')
+        lines.append('')
+        html_parts.append(f'<h3>{title}</h3><ul>')
+        for row in rows:
+            text = row_to_html(row) if row_to_html else row_to_text(row)
+            html_parts.append(f'<li>{text}</li>')
+        html_parts.append('</ul>')
+
+    if stage_time == '09:25':
+        add_section(
+            '竞价最强板块',
+            payload.get('top_sectors', [])[:3],
+            lambda x: f"{x.get('name', '')} {fmt_pct(x.get('change_pct', 0))}｜龙头{x.get('leading_stock', '')}",
+        )
+        add_section(
+            '盘前观察池',
+            payload.get('first_round_candidates', [])[:8],
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}",
+        )
+    elif stage_time == '09:33':
+        add_section(
+            '第一轮候选池',
+            payload.get('first_round_candidates', [])[:12],
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}｜{fmt_pct(x.get('change_pct', 0))}｜成交额{fmt_yi(x.get('amount_yi', 0))}",
+        )
+    elif stage_time == '09:38':
+        add_section(
+            '第二轮通过',
+            payload.get('passed', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}",
+        )
+        add_section(
+            '第二轮部分通过',
+            payload.get('partial', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}",
+        )
+        add_section(
+            '第二轮不通过',
+            payload.get('failed', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}｜score={x.get('score', 0)}",
+        )
+    elif stage_time == '09:45':
+        add_section(
+            '上午主看核心票',
+            payload.get('resonance_core', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}",
+        )
+        add_section(
+            '上午主看跟随票',
+            payload.get('resonance_follow', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}",
+        )
+        add_section(
+            '降级观察票',
+            payload.get('partial', []),
+            lambda x: f"{x.get('name', '')} {x.get('code', '')}",
+        )
+
+    html_parts.append('</body></html>')
+    return subject, '\n'.join(lines).strip() + '\n', ''.join(html_parts)
+
+
+def send_stage_email(stage_time: str, stage_name: str, payload: dict):
+    subject, text_body, html_body = render_stage_email(stage_time, stage_name, payload)
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = str(Header(subject, 'utf-8'))
+    msg['From'] = SENDER_EMAIL
+    msg['To'] = ', '.join(RECIPIENTS)
+    msg['Date'] = formatdate(localtime=True)
+    msg.attach(MIMEText(text_body, 'plain', 'utf-8'))
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    context = ssl.create_default_context()
+    with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30) as server:
+        server.login(SENDER_EMAIL, SMTP_PASSWORD)
+        server.sendmail(SENDER_EMAIL, RECIPIENTS, msg.as_string())
 
 
 def print_schedule(now_only: bool = False):
@@ -139,7 +274,7 @@ def run_data_script(primary_command):
     env['PYTHONIOENCODING'] = 'utf-8'
     attempts = [
         primary_command,
-        ['python', str(TEST_SCRIPT), '--json'],
+        [PYTHON_EXE, str(TEST_SCRIPT), '--json'],
     ]
     last = None
     for command in attempts:
@@ -154,7 +289,7 @@ def run_data_script(primary_command):
     return last
 
 
-def run_stage(stage):
+def run_stage(stage, state=None):
     time_str, stage_name, desc, command = stage
     print(f'[{time_str}] {stage_name}')
     print(f'  - {desc}')
@@ -178,12 +313,21 @@ def run_stage(stage):
                 print(result.stderr.strip())
             return result.returncode
         output = result.stdout.strip()
+        payload = None
         try:
             payload = json.loads(output)
             stage_view(stage_name, payload)
         except Exception:
             if output:
                 print(output)
+        if state is not None and time_str in EMAIL_STAGE_TIMES and payload is not None:
+            emailed = set(state.get('emailed', []))
+            if time_str not in emailed:
+                send_stage_email(time_str, stage_name, payload)
+                emailed.add(time_str)
+                state['emailed'] = sorted(emailed)
+                save_state(state)
+                print(f'  - 邮件已发送: {", ".join(RECIPIENTS)}')
         return 0
     except Exception as e:
         print(f'  - 调用失败: {e}')
@@ -198,15 +342,16 @@ def get_due_stage(now_str: str):
 
 
 def run_current_stage(allow_catchup: bool = False):
+    state = refresh_state_for_today(load_state())
     now_str = datetime.now().strftime('%H:%M')
     matched = [s for s in DEFAULT_STAGES if s[0] == now_str]
     if matched:
-        return run_stage(matched[0])
+        return run_stage(matched[0], state=state)
     if allow_catchup:
         due = get_due_stage(now_str)
         if due:
             print(f'当前时间 {now_str} 不在自动时段内，补跑最近阶段 {due[0]}。')
-            return run_stage(due)
+            return run_stage(due, state=state)
     print(f'当前时间 {now_str} 不在自动时段内。')
     return 0
 
@@ -224,7 +369,7 @@ def run_auto_loop(poll_seconds: int = 20):
             time_str = stage[0]
             if time_str <= now_str and time_str not in executed:
                 print(f'触发自动阶段：当前 {now_str}，执行计划节点 {time_str}')
-                rc = run_stage(stage)
+                rc = run_stage(stage, state=state)
                 if rc == 0:
                     executed.add(time_str)
                     state['executed'] = sorted(executed)
@@ -267,8 +412,9 @@ def main():
 
     if args.dry_run:
         print('\n自动流程模拟：')
+        state = {'trading_day': datetime.now().strftime('%Y-%m-%d'), 'executed': [], 'emailed': []}
         for stage in DEFAULT_STAGES:
-            run_stage(stage)
+            run_stage(stage, state=state)
         print('当前自动指令版已按五个时间点分开输出口径。')
         return 0
 
