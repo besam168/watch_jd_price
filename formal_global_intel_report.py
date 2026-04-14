@@ -28,12 +28,15 @@ WINDOW_START = NOW - timedelta(hours=24)
 FEEDS = [
     {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters_page"},
     {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "fallback_kind": "ap"},
+    {"name": "CNN World", "url": "http://rss.cnn.com/rss/edition_world.rss", "section": "宏观新闻"},
+    {"name": "CNN Business", "url": "http://rss.cnn.com/rss/money_latest.rss", "section": "财经市场"},
     {"name": "Google News Gaza", "url": "https://news.google.com/rss/search?q=Gaza%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News Ukraine", "url": "https://news.google.com/rss/search?q=Ukraine%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News China Trade", "url": "https://news.google.com/rss/search?q=China%20tariff%20trade%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "BBC国际", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "section": "宏观新闻"},
     {"name": "半岛电视台", "url": "https://www.aljazeera.com/xml/rss/all.xml", "section": "宏观新闻"},
     {"name": "CNBC国际", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html", "section": "财经市场"},
+    {"name": "CNBC世界", "url": "https://www.cnbc.com/world/?region=world", "section": "财经市场"},
     {"name": "雅虎财经", "url": "https://finance.yahoo.com/news/rssindex", "section": "财经市场"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "section": "科技产业"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "section": "科技产业"},
@@ -222,7 +225,7 @@ def title_to_cn(title: str) -> str:
             return zh
     if re.search(r"[\u4e00-\u9fff]", raw):
         return raw
-    signal = classify_signal(raw)
+    signal = classify_item_signal(raw, raw)
     fallback_map = {
         "china_trade": "中美经贸与关税线索持续扰动市场预期",
         "market_macro": "全球市场与宏观预期出现新变化",
@@ -258,19 +261,32 @@ def normalize_headline_title(raw_title: str, raw_summary: str) -> str:
 
 def classify_signal(text: str) -> str:
     lower = (text or "").lower()
-    if any(k in lower for k in ["china", "tariff", "trade", "commerce", "duties"]):
-        return "china_trade"
-    if any(k in lower for k in ["market", "sell-off", "pricing in", "panic", "stocks", "bond", "fed", "goldman sachs"]):
-        return "market_macro"
-    if any(k in lower for k in ["openai", "anthropic", "nvidia", "ai", "robot", "chip", "claude"]):
-        return "tech_ai"
-    if any(k in lower for k in ["ukraine", "russia", "moscow", "kyiv"]):
-        return "russia_ukraine"
-    if any(k in lower for k in ["gaza", "israel", "iran", "hormuz", "oil", "brent", "middle east"]):
+    geo_keywords = ["hormuz", "gaza", "israel", "iran", "middle east", "strait", "blockade", "brent", "crude", "oil"]
+    ru_keywords = ["ukraine", "russia", "moscow", "kyiv", "zelensky", "putin", "sanction", "drone", "missile"]
+    trade_keywords = ["china", "tariff", "trade", "commerce", "duties", "export", "imports", "supply chain"]
+    ai_keywords = ["openai", "anthropic", "nvidia", "robot", "humanoid", "embodied", "chip", "gpu", "llm", "model", "agent", "inference", "ai"]
+    macro_keywords = ["market", "stocks", "sell-off", "pricing in", "bond", "fed", "inflation", "yield", "dollar", "equity"]
+
+    if any(k in lower for k in geo_keywords):
         return "geo_energy"
-    if any(k in lower for k in ["trump", "white house", "u.s. foreign policy", "politics", "pope leo"]):
+    if any(k in lower for k in ru_keywords):
+        return "russia_ukraine"
+    if any(k in lower for k in trade_keywords):
+        return "china_trade"
+    if any(k in lower for k in ai_keywords):
+        return "tech_ai"
+    if any(k in lower for k in macro_keywords):
+        return "market_macro"
+    if any(k in lower for k in ["trump", "white house", "politics"]):
         return "market_macro"
     return "generic"
+
+
+def classify_item_signal(title: str, summary: str = "") -> str:
+    title_signal = classify_signal(title)
+    if title_signal != "generic":
+        return title_signal
+    return classify_signal(summary)
 
 
 def chineseize_summary(text: str, title: str = "") -> str:
@@ -300,9 +316,9 @@ def is_noise_item(title: str, summary: str, section: str, source: str = "") -> b
         whitelist = [
             "gaza", "israel", "iran", "hormuz", "oil", "brent",
             "ukraine", "russia", "moscow", "kyiv",
-            "china", "tariff", "trade", "commerce",
+            "china", "tariff", "trade", "commerce", "export", "import",
             "market", "sell-off", "pricing in", "stocks", "bond", "fed", "goldman",
-            "ai", "openai", "anthropic", "nvidia", "chip", "robot", "claude"
+            "ai", "openai", "anthropic", "nvidia", "chip", "robot", "agent", "inference", "model", "llm"
         ]
         if not any(marker in text for marker in whitelist):
             return True
@@ -316,6 +332,10 @@ def is_noise_item(title: str, summary: str, section: str, source: str = "") -> b
             "sports",
         ]
         if any(marker in text for marker in noise_markers):
+            return True
+    if section == "科技产业":
+        ai_markers = ["ai", "openai", "anthropic", "nvidia", "robot", "humanoid", "chip", "gpu", "agent", "inference", "model", "llm"]
+        if not any(marker in text for marker in ai_markers):
             return True
     return False
 
@@ -366,6 +386,7 @@ def make_short_comment(section: str, summary: str, title: str) -> str:
 
 
 def select_ai_headlines(grouped, limit: int = 3):
+    used_comments = set()
     preferred_sources = ["The Verge", "TechCrunch", "IEEE Spectrum", "Ars Technica", "Engadget"]
     preferred_set = set(preferred_sources)
     items = []
@@ -374,7 +395,9 @@ def select_ai_headlines(grouped, limit: int = 3):
         text = f"{item.get('title', '')} {item.get('summary', '')}".lower()
         if source not in preferred_set:
             continue
-        if not any(k in text for k in ["ai", "openai", "anthropic", "nvidia", "robot", "chip", "model", "llm"]):
+        if not any(k in text for k in ["ai", "openai", "anthropic", "nvidia", "robot", "chip", "model", "llm", "agent", "inference", "humanoid", "gpu"]):
+            continue
+        if any(k in text for k in ["ukraine", "russia", "gaza", "iran", "israel", "hormuz", "trade war", "tariff", "oil"]):
             continue
         items.append(item)
 
@@ -383,7 +406,8 @@ def select_ai_headlines(grouped, limit: int = 3):
         pts = 0
         for keyword, val in [
             ("openai", 100), ("anthropic", 96), ("nvidia", 94), ("chip", 90),
-            ("robot", 86), ("ai", 82), ("model", 78), ("llm", 76),
+            ("robot", 88), ("humanoid", 87), ("agent", 85), ("inference", 84),
+            ("gpu", 83), ("ai", 82), ("model", 78), ("llm", 76),
         ]:
             if keyword in text:
                 pts = max(pts, val)
@@ -408,13 +432,7 @@ def select_ai_headlines(grouped, limit: int = 3):
         if key in seen:
             continue
         seen.add(key)
-        selected.append({
-            "标题": title,
-            "来源": item.get("source", "未知来源"),
-            "时间": item.get("published", "未明确给出"),
-            "内容": cap_text(make_content(item.get("summary", ""), item.get("title", "")), 78),
-            "评论": cap_text(make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
-        })
+        selected.append(build_analyst_item(item, used_comments=used_comments))
         if len(selected) >= limit:
             break
     return selected
@@ -447,8 +465,6 @@ def collect_news():
             item["source"] = feed["name"]
             item["section"] = feed["section"]
             item["title_cn"] = normalize_headline_title(item.get("title", ""), item.get("summary", ""))
-            item["内容摘要"] = make_content(item.get("summary", ""), item.get("title", ""))
-            item["评论"] = cap_text(make_short_comment(feed["section"], item.get("summary", ""), item.get("title", "")), 42)
             grouped[feed["section"]].append(item)
         time.sleep(0.3)
     for section in grouped:
@@ -732,7 +748,130 @@ def collect_market_snapshot():
     return snapshot
 
 
+
+ANALYST_ENTITY_MAP = {
+    "geo_energy": ["iran", "gaza", "israel", "hormuz", "oil", "brent", "middle east", "blockade", "strait"],
+    "russia_ukraine": ["ukraine", "russia", "moscow", "kyiv", "sanction", "drone", "missile"],
+    "china_trade": ["china", "tariff", "trade", "export", "commerce", "duties", "import"],
+    "tech_ai": ["openai", "anthropic", "nvidia", "ai", "robot", "chip", "model", "llm", "agent", "inference"],
+    "market_macro": ["market", "stocks", "dollar", "bond", "fed", "inflation", "yield", "macro", "equity"],
+}
+
+
+def extract_topic_keywords(title: str, summary: str = "") -> list[str]:
+    text = f"{title} {summary}".lower()
+    signal = classify_item_signal(title, summary)
+    keys = []
+    for cand in ANALYST_ENTITY_MAP.get(signal, []):
+        if cand in text:
+            keys.append(cand)
+    return keys[:4]
+
+
+def check_consistency(title: str, summary: str, candidate: str) -> tuple[bool, str]:
+    signal = classify_item_signal(title, summary)
+    if signal == "generic":
+        return False, "数据抓取异常：标题主题不清晰，已跳过自动评论。"
+    cand = (candidate or "").lower()
+
+    forbidden_map = {
+        "geo_energy": ["openai", "anthropic", "llm", "agent", "robot", "模型", "算力"],
+        "russia_ukraine": ["openai", "anthropic", "llm", "agent", "robot", "模型", "算力"],
+        "china_trade": ["openai", "anthropic", "llm", "agent", "robot", "模型", "算力"],
+        "tech_ai": ["霍尔木兹", "油价", "原油", "航运", "制裁", "俄乌", "中东"],
+    }
+    if any(k in cand for k in forbidden_map.get(signal, [])):
+        if signal == "tech_ai":
+            return False, "数据抓取异常：科技新闻误串至地缘逻辑，已跳过自动评论。"
+        return False, "数据抓取异常：非科技新闻误串至科技逻辑，已跳过自动评论。"
+
+    theme_pass = {
+        "geo_energy": ["能源", "原油", "航运", "避险", "外交", "风险溢价", "供应"],
+        "russia_ukraine": ["欧洲", "制裁", "军援", "防务", "能源", "区域风险"],
+        "china_trade": ["出口", "关税", "制造", "供应链", "订单", "外贸", "机器人链"],
+        "tech_ai": ["推理", "agent", "工作流", "roi", "机器人", "芯片", "边缘", "模型", "数据中心"],
+        "market_macro": ["美元", "利率", "商品", "权益", "风险偏好", "price-in", "定价"],
+    }
+    allowed = theme_pass.get(signal, [])
+    if allowed and not any(k.lower() in cand for k in [x.lower() for x in allowed]):
+        return False, "数据抓取异常：评论未通过主题一致性校验，已跳过自动评论。"
+    return True, candidate
+
+
+def analyst_content(title: str, summary: str, section: str = "") -> str:
+    signal = classify_item_signal(title, summary)
+    if signal == "geo_energy":
+        text = "这条新闻的核心不在事件表面，而在能源运输安全溢价是否重新抬头；若霍尔木兹、红海或中东出口链风险抬升，油价、航运与避险资产会先被重新定价。"
+    elif signal == "russia_ukraine":
+        text = "这条新闻反映欧洲安全风险并未退出定价区间；若后续伴随军援升级、能源设施受损或制裁扩围，欧洲资产、军工链与能源预期会同步承压。"
+    elif signal == "china_trade":
+        text = "核心不是 headline 本身，而是出口结构和关税口径是否再度变化；若订单转向东南亚和中东、而高附加值制造继续扩张，制造链与出口链的表现会出现分化。"
+    elif signal == "tech_ai":
+        lower = f"{title} {summary}".lower()
+        if any(k in lower for k in ["robot", "embodied", "humanoid"]):
+            text = "市场关注点已从纯模型参数转向具身智能落地；若机器人在真实作业场景中的成功率提升，边缘推理芯片、执行器和工业软件链条会比通用概念股更先受益。"
+        elif any(k in lower for k in ["openai", "anthropic", "model", "llm"]):
+            text = "2026 年 AI 逻辑的关键不再是参数规模，而是推理成本曲线、Agent 工作流渗透率和企业端 ROI；若调用成本继续下降，真正受益的是能承接工作流自动化的平台、推理基础设施与企业软件。"
+        elif any(k in lower for k in ["nvidia", "chip", "gpu"]):
+            text = "这条线的关键不只是算力扩张，而是算力税是否侵蚀企业利润；若资本开支继续抬升但商业化兑现放缓，市场会从 GPU 主线切向边缘推理和高效率芯片。"
+        else:
+            text = "AI 板块已从讲故事阶段进入效率兑现阶段；后续定价重点将落在推理成本、工作流渗透与数据中心能耗约束，而不是单纯模型更新。"
+    else:
+        text = "这条新闻的关键在于市场此前是否已经 price-in；若本轮新增信息超出预期，资金会优先在汇率、权益和商品之间重新分配风险敞口。"
+    ok, fixed = check_consistency(title, summary, text)
+    return fixed
+
+
+def analyst_comment(title: str, summary: str, section: str = "", used_comments: set[str] | None = None) -> str:
+    signal = classify_item_signal(title, summary)
+    lower = f"{title} {summary}".lower()
+    if signal == "geo_energy":
+        if any(k in lower for k in ["hormuz", "strait", "blockade"]):
+            text = "资产影响先看原油与黄金，再看航运与高估值成长股；关键观察点是霍尔木兹航线风险是否扩散，以及油价能否重新站稳关键位，若外交降温坐实，避险仓位可能先行回吐。"
+        elif any(k in lower for k in ["iran", "dialogue", "talk"]):
+            text = "这更像谈判桌上的风险博弈而非单向升级；若未来 24 至 48 小时外交表态继续缓和，市场会先削减战争溢价，再观察油价与美元是否同步回落。"
+        else:
+            text = "中东线索的关键不在 headline 本身，而在冲突是否外溢到能源运输与供应链；若风险外溢受控，原油和黄金的冲高持续性会先被检验。"
+    elif signal == "russia_ukraine":
+        text = "市场不会把这条线简单当旧闻处理；若未来 48 小时出现新制裁、军援或基础设施打击，欧洲能源、防务和区域风险资产会出现二次定价。"
+    elif signal == "china_trade":
+        text = "真正要盯的不是总量 headline，而是结构替代；若高端制造和机器人链出口继续强化，A 股核心零部件与出口制造龙头会比传统外贸链更有弹性。"
+    elif signal == "tech_ai":
+        if any(k in lower for k in ["openai", "anthropic", "model", "llm"]):
+            text = "市场对模型更新已有审美疲劳，真正的超预期点在于推理成本拐点与 Agent 工作流渗透；若企业端付费转化率没有提升，概念热度很容易先涨后吐。"
+        elif any(k in lower for k in ["robot", "embodied", "humanoid"]):
+            text = "这条新闻更像由虚向实的切换信号；若实机演示、工业合作或订单落地跟进，机器人执行器、减速器和边缘控制链会比纯聊天模型更值得盯。"
+        elif any(k in lower for k in ["nvidia", "chip", "gpu"]):
+            text = "关注的不是单一公司 headline，而是资本开支回报率；若数据中心能耗、供电和 capex 压力继续抬升，市场会更快寻找低功耗推理和边缘侧替代。"
+        else:
+            text = "AI 板块后续要看真实工作流渗透，而非情绪共振；如果没有明确的客户 ROI 证明，平台和应用层估值都可能面临回撤压力。"
+    else:
+        text = "关键不是新闻本身，而是市场是否已提前消化；如果美元、利率和商品没有同步共振，这类利好或利空往往只能形成短线交易而不是趋势反转。"
+    ok, fixed = check_consistency(title, summary, text)
+    if used_comments is not None:
+        base = fixed
+        i = 2
+        while fixed in used_comments:
+            fixed = base.rstrip('。') + f"（变体{i}）"
+            i += 1
+        used_comments.add(fixed)
+    return fixed
+
+
+def build_analyst_item(item: dict, used_comments: set[str] | None = None) -> dict:
+    title = item.get("title", "")
+    summary = item.get("summary", "")
+    section = item.get("section", "")
+    return {
+        "标题": normalize_headline_title(title, summary),
+        "来源": item.get("source", "未知来源"),
+        "时间": item.get("published", "未明确给出"),
+        "内容": cap_text(analyst_content(title, summary, section), 120),
+        "评论": cap_text(analyst_comment(title, summary, section, used_comments=used_comments), 88),
+    }
+
 def select_top_headlines(grouped, limit: int = 12):
+    used_comments = set()
     all_items = []
     for section in ("宏观新闻", "财经市场", "科技产业"):
         all_items.extend(grouped.get(section, []))
@@ -757,13 +896,7 @@ def select_top_headlines(grouped, limit: int = 12):
         if key in seen:
             continue
         seen.add(key)
-        selected.append({
-            "标题": title,
-            "来源": item.get("source", "未知来源"),
-            "时间": item.get("published", "未明确给出"),
-            "内容": cap_text(make_content(item.get("summary", ""), item.get("title", "")), 78),
-            "评论": cap_text(make_short_comment(item.get("section", ""), item.get("summary", ""), item.get("title", "")), 42),
-        })
+        selected.append(build_analyst_item(item, used_comments=used_comments))
         if len(selected) >= limit:
             break
     return selected
