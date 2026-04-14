@@ -79,7 +79,7 @@ def within_24h(dt):
     return bool(dt and WINDOW_START <= dt <= NOW)
 
 
-def parse_feed(url: str, limit: int = 16):
+def parse_feed(url: str, limit: int = 16, source_label: str = ""):
     raw = fetch_url(url)
     root = ET.fromstring(raw)
     items = []
@@ -90,7 +90,7 @@ def parse_feed(url: str, limit: int = 16):
             link = (item.findtext("link", default="") or "").strip()
             desc = strip_html(item.findtext("description", default=""))
             pub = strip_html(item.findtext("pubDate", default=""))
-            items.append({"title": title, "link": link, "summary": desc, "published": pub, "published_dt": parse_time(pub)})
+            items.append({"title": title, "link": link, "summary": desc, "published": pub, "published_dt": parse_time(pub), "source_detail": f"{source_label} RSS" if source_label else "RSS"})
         return items
     ns_atom = "{http://www.w3.org/2005/Atom}"
     for entry in root.findall(f"{ns_atom}entry")[:limit]:
@@ -104,7 +104,7 @@ def parse_feed(url: str, limit: int = 16):
             if href and rel == "alternate":
                 link = href
                 break
-        items.append({"title": title, "link": link, "summary": summary, "published": published, "published_dt": parse_time(published)})
+        items.append({"title": title, "link": link, "summary": summary, "published": published, "published_dt": parse_time(published), "source_detail": f"{source_label} RSS" if source_label else "RSS"})
     return items
 
 
@@ -126,7 +126,7 @@ def fallback_cnbc_world(limit: int = 16):
             if not title or key in seen:
                 continue
             seen.add(key)
-            items.append({"title": title, "link": link, "summary": title, "published": NOW.strftime("%a, %d %b %Y %H:%M:%S GMT"), "published_dt": NOW})
+            items.append({"title": title, "link": link, "summary": title, "published": NOW.strftime("%a, %d %b %Y %H:%M:%S GMT"), "published_dt": NOW, "source_detail": "CNBC世界 fallback"})
             if len(items) >= limit:
                 return items
     return items
@@ -464,7 +464,7 @@ def collect_news():
     errors = []
     for feed in FEEDS:
         try:
-            items = parse_feed(feed["url"], limit=16)
+            items = parse_feed(feed["url"], limit=16, source_label=feed["name"])
         except Exception as e:
             kind = feed.get("fallback_kind")
             if kind:
@@ -885,7 +885,7 @@ def build_analyst_item(item: dict, used_comments: set[str] | None = None) -> dic
     section = item.get("section", "")
     return {
         "标题": normalize_headline_title(title, summary),
-        "来源": item.get("source", "未知来源"),
+        "来源": item.get("source_detail") or item.get("source", "未知来源"),
         "时间": item.get("published", "未明确给出"),
         "内容": cap_text(analyst_content(title, summary, section), 120),
         "评论": cap_text(analyst_comment(title, summary, section, used_comments=used_comments), 88),
