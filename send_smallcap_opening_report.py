@@ -3,24 +3,33 @@ from __future__ import annotations
 import json
 import smtplib
 import ssl
+import time
 from datetime import datetime
-from email.header import Header
 from email.message import EmailMessage
 from pathlib import Path
 import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parent
 PYTHON = Path(r"C:\Users\besam\AppData\Local\Programs\Python\Python312\python.exe")
 PLUGIN = ROOT / "skills" / "a-share-live-smallcap" / "scripts" / "live_smallcap.py"
 REPORT_DIR = ROOT / "reports" / "smallcap_mailer"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_PATH = LOG_DIR / "smallcap_opening_mailer.log"
 
 SENDER = "910633260@qq.com"
 AUTH_CODE = "sghqeeeeyuzjbcbb"
 SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 RECEIVERS = ["besam168168@gmail.com", "758622673@qq.com"]
+WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+
+
+def log_line(text: str) -> None:
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(f"[{stamp}] {text}\n")
 
 
 def run_plugin() -> dict:
@@ -40,6 +49,11 @@ def run_plugin() -> dict:
         encoding="utf-8",
         errors="replace",
     )
+    log_line(f"run_plugin rc={completed.returncode}")
+    if completed.stdout.strip():
+        log_line(f"plugin_stdout={completed.stdout.strip()[:1000]}")
+    if completed.stderr.strip():
+        log_line(f"plugin_stderr={completed.stderr.strip()[:1000]}")
     if completed.returncode != 0:
         raise RuntimeError(
             "插件运行失败\n"
@@ -153,31 +167,74 @@ def build_text_report(payload: dict) -> str:
     return "\n".join(lines)
 
 
-def send_email(subject: str, body: str) -> None:
-    msg = EmailMessage()
-    msg["From"] = SENDER
-    msg["To"] = ", ".join(RECEIVERS)
-    msg["Subject"] = subject
-    msg.set_content(body, subtype="plain", charset="utf-8")
+def build_qq_brief(payload: dict) -> str:
+    generated_at = payload.get("generated_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    summary = (payload.get("chinese_summary") or {}).get("overall", "暂无总结")
+    true_leaders = payload.get("true_leaders") or []
+    strong_followers = payload.get("strong_followers") or []
+    watchlist = payload.get("watchlist") or []
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30) as server:
-        server.login(SENDER, AUTH_CODE)
-        server.send_message(msg)
+    def short(items: list, limit: int) -> str:
+        if not items:
+            return "无"
+        return "、".join(f"{x.get('name', '-')}{x.get('code', '-')[-3:]}" for x in items[:limit])
+
+    lines = [
+        f"A股中小盘 09:35 筛选",
+        f"时间：{generated_at}",
+        f"结论：{summary}",
+        f"真龙头：{short(true_leaders, 3)}",
+        f"强跟随：{short(strong_followers, 4)}",
+        f"盯盘：{short(watchlist, 5)}",
+        "邮件已同步发送到两个邮箱。",
+    ]
+    return "\n".join(lines)
+
+
+def send_email(subject: str, body: str, retries: int = 3, retry_delay: int = 8) -> None:
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            msg = EmailMessage()
+            msg["From"] = SENDER
+            msg["To"] = ", ".join(RECEIVERS)
+            msg["Subject"] = subject
+            msg.set_content(body, subtype="plain", charset="utf-8")
+
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context, timeout=30) as server:
+                server.login(SENDER, AUTH_CODE)
+                server.send_message(msg)
+            log_line(f"send_email success attempt={attempt}")
+            return
+        except Exception as e:
+            last_error = e
+            log_line(f"send_email failed attempt={attempt} error={e}")
+            if attempt < retries:
+                time.sleep(retry_delay)
+    raise RuntimeError(f"邮件发送失败，重试{retries}次后仍未成功：{last_error}")
 
 
 def main() -> int:
     payload = run_plugin()
     body = build_text_report(payload)
-    stamp = datetime.now().strftime("%Y-%m-%d")
-    subject = f"【沈万三】A股中小盘强势早盘筛选 - {stamp}"
+    qq_brief = build_qq_brief(payload)
+    now = datetime.now()
+    stamp = now.strftime("%Y-%m-%d")
+    weekday = WEEKDAY_CN[now.weekday()]
+    subject = f"【沈万三】A股中小盘强势早盘筛选 - {stamp} {weekday}"
 
     txt_path = REPORT_DIR / "latest_smallcap_mail.txt"
     txt_path.write_text(body, encoding="utf-8")
+    brief_path = REPORT_DIR / "latest_smallcap_qq_brief.txt"
+    brief_path.write_text(qq_brief, encoding="utf-8")
+    log_line(f"report_saved={txt_path}")
+    log_line(f"qq_brief_saved={brief_path}")
 
     send_email(subject, body)
     print("SMALLCAP_MAIL_OK")
     print(txt_path)
+    print(brief_path)
     return 0
 
 
