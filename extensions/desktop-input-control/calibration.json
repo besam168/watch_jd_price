@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "screen": {
+    "width": 1920,
+    "height": 1080,
+    "name": "primary-physical"
+  },
+  "model": {
+    "type": "affine-separate-xy",
+    "x": { "a": 1.0, "b": 0.0 },
+    "y": { "a": 1.0, "b": 0.0 }
+  },
+  "notes": [
+    "V1 desktop calibration for OCR/image coordinates -> real physical screen coordinates.",
+    "Primary screen must be interpreted as 1920x1080 physical pixels."
+  ],
+  "samples": [
+    {
+      "label": "telegram-web-tab-manual-2026-04-14",
+      "source": "manual_mouse_truth",
+      "real": { "x": 1465, "y": 96 },
+      "ocr": null,
+      "comment": "User manually pointed at Telegram Web tab; this is the trusted physical screen coordinate."
+    }
+  ]
+}
