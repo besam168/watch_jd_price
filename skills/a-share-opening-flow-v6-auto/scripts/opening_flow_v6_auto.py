@@ -146,12 +146,73 @@ def render_focus_text(row):
     return '｜'.join(parts)
 
 
+def build_action_advice(stage_time: str, payload: dict):
+    if stage_time == '09:25':
+        main_watch = pick_focus_list(stage_time, payload)
+        follow = payload.get('first_round_candidates', [])[3:6]
+        avoid = []
+    elif stage_time == '09:33':
+        main_watch = pick_focus_list(stage_time, payload)
+        follow = payload.get('first_round_candidates', [])[3:6]
+        avoid = []
+    elif stage_time == '09:38':
+        main_watch = payload.get('passed', [])[:3]
+        follow = payload.get('partial', [])[:5]
+        avoid = payload.get('failed', [])[:5]
+    elif stage_time == '09:45':
+        main_watch = payload.get('resonance_core', [])[:5]
+        follow = payload.get('resonance_follow', [])[:5]
+        avoid = payload.get('partial', [])[:5]
+    else:
+        main_watch, follow, avoid = [], [], []
+    return {
+        '主看': main_watch,
+        '跟随': follow,
+        '不追': avoid,
+    }
+
+
+def build_risk_tips(stage_time: str, payload: dict):
+    risks = []
+    universe = []
+    for key in ['first_round_candidates', 'passed', 'partial', 'failed', 'resonance_core', 'resonance_follow']:
+        universe.extend(payload.get(key, []))
+
+    high_gap = [x for x in universe if float(x.get('change_pct', 0) or 0) >= 15][:3]
+    if high_gap:
+        names = '、'.join([x.get('name', '') for x in high_gap if x.get('name')])
+        risks.append(f'高开过猛提醒：{names} 涨幅偏大，若开盘后承接不足，容易出现冲高回落。')
+
+    fake_amount = [x for x in universe if float(x.get('amount_yi', 0) or 0) < 1][:3]
+    if fake_amount:
+        names = '、'.join([x.get('name', '') for x in fake_amount if x.get('name')])
+        risks.append(f'成交额虚高/样本偏轻提醒：{names} 当前成交额偏小，别只看涨幅，先看换手和持续成交。')
+
+    st_names = []
+    seen = set()
+    for x in universe:
+        name = str(x.get('name', '') or '')
+        if 'ST' in name.upper() and name not in seen:
+            st_names.append(name)
+            seen.add(name)
+    if st_names:
+        risks.append(f'ST剔除提醒：{"、".join(st_names[:5])} 属于高风险样本，默认只观察，不纳入正常主攻池。')
+
+    if stage_time in {'09:25', '09:33'}:
+        risks.append('早盘前半段信号容易失真，任何候选都必须结合开盘后 3-5 分钟承接再确认。')
+    if not risks:
+        risks.append('当前阶段未发现特别极端风险，但仍需防止板块轮动过快导致前排切换。')
+    return risks
+
+
 def render_stage_email(stage_time: str, stage_name: str, payload: dict):
     date_str = datetime.now().strftime('%Y-%m-%d')
     focus = pick_focus_list(stage_time, payload)
     focus_names = '、'.join([f"{x.get('name', '')}{x.get('code', '')}" for x in focus if x.get('name') and x.get('code')]) or '暂无明确前三'
     subject = f'【A股早盘盯盘-{stage_time}】{date_str} {stage_name}｜前三：{focus_names}'
     summary = build_stage_summary(stage_time, payload)
+    action_advice = build_action_advice(stage_time, payload)
+    risk_tips = build_risk_tips(stage_time, payload)
     lines = [
         'A股早盘自动盯盘分阶段简报',
         f'插件：{PLUGIN_NAME}',
@@ -189,6 +250,20 @@ def render_stage_email(stage_time: str, stage_name: str, payload: dict):
         for row in rows:
             text = row_to_html(row) if row_to_html else row_to_text(row)
             html_parts.append(f'<li>{text}</li>')
+        html_parts.append('</ul>')
+
+    for title in ['主看', '跟随', '不追']:
+        rows = action_advice.get(title, [])
+        add_section(title=f'操作建议：{title}', rows=rows, row_to_text=render_focus_text)
+
+    if risk_tips:
+        lines.append('风险提示')
+        for tip in risk_tips:
+            lines.append(f'- {tip}')
+        lines.append('')
+        html_parts.append('<h3>风险提示</h3><ul>')
+        for tip in risk_tips:
+            html_parts.append(f'<li>{tip}</li>')
         html_parts.append('</ul>')
 
     if stage_time == '09:25':
