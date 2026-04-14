@@ -23,13 +23,15 @@ STATE_DIR = BASE_DIR / 'output'
 STATE_FILE = STATE_DIR / 'auto_state.json'
 HEARTBEAT_SECONDS = 30
 
+PYTHON_EXE = sys.executable
+
 DEFAULT_STAGES = [
     ('09:15', '启动阶段', '载入当天自动流程', None),
-    ('09:25', '竞价风向阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
-    ('09:33', '第一轮初筛阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
-    ('09:38', '第二轮筛选逻辑阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
-    ('09:43', '二次强弱确认阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
-    ('09:45', '上午主看名单阶段', '正式版优先，测试版兜底', ['python', str(FORMAL_SCRIPT), '--json']),
+    ('09:25', '竞价风向阶段', '正式版优先，测试版兜底', [PYTHON_EXE, str(FORMAL_SCRIPT), '--json']),
+    ('09:33', '第一轮初筛阶段', '正式版优先，测试版兜底', [PYTHON_EXE, str(FORMAL_SCRIPT), '--json']),
+    ('09:38', '第二轮筛选逻辑阶段', '正式版优先，测试版兜底', [PYTHON_EXE, str(FORMAL_SCRIPT), '--json']),
+    ('09:43', '二次强弱确认阶段', '正式版优先，测试版兜底', [PYTHON_EXE, str(FORMAL_SCRIPT), '--json']),
+    ('09:45', '上午主看名单阶段', '正式版优先，测试版兜底', [PYTHON_EXE, str(FORMAL_SCRIPT), '--json']),
 ]
 
 
@@ -220,7 +222,8 @@ def run_auto_loop(poll_seconds: int = 20):
         now_str = now.strftime('%H:%M')
         for stage in DEFAULT_STAGES:
             time_str = stage[0]
-            if time_str == now_str and time_str not in executed:
+            if time_str <= now_str and time_str not in executed:
+                print(f'触发自动阶段：当前 {now_str}，执行计划节点 {time_str}')
                 rc = run_stage(stage)
                 if rc == 0:
                     executed.add(time_str)
