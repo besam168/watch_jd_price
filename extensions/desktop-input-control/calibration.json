@@ -21,6 +21,13 @@
       "real": { "x": 1465, "y": 96 },
       "ocr": null,
       "comment": "User manually pointed at Telegram Web tab; this is the trusted physical screen coordinate."
+    },
+    {
+      "label": "yifen-airport-ocr-box-2026-04-14",
+      "source": "ocr_box_observation",
+      "real": null,
+      "ocr": { "x": 732, "y": 180, "w": 143, "h": 48, "centerX": 803.5, "centerY": 204.0 },
+      "comment": "Observed phrase box for BA 一 分 机 场 in Chrome top bar screenshot; pending real click calibration."
     }
   ]
 }
