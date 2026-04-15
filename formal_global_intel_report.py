@@ -84,13 +84,14 @@ def parse_feed(url: str, limit: int = 16, source_label: str = ""):
     root = ET.fromstring(raw)
     items = []
     channel = root.find("channel")
+    detail_label = f"{source_label} RSS" if source_label else "聚合源RSS"
     if channel is not None:
         for item in channel.findall("item")[:limit]:
             title = strip_html(item.findtext("title", default=""))
             link = (item.findtext("link", default="") or "").strip()
             desc = strip_html(item.findtext("description", default=""))
             pub = strip_html(item.findtext("pubDate", default=""))
-            items.append({"title": title, "link": link, "summary": desc, "published": pub, "published_dt": parse_time(pub), "source_detail": f"{source_label} RSS" if source_label else "RSS"})
+            items.append({"title": title, "link": link, "summary": desc, "published": pub, "published_dt": parse_time(pub), "source_detail": detail_label})
         return items
     ns_atom = "{http://www.w3.org/2005/Atom}"
     for entry in root.findall(f"{ns_atom}entry")[:limit]:
@@ -104,7 +105,7 @@ def parse_feed(url: str, limit: int = 16, source_label: str = ""):
             if href and rel == "alternate":
                 link = href
                 break
-        items.append({"title": title, "link": link, "summary": summary, "published": published, "published_dt": parse_time(published), "source_detail": f"{source_label} RSS" if source_label else "RSS"})
+        items.append({"title": title, "link": link, "summary": summary, "published": published, "published_dt": parse_time(published), "source_detail": detail_label})
     return items
 
 
@@ -155,7 +156,7 @@ def fallback_reuters(limit: int = 16):
             if key in seen:
                 continue
             seen.add(key)
-            items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+            items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW, "source_detail": "路透页面抓取"})
             if len(items) >= limit:
                 break
         if len(items) >= limit:
@@ -194,7 +195,7 @@ def fallback_ap(limit: int = 16):
         if key in seen:
             continue
         seen.add(key)
-        items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW})
+        items.append({"title": text, "link": link, "summary": text, "published": f"页面抓取时间 {NOW.strftime('%Y-%m-%d %H:%M %z')}", "published_dt": NOW, "source_detail": "美联社首页抓取"})
         if len(items) >= limit:
             break
     return items
@@ -848,34 +849,32 @@ def analyst_comment(title: str, summary: str, section: str = "", used_comments: 
     lower = f"{title} {summary}".lower()
     if signal == "geo_energy":
         if any(k in lower for k in ["hormuz", "strait", "blockade"]):
-            text = "资产影响先看原油与黄金，再看航运与高估值成长股；关键观察点是霍尔木兹航线风险是否扩散，以及油价能否重新站稳关键位，若外交降温坐实，避险仓位可能先行回吐。"
+            text = "先看布油与黄金是否继续同向走强，再看航运链是否放量跟涨；未来 24 小时关键观察点是霍尔木兹航线风险有没有进一步扩散。"
         elif any(k in lower for k in ["iran", "dialogue", "talk"]):
-            text = "这更像谈判桌上的风险博弈而非单向升级；若未来 24 至 48 小时外交表态继续缓和，市场会先削减战争溢价，再观察油价与美元是否同步回落。"
+            text = "先盯未来 24 至 48 小时外交表态是否继续缓和，再看布油、美元与黄金是否同步回落；若三者不共振，地缘溢价大概率只是短炒。"
         else:
-            text = "中东线索的关键不在 headline 本身，而在冲突是否外溢到能源运输与供应链；若风险外溢受控，原油和黄金的冲高持续性会先被检验。"
+            text = "关键看接下来 24 小时中东风险是否外溢到能源运输与供应链；若布油站稳关键位而黄金同步走强，避险定价就还没结束。"
     elif signal == "russia_ukraine":
-        text = "市场不会把这条线简单当旧闻处理；若未来 48 小时出现新制裁、军援或基础设施打击，欧洲能源、防务和区域风险资产会出现二次定价。"
+        text = "先盯未来 48 小时是否出现新制裁、军援或基础设施打击，再看欧洲天然气、军工与区域风险资产是否同步反应，这是判断二次定价是否成立的关键。"
     elif signal == "china_trade":
-        text = "真正要盯的不是总量 headline，而是结构替代；若高端制造和机器人链出口继续强化，A 股核心零部件与出口制造龙头会比传统外贸链更有弹性。"
+        text = "关键不是 headline，而是未来 24 至 48 小时关税口径、出口结构和订单流向有没有新变化；若高端制造出口继续增强，A股制造链会强于传统外贸链。"
     elif signal == "tech_ai":
         if any(k in lower for k in ["openai", "anthropic", "model", "llm"]):
-            text = "市场对模型更新已有审美疲劳，真正的超预期点在于推理成本拐点与 Agent 工作流渗透；若企业端付费转化率没有提升，概念热度很容易先涨后吐。"
+            text = "真正要看的是未来一个季度推理成本、企业付费转化和 Agent 工作流渗透率，而不是模型 headline 本身；若没有 ROI 兑现，估值容易先热后冷。"
         elif any(k in lower for k in ["robot", "embodied", "humanoid"]):
-            text = "这条新闻更像由虚向实的切换信号；若实机演示、工业合作或订单落地跟进，机器人执行器、减速器和边缘控制链会比纯聊天模型更值得盯。"
+            text = "关键观察点不是概念热度，而是实机演示、工业合作和订单落地时间点；若样机成功率和订单没有同步改善，机器人链仍会高波动。"
         elif any(k in lower for k in ["nvidia", "chip", "gpu"]):
-            text = "关注的不是单一公司 headline，而是资本开支回报率；若数据中心能耗、供电和 capex 压力继续抬升，市场会更快寻找低功耗推理和边缘侧替代。"
+            text = "要盯的不是单一公司 headline，而是 capex 回报率、供电约束和客户采购节奏；若算力投入继续抬升但商业化变现不跟，芯片链会先分化。"
         else:
-            text = "AI 板块后续要看真实工作流渗透，而非情绪共振；如果没有明确的客户 ROI 证明，平台和应用层估值都可能面临回撤压力。"
+            text = "后续重点看真实工作流渗透、客户 ROI 和数据中心成本曲线；若只剩题材热度而没有落地数据，科技估值会很脆。"
     else:
-        text = "关键不是新闻本身，而是市场是否已提前消化；如果美元、利率和商品没有同步共振，这类利好或利空往往只能形成短线交易而不是趋势反转。"
+        text = "关键要看未来 24 至 48 小时价格、利率与美元能否形成共振；若没有跨资产确认，这类消息大多只能形成短线交易，难以演化成趋势。"
     ok, fixed = check_consistency(title, summary, text)
     if used_comments is not None:
-        base = fixed
-        i = 2
-        while fixed in used_comments:
-            fixed = base.rstrip('。') + f"（变体{i}）"
-            i += 1
-        used_comments.add(fixed)
+        normalized = re.sub(r"\s+", "", fixed)
+        if normalized in used_comments:
+            return ""
+        used_comments.add(normalized)
     return fixed
 
 
@@ -883,18 +882,19 @@ def build_analyst_item(item: dict, used_comments: set[str] | None = None) -> dic
     title = item.get("title", "")
     summary = item.get("summary", "")
     section = item.get("section", "")
+    comment = cap_text(analyst_comment(title, summary, section, used_comments=used_comments), 110)
     return {
         "标题": normalize_headline_title(title, summary),
         "来源": item.get("source_detail") or item.get("source", "未知来源"),
         "时间": item.get("published", "未明确给出"),
         "内容": cap_text(analyst_content(title, summary, section), 120),
-        "评论": cap_text(analyst_comment(title, summary, section, used_comments=used_comments), 88),
+        "评论": comment or "继续观察未来24至48小时内是否出现新的价格、政策或事件确认信号。",
     }
 
 def select_top_headlines(grouped, limit: int = 12):
     used_comments = set()
     all_items = []
-    for section in ("宏观新闻", "财经市场", "科技产业"):
+    for section in ("宏观新闻", "财经市场"):
         all_items.extend(grouped.get(section, []))
     def score(item):
         text = f"{item.get('title','')} {item.get('summary','')}".lower()
@@ -902,17 +902,27 @@ def select_top_headlines(grouped, limit: int = 12):
         for keyword, val in [
             ("gaza", 120), ("iran", 118), ("hormuz", 116), ("israel", 110), ("ukraine", 108),
             ("russia", 100), ("tariff", 98), ("trade", 94), ("oil", 90), ("market", 80),
-            ("openai", 60), ("anthropic", 58), ("nvidia", 56), ("ai", 50), ("goldman sachs", 45),
+            ("fed", 74), ("inflation", 72), ("goldman sachs", 70), ("earnings", 66),
         ]:
             if keyword in text:
                 pts = max(pts, val)
+        if any(k in text for k in ["openai", "anthropic", "nvidia", " ai ", "robot", "chip", "llm", "agent", "gpu"]):
+            pts -= 40
         if item.get("source", "").startswith("Google News"):
             pts += 5
         return pts
     selected = []
     seen = set()
     for item in sorted(all_items, key=score, reverse=True):
+        signal = classify_item_signal(item.get("title", ""), item.get("summary", ""))
+        text = f"{item.get('title','')} {item.get('summary','')}".lower()
+        if signal == "tech_ai":
+            continue
+        if not item.get("title", "").strip():
+            continue
         title = item.get("title_cn") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+        if title in {"AI 产业动态继续升温", "国际要闻出现新变化"} and signal in {"tech_ai", "generic"}:
+            continue
         key = title.lower()
         if key in seen:
             continue
