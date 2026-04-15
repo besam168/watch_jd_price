@@ -24,6 +24,9 @@ SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 465
 RECEIVERS = ["besam168168@gmail.com", "758622673@qq.com"]
 WEEKDAY_CN = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+QQBOT_TARGET = "qqbot:c2c:A79F990232234F712BD31B9E2FF973F6"
+QQBOT_CHANNEL = "qqbot"
+OPENCLAW_CMD = r"C:\Users\besam\AppData\Roaming\npm\openclaw.ps1"
 
 
 def log_line(text: str) -> None:
@@ -191,6 +194,45 @@ def build_qq_brief(payload: dict) -> str:
     return "\n".join(lines)
 
 
+def send_qq_brief(message: str) -> None:
+    cmd = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        OPENCLAW_CMD,
+        "message",
+        "send",
+        "--channel",
+        QQBOT_CHANNEL,
+        "--target",
+        QQBOT_TARGET,
+        "--message",
+        message,
+    ]
+    completed = subprocess.run(
+        cmd,
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    log_line(f"send_qq_brief rc={completed.returncode}")
+    if completed.stdout.strip():
+        log_line(f"send_qq_brief_stdout={completed.stdout.strip()[:1000]}")
+    if completed.stderr.strip():
+        log_line(f"send_qq_brief_stderr={completed.stderr.strip()[:1000]}")
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "QQ简报发送失败\n"
+            f"rc={completed.returncode}\n"
+            f"stdout={completed.stdout}\n"
+            f"stderr={completed.stderr}"
+        )
+
+
 def send_email(subject: str, body: str, retries: int = 3, retry_delay: int = 8) -> None:
     last_error = None
     for attempt in range(1, retries + 1):
@@ -231,6 +273,7 @@ def main() -> int:
     log_line(f"report_saved={txt_path}")
     log_line(f"qq_brief_saved={brief_path}")
 
+    send_qq_brief(qq_brief)
     send_email(subject, body)
     print("SMALLCAP_MAIL_OK")
     print(txt_path)
@@ -240,3 +283,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
