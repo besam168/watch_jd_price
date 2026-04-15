@@ -1093,6 +1093,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+    send_flag = any(arg == "--send-email" for arg in sys.argv[1:])
     grouped, focus_hits, errors = collect_news()
     text_body = build_text_report(grouped, focus_hits, errors)
     html_body = build_html_report(grouped, focus_hits, errors)
@@ -1100,7 +1101,12 @@ def main():
     preview_dir.mkdir(parents=True, exist_ok=True)
     (preview_dir / "formal_preview.txt").write_text(text_body, encoding="utf-8")
     (preview_dir / "formal_preview.html").write_text(html_body, encoding="utf-8")
-    print("FORMAL_REPORT_PREVIEW_READY")
+    if send_flag:
+        subject = f"全球综合情报报告 - {NOW.strftime('%Y-%m-%d %H:%M')}"
+        send_email(subject, text_body, html_body)
+        print("FORMAL_REPORT_EMAIL_SENT")
+    else:
+        print("FORMAL_REPORT_PREVIEW_READY")
     print(str(preview_dir / "formal_preview.txt"))
 
 
