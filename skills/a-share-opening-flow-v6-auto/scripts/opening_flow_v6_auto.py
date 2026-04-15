@@ -35,6 +35,9 @@ SENDER_EMAIL = '910633260@qq.com'
 SMTP_PASSWORD = 'sghqeeeeyuzjbcbb'
 RECIPIENTS = ['besam168168@gmail.com', '758622673@qq.com']
 EMAIL_STAGE_TIMES = {'09:25', '09:33', '09:38', '09:45'}
+QQBOT_TARGET = 'qqbot:c2c:A79F990232234F712BD31B9E2FF973F6'
+QQBOT_CHANNEL = 'qqbot'
+OPENCLAW_CMD = r'C:\Users\besam\AppData\Roaming\npm\openclaw.ps1'
 
 PYTHON_EXE = sys.executable
 
@@ -119,15 +122,15 @@ def build_stage_summary(stage_time: str, payload: dict):
     if stage_time == '09:25':
         sectors = payload.get('top_sectors', [])[:2]
         names = '、'.join([x.get('name', '') for x in sectors if x.get('name')]) or '板块尚在轮动'
-        return f'竞价阶段最强方向集中在{name}，先看板块热度是否能在开盘后转成个股承接。'
+        return f'竞价阶段最强方向集中在{names}，先看板块热度是否能在开盘后转成个股承接。'
     if stage_time == '09:33':
         candidates = payload.get('first_round_candidates', [])[:3]
         names = '、'.join([x.get('name', '') for x in candidates if x.get('name')]) or '候选池前排'
-        return f'初筛阶段前排已开始分化，当前优先盯{name}，重点看量价延续与分时承接。'
+        return f'初筛阶段前排已开始分化，当前优先盯{names}，重点看量价延续与分时承接。'
     if stage_time == '09:38':
         passed = payload.get('passed', [])[:3]
         names = '、'.join([x.get('name', '') for x in passed if x.get('name')]) or '通过票'
-        return f'二筛后强弱已拉开，当前通过票里优先看{name}，其余只保留观察，不追杂毛。'
+        return f'二筛后强弱已拉开，当前通过票里优先看{names}，其余只保留观察，不追杂毛。'
     if stage_time == '09:45':
         core = payload.get('resonance_core', [])[:3]
         names = '、'.join([x.get('name', '') for x in core if x.get('name')]) or '核心票'
@@ -329,9 +332,76 @@ def save_email_preview(stage_time: str, subject: str, text_body: str, html_body:
     (base.with_suffix('.html')).write_text(html_body, encoding='utf-8')
 
 
+def send_qq_brief(message: str) -> None:
+    cmd = [
+        'powershell',
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        OPENCLAW_CMD,
+        'message',
+        'send',
+        '--channel',
+        QQBOT_CHANNEL,
+        '--target',
+        QQBOT_TARGET,
+        '--message',
+        message,
+    ]
+    completed = subprocess.run(
+        cmd,
+        cwd=str(WORKSPACE),
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            'QQ简报发送失败\n'
+            f'rc={completed.returncode}\n'
+            f'stdout={completed.stdout}\n'
+            f'stderr={completed.stderr}'
+        )
+
+
+def build_stage_brief(stage_time: str, stage_name: str, payload: dict) -> str:
+    summary = build_stage_summary(stage_time, payload)
+    focus = pick_focus_list(stage_time, payload)
+
+    def short(rows, limit=5):
+        if not rows:
+            return '无'
+        return '、'.join(
+            f"{x.get('name', '')}{str(x.get('code', ''))[-3:]}"
+            for x in rows[:limit]
+            if x.get('name') and x.get('code')
+        ) or '无'
+
+    action_advice = build_action_advice(stage_time, payload)
+    lines = [
+        f'A股早盘盯盘 {stage_time}',
+        f'阶段：{stage_name}',
+        f'结论：{summary}',
+        f'前三：{short(focus, 3)}',
+        f'主看：{short(action_advice.get("主看", []), 5)}',
+    ]
+    follow = short(action_advice.get('跟随', []), 5)
+    if follow != '无':
+        lines.append(f'跟随：{follow}')
+    avoid = short(action_advice.get('不追', []), 5)
+    if avoid != '无':
+        lines.append(f'不追：{avoid}')
+    lines.append('邮件同步发送到两个邮箱。')
+    return '\n'.join(lines)
+
+
 def send_stage_email(stage_time: str, stage_name: str, payload: dict):
     subject, text_body, html_body = render_stage_email(stage_time, stage_name, payload)
     save_email_preview(stage_time, subject, text_body, html_body)
+    brief = build_stage_brief(stage_time, stage_name, payload)
+    send_qq_brief(brief)
     msg = MIMEMultipart('alternative')
     msg['Subject'] = str(Header(subject, 'utf-8'))
     msg['From'] = SENDER_EMAIL
