@@ -83,8 +83,11 @@ def parse_feed(url: str, limit: int = 16, source_label: str = ""):
     raw = fetch_url(url)
     root = ET.fromstring(raw)
     items = []
+    if source_label.startswith("Google News "):
+        detail_label = f"{source_label} 聚合"
+    else:
+        detail_label = f"{source_label} RSS" if source_label else "聚合源RSS"
     channel = root.find("channel")
-    detail_label = f"{source_label} RSS" if source_label else "聚合源RSS"
     if channel is not None:
         for item in channel.findall("item")[:limit]:
             title = strip_html(item.findtext("title", default=""))
@@ -421,6 +424,15 @@ def select_ai_headlines(grouped, limit: int = 3):
             continue
         if any(k in text for k in ["ukraine", "russia", "gaza", "iran", "israel", "hormuz", "trade war", "tariff", "oil"]):
             continue
+        item = dict(item)
+        if any(k in text for k in ["robot", "humanoid", "embodied"]):
+            item["ai_topic_bucket"] = "robotics"
+        elif any(k in text for k in ["nvidia", "chip", "gpu", "semiconductor"]):
+            item["ai_topic_bucket"] = "chips"
+        elif any(k in text for k in ["openai", "anthropic", "model", "llm", "agent", "inference"]):
+            item["ai_topic_bucket"] = "models"
+        else:
+            item["ai_topic_bucket"] = "general_ai"
         items.append(item)
 
     def score(item):
@@ -448,12 +460,17 @@ def select_ai_headlines(grouped, limit: int = 3):
 
     selected = []
     seen = set()
+    used_buckets = set()
     for item in sorted(items, key=score, reverse=True):
         title = normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+        bucket = item.get("ai_topic_bucket", "general_ai")
+        if bucket in used_buckets and len(used_buckets) < limit:
+            continue
         key = (title.lower(), item.get("source", ""))
         if key in seen:
             continue
         seen.add(key)
+        used_buckets.add(bucket)
         selected.append(build_analyst_item(item, used_comments=used_comments))
         if len(selected) >= limit:
             break
@@ -896,6 +913,19 @@ def select_top_headlines(grouped, limit: int = 12):
     all_items = []
     for section in ("宏观新闻", "财经市场"):
         all_items.extend(grouped.get(section, []))
+
+    def topic_bucket(item):
+        signal = classify_item_signal(item.get("title", ""), item.get("summary", ""))
+        if signal == "geo_energy":
+            return "geo_energy"
+        if signal == "russia_ukraine":
+            return "russia_ukraine"
+        if signal == "china_trade":
+            return "china_trade"
+        if signal == "market_macro":
+            return "market_macro"
+        return item.get("section", "other")
+
     def score(item):
         text = f"{item.get('title','')} {item.get('summary','')}".lower()
         pts = 0
@@ -911,11 +941,18 @@ def select_top_headlines(grouped, limit: int = 12):
         if item.get("source", "").startswith("Google News"):
             pts += 5
         return pts
+
     selected = []
     seen = set()
+    bucket_counts = {}
+    bucket_caps = {
+        "geo_energy": 4,
+        "russia_ukraine": 2,
+        "china_trade": 2,
+        "market_macro": 4,
+    }
     for item in sorted(all_items, key=score, reverse=True):
         signal = classify_item_signal(item.get("title", ""), item.get("summary", ""))
-        text = f"{item.get('title','')} {item.get('summary','')}".lower()
         if signal == "tech_ai":
             continue
         if not item.get("title", "").strip():
@@ -923,10 +960,15 @@ def select_top_headlines(grouped, limit: int = 12):
         title = item.get("title_cn") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
         if title in {"AI 产业动态继续升温", "国际要闻出现新变化"} and signal in {"tech_ai", "generic"}:
             continue
+        bucket = topic_bucket(item)
+        cap = bucket_caps.get(bucket, 3)
+        if bucket_counts.get(bucket, 0) >= cap:
+            continue
         key = title.lower()
         if key in seen:
             continue
         seen.add(key)
+        bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
         selected.append(build_analyst_item(item, used_comments=used_comments))
         if len(selected) >= limit:
             break
