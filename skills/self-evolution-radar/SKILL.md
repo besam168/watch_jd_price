@@ -126,6 +126,7 @@ description: |
 - `scripts/run_real_patrol.py`
   - 当前最小真实巡逻脚本
   - 用于抓取部分 Reddit RSS 与 GitHub topic 页面
+  - 当前已支持参数：`--topic`、`--source`、`--reddit-limit`、`--github-limit`、`--output`
 
 ### 参考文档
 - `references/README.md`
@@ -144,6 +145,21 @@ description: |
 ```powershell
 python .\skills\self-evolution-radar\scripts\run_real_patrol.py
 ```
+
+也支持参数化调用，例如：
+
+```powershell
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic agent --source both --reddit-limit 5 --github-limit 10
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic browser-automation --source github --github-limit 15
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw --source both --output .\skills\self-evolution-radar\patrol-openclaw.txt
+```
+
+当前内置 topic preset 包括：
+- `general`
+- `agent`
+- `browser-automation`
+- `memory`
+- `openclaw`
 
 运行成功后，应生成一份文本结果文件，供人工筛选与后续总结使用。
 

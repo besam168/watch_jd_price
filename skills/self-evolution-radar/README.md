@@ -33,6 +33,28 @@
 python .\skills\self-evolution-radar\scripts\run_real_patrol.py
 ```
 
+也支持参数化运行，例如：
+
+```powershell
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic agent --source both --reddit-limit 5 --github-limit 10
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic memory --source github --github-limit 15
+python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw --output .\skills\self-evolution-radar\patrol-openclaw.txt
+```
+
+当前支持的核心参数：
+- `--topic`
+- `--source`
+- `--reddit-limit`
+- `--github-limit`
+- `--output`
+
+内置 topic preset：
+- `general`
+- `agent`
+- `browser-automation`
+- `memory`
+- `openclaw`
+
 运行后会在脚本设定的输出位置生成巡逻结果文本。
 
 ## 后续建议
