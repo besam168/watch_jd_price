@@ -173,11 +173,11 @@
 当前原型：
 - `worklog.md`
 - `memory/2026-04-17.md`
-- `self-evolution/memory-workspace/`
+- `self-evolution/se-ltm-layer/`
 
 未来方向：
 - 更稳定的改进资产目录和记录标准
-- 长期可检索、可复用、可升级的记忆工作区
+- 长期可检索、可复用、可升级的**自我进化长期记忆层**（Self-Evolution Long-Term Memory Layer, SE-LTM Layer）
 
 ---
 
@@ -216,7 +216,7 @@
 - 已经能跑真实样板
 - 已经开始形成 SOP 与 fallback 文档
 - 已经具备向多 skill 复用演进的方向
-- 已经开始搭建长期记忆工作区雏形
+- 已经开始搭建**自我进化长期记忆层**（SE-LTM Layer）雏形
 
 ### 现在不能说
 - 不能说整个 OpenClaw 已完成自我进化系统接入
