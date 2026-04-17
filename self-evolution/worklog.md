@@ -40,23 +40,44 @@
 
 ---
 
-### 2026-04-17：搜索 / 抓取路线不稳，反推 self-evolution 主线
+### 2026-04-17：搜索 / 抓取路线不稳，反推 self-evolution 主线（首个完整真闭环样板）
 - **工作场景：** 实际工作里需要去两个网站查资料，并尝试走现有网页抓取 / 搜索路线。
 - **本次目标：** 尽快拿到可用信息，同时判断当前工具链是否稳定。
 - **卡点：** Firecrawl 不稳，内置搜索也不稳，导致“先把眼前任务做完”这件事过于依赖临场切换路线。
 - **当场怎么处理：** 先不把问题停留在“今天先这样”，而是把这类问题重新定义成 `self-evolution` 的能力缺口来源。
 - **根因判断：** 不是单一网页故障，而是“搜索 / 抓取 / 备用路线 / 可复用执行方式”还不够成体系。
+- **外部巡逻触发：** 已按 `worklog-radar-loop.md` 启动一轮与卡点相关的外部巡逻，当前先选 `agent` 作为第一轮贴近主题的 radar topic。
+- **对应巡逻输出：**
+  - 原始结果：`skills/self-evolution-radar/patrol-run-agent-2026-04-17.txt`
+  - 摘要结果：`skills/self-evolution-radar/patrol-summary-agent-2026-04-17.md`
+- **本轮外部巡逻回写结论：**
+  - Reddit 侧暴露的有效信号，不是单一工具名，而是“更轻量、更本地、更低门槛、更可连续运行”的方向在持续升温；这说明以后补工作流时，要优先考虑**稳定、可替换、可长期跑**，而不是只追单点最强工具。
+  - GitHub 候选里，`ComposioHQ/awesome-claude-skills`、`FlowiseAI/Flowise`、`affaan-m/everything-claude-code` 至少提示了一件事：外部世界对 **skills / agent workflow / reusable patterns** 的组织方式，值得继续拆读并借结构。
+  - 当前最值得回灌的不是某一个神奇网站，而是：
+    1. 把“原始抓取结果”和“结构化判断”拆开输出；
+    2. 给不同路线保留备用路径，而不是只押一个抓取源；
+    3. 逐步形成固定 summary 模板，减少每次从零判断。
 - **沉淀动作：**
-  - 明确 `self-evolution` 的默认路线：真实工作里发现卡点 → 当场解决 → 沉淀成脚本 / skill / 模板 / 工作流。
-  - 将 `self-evolution-radar` 的主题重新校正为“与实际工作结合的自我进化 skill”，而不只是外部巡逻。
-  - 后续继续补：备用抓取路线、本机脚本能力、可复用巡逻脚本、必要时新增 skill。
+  - 已明确 `self-evolution` 的默认路线：真实工作里发现卡点 → 当场解决 → 沉淀成脚本 / skill / 模板 / 工作流。
+  - 已将 `self-evolution-radar` 的主题重新校正为“与实际工作结合的自我进化 skill”，而不只是外部巡逻。
+  - 已补出 `worklog`、`bottleneck-template`、`worklog-radar-loop` 三个入口，形成第一版闭环骨架。
+  - 对这类问题，下一步应继续补：
+    - 备用抓取路线清单
+    - 本机脚本 fallback
+    - 可复用巡逻脚本
+    - topic / watchlist 外置配置
 - **已落盘到：**
   - `self-evolution/README.md`
+  - `self-evolution/worklog.md`
+  - `self-evolution/worklog-radar-loop.md`
   - `skills/self-evolution-radar/SKILL.md`
+  - `skills/self-evolution-radar/README.md`
+  - `skills/self-evolution-radar/patrol-summary-agent-2026-04-17.md`
   - `memory/2026-04-17.md`
 - **下次更稳的做法：**
   - 以后遇到同类卡点，不只解决当前任务，还要同步判断：能不能顺手补成脚本、模板、skill 或备用路径。
   - 如果已经明显需要外部输入找方法和实现，就按 `worklog-radar-loop.md` 启动一轮与卡点相关的 radar 巡逻，再把结论回写到本条记录。
+  - 后续要把这类卡点继续往前推进成一个明确资产：**搜索 / 抓取不稳时的备用工作流**。
 
 ---
 

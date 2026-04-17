@@ -255,6 +255,7 @@ GitHub 侧的角色定义文件。
 - 有工作卡点记录入口（`worklog.md`）
 - 有固定卡点模板（`bottleneck-template.md`）
 - 有 `worklog -> radar` 联动说明（`worklog-radar-loop.md`）
+- 已完成第一条完整真闭环样板（搜索 / 抓取路线不稳 -> radar -> 回写 worklog）
 - 有 Reddit / GitHub 双引擎分工
 - 有固定观察方向和板块
 - 有筛选标准和输出模板
