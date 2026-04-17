@@ -38,6 +38,7 @@ description: |
 - 方法文档与执行清单
 - 最小真实抓取脚本
 - 可产出一轮原始巡逻结果
+- 可同步生成一份结构化 Markdown 巡逻摘要
 
 ### 尚未具备
 - 完整参数化配置
@@ -127,6 +128,8 @@ description: |
   - 当前最小真实巡逻脚本
   - 用于抓取部分 Reddit RSS 与 GitHub topic 页面
   - 当前已支持参数：`--topic`、`--source`、`--reddit-limit`、`--github-limit`、`--output`
+  - 默认会同时生成：原始巡逻文本 + 结构化 Markdown 摘要
+  - 新增参数：`--summary-output`、`--no-summary`
 
 ### 参考文档
 - `references/README.md`
@@ -162,6 +165,15 @@ python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw
 - `openclaw`
 
 运行成功后，应生成一份文本结果文件，供人工筛选与后续总结使用。
+
+默认还会额外生成一份 Markdown 摘要，结构包含：
+- 本轮巡逻主题
+- Reddit 热点与用户痛点
+- GitHub 候选项目 / 候选方向
+- 值得深读的 3 个重点
+- 可回灌方法
+- 噪音方向
+- 下一步建议动作
 
 ## 验收标准
 

@@ -10,13 +10,14 @@
 
 ## 当前状态
 
-这是一个 **可复用的外部巡逻 skill 原型 V1**。
+这是一个 **可复用的外部巡逻 skill 原型 V1 / V2 过渡版**。
 
 它已经能承载：
 - 研究雷达触发
 - 方法参考
 - 最小真实抓取
 - 结构化输出口径
+- Markdown 巡逻摘要生成
 
 但它还不是成熟平台；当前仍以“人做判断 + 脚本拉素材”为主。
 
@@ -47,6 +48,8 @@ python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw
 - `--reddit-limit`
 - `--github-limit`
 - `--output`
+- `--summary-output`
+- `--no-summary`
 
 内置 topic preset：
 - `general`
@@ -56,13 +59,14 @@ python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw
 - `openclaw`
 
 运行后会在脚本设定的输出位置生成巡逻结果文本。
+默认还会再生成一份 Markdown 巡逻摘要，方便直接做人工筛选和后续回灌。
 
 ## 后续建议
 
 下一阶段建议继续补：
-- 参数化配置
+- topic / watchlist 外置配置
 - 输出目录规范
-- 自动摘要
+- 轻量评分
 - 历史归档
 - 周报模板
 - 调度入口
