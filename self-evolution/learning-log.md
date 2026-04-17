@@ -67,6 +67,25 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 早晨 heartbeat：沉淀 OpenClaw 适配 Claude Code / Codex CLI 的真实边界
+- **本次 heartbeat 做了什么：** 把刚刚围绕 OpenClaw 兼容 Claude Code / Codex CLI 的本机勘探结果，正式沉淀成两份实施文档：
+  - `IMPLEMENTATION_PLAN_OPENCLAW_CLAUDE_CODE_CODEX.md`
+  - `GAP_ANALYSIS_OPENCLAW_CLAUDE_CODE_CODEX.md`
+- **为什么做这件事：** 这次真实工程任务暴露出一个很容易反复误判的边界：不能把“已有 OpenAI-compatible HTTP surface”直接等同于“已经兼容 Claude Code 和 Codex CLI”。如果不尽快写成文档，后续很容易继续拿泛兼容口径误报工程进度。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已确认本机 OpenClaw 现有公开兼容面包括：`GET /v1/models`、`GET /v1/models/{id}`、`POST /v1/chat/completions`、`POST /v1/responses`；
+  - 已确认 `Codex CLI` 方向不是从零开始，而是应先验现有 `/v1/models` + `/v1/responses` 的真实 gap，再做增强；
+  - 已确认 `Claude Code` 方向当前不能假设已有现成兼容面，因为尚未在本机勘探中看到公开的 `POST /v1/messages` / Anthropic Messages adapter；
+  - 已定位到关键代码入口：`handleOpenAiModelsHttpRequest`、`handleOpenResponsesHttpRequest`、`resolveAgentIdFromModel`、`loadAgentModelIds`、`toOpenAiModel`，说明下一步已经从“空谈方向”推进到“可落具体改造点”。
+- **沉淀到哪里：**
+  - `IMPLEMENTATION_PLAN_OPENCLAW_CLAUDE_CODE_CODEX.md`
+  - `GAP_ANALYSIS_OPENCLAW_CLAUDE_CODE_CODEX.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 继续把网关 HTTP 总路由分发块抓全；
+  - 输出 `/v1/messages` 最小 handler 设计草案；
+  - 再进入第一轮代码级改造，而不是继续停留在协议口头分析。
+
 ### 2026-04-18 早晨 heartbeat：补记 `self-evolution-radar` 的 `--source` 参数边界
 - **本次 heartbeat 做了什么：** 把今天轻巡逻里踩到的 `--source all` 无效问题，正式补进 `skills/self-evolution-radar/README.md`。
 - **为什么做这件事：** 这类小坑不补文档，下次很容易重复踩，属于典型的“能力缺口虽小，但会反复制造摩擦”。
