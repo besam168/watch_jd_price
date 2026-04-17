@@ -22,6 +22,7 @@
 ## 文件说明
 - `github-learning-radar.md`：GitHub 学习雷达总方案
 - `reddit-radar.md`：Reddit 热点雷达方案
+- `first-real-patrol-v1.md`：第一轮真实执行版巡逻方案
 - `execution-checklist.md`：日常执行清单
 - `learning-log.md`：学习日志与阶段总结
 - `watchlist.md`：长期关注方向、关键词、候选 repo 类型

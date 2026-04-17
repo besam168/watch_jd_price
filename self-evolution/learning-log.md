@@ -33,6 +33,25 @@
 
 ## 深读记录
 
+### 2026-04-17 第一次真实巡逻
+- **Reddit 最值得追的话题：** 本地模型与轻量化部署/本地运行能力持续升温，尤其是：
+  - `Qwen3.6-35B-A3B released!`
+  - `24/7 Headless AI Server on Xiaomi 12 Pro (Snapdragon 8 Gen 1 + Ollama/Gemma4)`
+  - `1-bit Bonsai 1.7B (290MB in size) running locally in your browser on WebGPU`
+- **观察结论：** 这说明“更轻、更本地、更低门槛部署”仍然是持续热点，不只是模型参数竞赛。
+- **GitHub 候选 repo：**
+  1. `https://github.com/NousResearch/hermes-agent`
+  2. `https://github.com/browser-use/browser-use`
+  3. `https://github.com/firecrawl/firecrawl`
+  4. `https://github.com/google-gemini/gemini-cli`
+- **当前最值得深读：** `NousResearch/hermes-agent`
+- **原因：**
+  - 直接命中当前正在调查的 `Hermes`
+  - 同时属于 agent / tool calling / workflow 交叉点
+  - 对后续“我总控，执行层 agent 干活”的路线有直接价值
+- **本轮可回灌升级点：**
+  - 以后做“自我进化巡逻”时，优先从社区热议里找“真实需求信号”，再去 GitHub 对应 repo 找“真实实现信号”，不要只盯技术名词本身。
+
 ### 模板
 - 日期：
 - Repo：

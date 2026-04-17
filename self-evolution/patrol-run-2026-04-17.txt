@@ -1,0 +1,63 @@
+=== REDDIT LocalLLaMA top week ===
+1. Qwen3.6-35B-A3B released!
+   https://www.reddit.com/r/LocalLLaMA/comments/1sn3izh/qwen3635ba3b_released/
+2. the state of LocalLLama
+   https://www.reddit.com/r/LocalLLaMA/comments/1shcgf5/the_state_of_localllama/
+3. 24/7 Headless AI Server on Xiaomi 12 Pro (Snapdragon 8 Gen 1 + Ollama/Gemma4)
+   https://www.reddit.com/r/LocalLLaMA/comments/1sl6931/247_headless_ai_server_on_xiaomi_12_pro/
+4. Please stop using AI for posts and showcasing your completely vibe coded projects
+   https://www.reddit.com/r/LocalLLaMA/comments/1skt002/please_stop_using_ai_for_posts_and_showcasing/
+5. 1-bit Bonsai 1.7B (290MB in size) running locally in your browser on WebGPU
+   https://www.reddit.com/r/LocalLLaMA/comments/1smb3wd/1bit_bonsai_17b_290mb_in_size_running_locally_in/
+
+=== REDDIT OpenAI top week ===
+1. 7 years ago
+   https://www.reddit.com/r/OpenAI/comments/1skve68/7_years_ago/
+2. GPT Image 2 preview
+   https://www.reddit.com/r/OpenAI/comments/1simerz/gpt_image_2_preview/
+3. Should OpenAi release AI companion?
+   https://www.reddit.com/r/OpenAI/comments/1sn4n1g/should_openai_release_ai_companion/
+4. The ultimate study hack
+   https://www.reddit.com/r/OpenAI/comments/1shlj4u/the_ultimate_study_hack/
+5. Sam Altman's home targeted in drive-by shooting hours after firebomb attack
+   https://www.reddit.com/r/OpenAI/comments/1sk82sc/sam_altmans_home_targeted_in_driveby_shooting/
+
+=== REDDIT ChatGPT top week ===
+1. My manager watching how I work after I hit the Claude usage limit.
+   https://www.reddit.com/r/ChatGPT/comments/1sj9nyr/my_manager_watching_how_i_work_after_i_hit_the/
+2. vibecoders using claude, chat gpt and gemini for the same project be like:
+   https://www.reddit.com/r/ChatGPT/comments/1shw1vp/vibecoders_using_claude_chat_gpt_and_gemini_for/
+3. 7 years ago
+   https://www.reddit.com/r/ChatGPT/comments/1skvdro/7_years_ago/
+4. These videos are hilarious, but why does this work?
+   https://www.reddit.com/r/ChatGPT/comments/1smposp/these_videos_are_hilarious_but_why_does_this_work/
+5. AI Race
+   https://www.reddit.com/r/ChatGPT/comments/1sk2o9b/ai_race/
+
+=== GITHUB topic ai-agents ===
+1. https://github.com/affaan-m/everything-claude-code
+2. https://github.com/langchain-ai/langchain
+3. https://github.com/firecrawl/firecrawl
+4. https://github.com/google-gemini/gemini-cli
+5. https://github.com/NousResearch/hermes-agent
+6. https://github.com/browser-use/browser-use
+7. https://github.com/dair-ai/Prompt-Engineering-Guide
+8. https://github.com/daytonaio/daytona
+9. https://github.com/bytedance/deer-flow
+10. https://github.com/thedotmack/claude-mem
+11. https://github.com/Mintplex-Labs/anything-llm
+12. https://github.com/microsoft/ai-agents-for-beginners
+
+=== GITHUB topic browser-automation ===
+1. https://github.com/browser-use/browser-use
+2. https://github.com/lightpanda-io/browser
+3. https://github.com/AutomaApp/automa
+4. https://github.com/Skyvern-AI/skyvern
+5. https://github.com/alibaba/page-agent
+6. https://github.com/getmaxun/maxun
+7. https://github.com/nanobrowser/nanobrowser
+8. https://github.com/pinchtab/pinchtab
+9. https://github.com/steel-dev/steel-browser
+10. https://github.com/autoscrape-labs/pydoll
+11. https://github.com/BrowserMCP/mcp
+12. https://github.com/mishushakov/llm-scraper
