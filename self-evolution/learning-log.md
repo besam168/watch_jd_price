@@ -67,6 +67,26 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 早晨 heartbeat：补做一轮 agent 轻巡逻并记录脚本参数边界
+- **本次 heartbeat 做了什么：** 用 `self-evolution-radar` 围绕 `agent` 主题补跑了一轮最小真实轻巡逻，成功生成：
+  - `skills/self-evolution-radar/patrol-run-agent-2026-04-18.txt`
+  - `skills/self-evolution-radar/patrol-summary-agent-2026-04-18.md`
+- **为什么做这件事：** 当前没有更急的新卡点要补洞，按 `HEARTBEAT.md` 应优先做一次轻巡逻，继续给后续深读与方法回灌积累新信号。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 先踩到一个小而真实的参数边界：`--source all` 无效，脚本当前合法值仍是 `both/reddit/github/custom`；
+  - 改成 `--source both` 后执行成功，说明这类参数口径值得后续写进脚本帮助文案或 README，避免重复踩坑；
+  - 本轮摘要再次暴露出几个持续有效方向：
+    - Reddit 侧“更轻、更本地、更低门槛部署”仍然热；
+    - GitHub 候选里 `ToolJet/ToolJet`、`ComposioHQ/awesome-claude-skills`、`FlowiseAI/Flowise` 适合作为下一批 README 级深读入口；
+    - 当前巡逻输出继续证明“热点发现”和“候选实现筛选”应分段表达，而 repo 轻量评分字段值得继续补。
+- **沉淀到哪里：**
+  - `skills/self-evolution-radar/patrol-run-agent-2026-04-18.txt`
+  - `skills/self-evolution-radar/patrol-summary-agent-2026-04-18.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 可从 `ToolJet / awesome-claude-skills / Flowise` 中挑 1 个做 README 级拆读；
+  - 或补一条很小的产品化改进：把 `--source all` 这类错误别名收进帮助文案、README 或 preset 配置里，减少参数面摩擦。
+
 ### 2026-04-17 晚间 heartbeat：完成 self-evolution-radar 第三轮功能测试
 - **本次 heartbeat 做了什么：** 对 `skills/self-evolution-radar/scripts/run_real_patrol.py` 做了第三轮接口测试，重点验证 `--no-summary` 模式是否正常工作。
 - **为什么做这件事：** 前两轮已经验证了最小真测、topic 切换、source 切换和自定义输出路径；这轮补上 `--no-summary`，可以把 V1 原型脚本的主要参数面收口。
