@@ -80,6 +80,31 @@
   - 如果已经明显需要外部输入找方法和实现，就按 `worklog-radar-loop.md` 启动一轮与卡点相关的 radar 巡逻，再把结论回写到本条记录。
   - 后续要把这类卡点继续往前推进成一个明确资产：**搜索 / 抓取不稳时的备用工作流**。
   - 这条备用工作流文档当前已落到：`self-evolution/fallback-search-and-crawl-workflow.md`，后续遇到同类任务应优先按该顺序执行，而不是临场乱切路线。
+- **第四轮真实闭环联动测试（追加验证）：**
+  - 已重新按真实闭环顺序执行一次：读取该 worklog 卡点 -> 选 `agent` topic -> 跑 `self-evolution-radar` -> 读取 summary -> 回写结论。
+  - 本轮测试输出：
+    - `skills/self-evolution-radar/loop-test-agent-raw.txt`
+    - `skills/self-evolution-radar/loop-test-agent-summary.md`
+  - 本轮再次验证的关键点不是“脚本能跑”，而是 `worklog -> radar -> summary -> 回写` 这条链路在真实卡点上可复现。
+  - 新一轮 summary 给出的直接可回灌点依旧稳定：
+    1. 原始材料与结构化判断应持续拆开输出；
+    2. 应尽快引入轻量评分字段；
+    3. 需要把摘要模板长期固定下来，形成可比较历史。
+  - 因此，这条首个样板现在已经不只是“做过一次”，而是**至少完成了两轮可复现闭环验证**。
+
+### 2026-04-17：模型路由查询容易被本地文件误导
+- **工作场景：** 用户追问当前会话模型与连接地址，且要求给出准确路由。
+- **本次目标：** 准确回答当前模型相关的 provider / baseUrl，不用猜。
+- **卡点：** 直接看工作区 `models.json` 容易得出与当前 OpenClaw 实际配置不一致的答案，导致“静态文件”和“当前生效配置”混淆。
+- **当场怎么处理：** 先承认仅看 `models.json` 不够，再改用 `openclaw config get models` 与 `openclaw config get agents.defaults.model` 交叉核对。
+- **根因判断：** 这是典型的 **文档 / SOP 缺失 + 工作流顺序不稳**，不是单一模型配置问题。
+- **沉淀动作：** 已补出一份固定排查顺序文档，明确“先看 status / 会话，再看合并配置，再看 agent 默认指向，最后才看本地文件”。
+- **已落盘到：**
+  - `self-evolution/openclaw-model-route-debug.md`
+- **下次更稳的做法：**
+  - 以后凡是用户问“你现在是什么模型 / 连接地址是什么”，默认先走这份 SOP；
+  - 不再把 `models.json` 当当前唯一真相；
+  - 若 `/status`、provider 定义、agent 默认指向互相打架，明确区分“provider 地址”和“当前默认会话路由地址”。
 
 ---
 

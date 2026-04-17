@@ -1,0 +1,40 @@
+# self-evolution-radar patrol
+topic: agent
+source: both
+generated_at: 2026-04-17T19:35:35
+
+=== REDDIT LocalLLaMA top week ===
+1. Qwen3.6-35B-A3B released!
+   https://www.reddit.com/r/LocalLLaMA/comments/1sn3izh/qwen3635ba3b_released/
+2. 24/7 Headless AI Server on Xiaomi 12 Pro (Snapdragon 8 Gen 1 + Ollama/Gemma4)
+   https://www.reddit.com/r/LocalLLaMA/comments/1sl6931/247_headless_ai_server_on_xiaomi_12_pro/
+3. Please stop using AI for posts and showcasing your completely vibe coded projects
+   https://www.reddit.com/r/LocalLLaMA/comments/1skt002/please_stop_using_ai_for_posts_and_showcasing/
+
+=== REDDIT OpenAI top week ===
+1. 7 years ago
+   https://www.reddit.com/r/OpenAI/comments/1skve68/7_years_ago/
+2. GPT Image 2 preview
+   https://www.reddit.com/r/OpenAI/comments/1simerz/gpt_image_2_preview/
+3. Should OpenAi release AI companion?
+   https://www.reddit.com/r/OpenAI/comments/1sn4n1g/should_openai_release_ai_companion/
+
+=== REDDIT artificial top week ===
+1. NYC hospitals will stop sharing patients' private health data with Palantir
+   https://www.reddit.com/r/artificial/comments/1sjvbfw/nyc_hospitals_will_stop_sharing_patients_private/
+2. Peter Thiel, Co-founder of Palantir, sh*ts himself when asked but the use of his AI in the Gaza Genocide
+   https://www.reddit.com/r/artificial/comments/1snf4ol/peter_thiel_cofounder_of_palantir_shts_himself/
+3. 🚨 RED ALERT: Tennessee is about to make building chatbots a Class A felony (15-25 years in prison). This is not a drill.
+   https://www.reddit.com/r/artificial/comments/1slu23a/red_alert_tennessee_is_about_to_make_building/
+
+=== GITHUB topic ai-agents ===
+1. https://github.com/affaan-m/everything-claude-code
+2. https://github.com/langchain-ai/langchain
+3. https://github.com/firecrawl/firecrawl
+4. https://github.com/google-gemini/gemini-cli
+
+=== GITHUB topic workflow-automation ===
+1. https://github.com/n8n-io/n8n
+2. https://github.com/ComposioHQ/awesome-claude-skills
+3. https://github.com/FlowiseAI/Flowise
+4. https://github.com/ToolJet/ToolJet
