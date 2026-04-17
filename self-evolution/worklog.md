@@ -268,17 +268,23 @@
   - 下次遇到 `partial` 时，不只盯 `gaza/ukraine/...` 这些 must-check 项，还要先看是不是 `headline-evidence` 在拖后腿；
   - 若 `headlineEvidenceCount` 过低，即使表面通过，也应优先补正文证据，而不是先动发送策略；
   - 应逐步记录哪些抓取路线最容易产出可用正文证据，哪些只能做发现层补充；
-  - 以后围绕内容质量的判断，应默认区分“主题覆盖通过”和“证据充分通过”两层。
+  - 以后围绕内容质量的判断，应默认区分“主题覆盖通过”和“证据充分通过”两层；
+  - **内容命中口径应适度放宽：** 不必过度死卡在少数固定 must-check 词上，只要属于**国际时事新闻**且具备可信来源与时间，也应视作有效内容命中候选，再进入证据层判断。
 - **已落盘到：**
   - `self-evolution/worklog.md`
   - `memory/2026-04-18.md`
 - **已更新脚本 / skill / 模板：**
   - 当前先完成第二条 bottleneck 样板落账；尚未修改 `scheduled-report-mailer` 的评估逻辑。
+  - 已先把新口径同步进文档 / SOP 层：
+    - `skills/scheduled-report-mailer/REPORT_STANDARDS.md`
+    - `skills/scheduled-report-mailer/README.md`
+    - `skills/scheduled-report-mailer/OPS_CHECKLIST.md`
+  - 当前统一口径为：**国际时事新闻 + 可信来源 + 可信时间** 可先视为有效内容命中候选，再进入 `headline evidence gate` 判断；不再把少数固定 `must-check` 词当成唯一命中标准。
 - **是否已 git 提交：** 本轮待提交。
 - **下一个跟进动作：**
-  1. 继续补一份围绕 `headline evidence gate` 的最小检查 SOP；
-  2. 视需要把 `headlineEvidenceCount`、`headlineCount`、`mustCheckResults` 的关系整理成更直观的验收模板；
-  3. 若继续推进第二个 skill 的真实闭环，可围绕这条记录再做一轮“状态文件 -> 日志 -> SOP”最小闭环。
+  1. 若继续推进，可再把这条新口径同步进独立 SOP；
+  2. 然后再动 `evaluate-report.py`，避免先改脚本后改标准；
+  3. 若后续脚本层改造启动，应把“内容命中候选”和“证据充分通过”明确拆成两层输出。
 
 ---
 

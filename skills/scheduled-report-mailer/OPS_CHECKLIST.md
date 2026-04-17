@@ -51,6 +51,9 @@
   - `hasPlaceholderSearchDiscovery`
 - 看 `state/report-evaluation.json`
   - `headlineEvidenceGate.ok` 是否为 `true`
+- 判断“内容命中”时，不要只死卡固定 `must-check` 词：
+  - 只要属于**国际时事新闻**、来源与时间可信，也应先视为有效候选；
+  - 再继续判断它有没有足够正文证据进入核心头条。
 
 ---
 
@@ -162,10 +165,14 @@ python skills/scheduled-report-mailer/scripts/run-job.py --job comprehensive-mor
 
 - **问题：头条太少**
   - 先看 `headlineEvidenceCount`，再看多搜索发现是否拿到正文证据
+  - 不要把“没命中固定关键词”直接等同于“没有有效内容”；先判断是否已有可信国际时事候选
 - **问题：市场数据陈旧**
   - 先看 `market_snapshot_refresh`，再看 QVeris 快照是否更新
 - **问题：内容质量一般/模板感重**
   - 优先修头条发现与正文证据链，不先动发送策略
+  - 默认区分两层：
+    1. 是否已有可信国际时事候选；
+    2. 这些候选是否拿到了足够正文证据进入核心头条
 
 ---
 
