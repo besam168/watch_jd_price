@@ -132,6 +132,21 @@
   - 下次再切 Claude Code 供应方时，直接按这份 workflow 执行；
   - 若再遇到特殊兼容差异，就继续补“Claude Code / OpenClaw / Codex 三者路由差异对照表”。
 
+### 2026-04-17 深夜 heartbeat：补出 Codex CLI exec 完成判定的双层验收 SOP
+- **本次 heartbeat 做了什么：** 把刚刚 `codex exec` 真测里暴露出的“请求层成功但进程层未完全收口”问题，沉淀成一份专用验收 SOP。
+- **为什么做这件事：** 这次最小真测里已经拿到了 `CODEX_ROUTE_OK`，说明模型请求层成功；但 tool 进程随后没有及时自然退出，并最终出现 `SIGKILL` 系统消息。如果不把这层区别写清楚，下次很容易把“拿到目标文本”误判成“整条 CLI 生命周期完全成功”。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已把 Codex CLI 验收拆成“请求层成功”和“进程层成功”两层；
+  - 已把“先看目标输出，再看是否自然退出”固定成顺序；
+  - 说明当前 `self-evolution` 已开始覆盖 **coding agent 自动化验收口径**，不再只停留在配置和路由本身。
+- **沉淀到哪里：**
+  - `self-evolution/codex-cli-exec-completion-workflow.md`
+  - `self-evolution/worklog.md`
+  - 当天 `memory/2026-04-17.md`
+- **下次接着做什么：**
+  - 下次再做 Codex CLI 真测时，默认先按这份双层口径判断结果；
+  - 若同类现象重复出现，再继续补“Codex CLI 短任务退出行为”专项排查记录。
+
 ### 模板
 - 日期：
 - 本次 heartbeat 做了什么：
