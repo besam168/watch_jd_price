@@ -67,6 +67,20 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 早晨 heartbeat：补记 `self-evolution-radar` 的 `--source` 参数边界
+- **本次 heartbeat 做了什么：** 把今天轻巡逻里踩到的 `--source all` 无效问题，正式补进 `skills/self-evolution-radar/README.md`。
+- **为什么做这件事：** 这类小坑不补文档，下次很容易重复踩，属于典型的“能力缺口虽小，但会反复制造摩擦”。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已明确写清 `--source` 当前合法值是 `both / reddit / github / custom`；
+  - 已明确补充“如果想表达两个源都跑，应使用 `--source both`，不是 `all`”；
+  - 说明当前 `self-evolution-radar` 已开始从“能跑”继续补到“少踩参数坑”的产品化细节层。
+- **沉淀到哪里：**
+  - `skills/self-evolution-radar/README.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 若后续再出现同类误写，可继续补到脚本 help 文案或参数别名兼容；
+  - 若无新坑，则从候选 repo 里挑一个做 README 级深读。
+
 ### 2026-04-18 早晨 heartbeat：补做一轮 agent 轻巡逻并记录脚本参数边界
 - **本次 heartbeat 做了什么：** 用 `self-evolution-radar` 围绕 `agent` 主题补跑了一轮最小真实轻巡逻，成功生成：
   - `skills/self-evolution-radar/patrol-run-agent-2026-04-18.txt`

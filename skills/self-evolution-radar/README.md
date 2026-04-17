@@ -53,6 +53,16 @@ python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw
 - `--summary-output`
 - `--no-summary`
 
+`--source` 当前合法值：
+- `both`
+- `reddit`
+- `github`
+- `custom`
+
+注意：
+- `--source all` 当前**不是**合法值；
+- 如果只是想表达“两个源都跑”，应使用 `--source both`。
+
 内置 topic preset：
 - `general`
 - `agent`
