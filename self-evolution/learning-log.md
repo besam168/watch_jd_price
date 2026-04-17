@@ -117,6 +117,21 @@
   - 下次真正发布独立 skill 到 GitHub 时，直接按这份 SOP 执行一轮真验收；
   - 若再踩坑，就继续把它补成更细的“仓库初始化 + SSH remote + 首次 push 验收”版本。
 
+### 2026-04-17 深夜 heartbeat：补出 Claude Code 切第三方兼容路由的固定 workflow
+- **本次 heartbeat 做了什么：** 把刚刚真实跑通的 Claude Code 换路由过程，沉淀成一份专用 workflow 文档。
+- **为什么做这件事：** 这次配置里有一个很容易反复踩坑的点：用户给的是 `/v1` 风格地址，但 Claude Code 更稳的写法通常是根地址；如果不写成 SOP，下次很容易又把根地址和 `/v1` 配反。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已把“默认优先根地址，不盲写 `/v1`”固定下来；
+  - 已把“统一模型族字段 + 立刻跑 `claude -p` 最小真测”固定下来；
+  - 说明当前 `self-evolution` 已开始覆盖 **本机 coding agent 路由配置** 这类真实工程操作，而不只是外围调研与 skill 文档。
+- **沉淀到哪里：**
+  - `self-evolution/claude-code-route-config-workflow.md`
+  - `self-evolution/worklog.md`
+  - 当天 `memory/2026-04-17.md`
+- **下次接着做什么：**
+  - 下次再切 Claude Code 供应方时，直接按这份 workflow 执行；
+  - 若再遇到特殊兼容差异，就继续补“Claude Code / OpenClaw / Codex 三者路由差异对照表”。
+
 ### 模板
 - 日期：
 - 本次 heartbeat 做了什么：
