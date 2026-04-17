@@ -27,6 +27,7 @@
 - 做 AI agent / automation / memory / browser automation 学习雷达
 - 找值得深读的候选 repo
 - 给当前项目输出可回灌的方法建议
+- 作为 `self-evolution` 中 `worklog -> radar -> 回写` 闭环的一部分，专门负责外部输入这一步
 
 ## 运行脚本
 
@@ -70,3 +71,7 @@ python .\skills\self-evolution-radar\scripts\run_real_patrol.py --topic openclaw
 - 历史归档
 - 周报模板
 - 调度入口
+
+同时建议把它默认放在这条链路里使用：
+
+`worklog -> watchlist/topic 判断 -> self-evolution-radar -> summary -> 回写 worklog`
