@@ -74,10 +74,12 @@
   - `skills/self-evolution-radar/README.md`
   - `skills/self-evolution-radar/patrol-summary-agent-2026-04-17.md`
   - `memory/2026-04-17.md`
+  - `self-evolution/fallback-search-and-crawl-workflow.md`
 - **下次更稳的做法：**
   - 以后遇到同类卡点，不只解决当前任务，还要同步判断：能不能顺手补成脚本、模板、skill 或备用路径。
   - 如果已经明显需要外部输入找方法和实现，就按 `worklog-radar-loop.md` 启动一轮与卡点相关的 radar 巡逻，再把结论回写到本条记录。
   - 后续要把这类卡点继续往前推进成一个明确资产：**搜索 / 抓取不稳时的备用工作流**。
+  - 这条备用工作流文档当前已落到：`self-evolution/fallback-search-and-crawl-workflow.md`，后续遇到同类任务应优先按该顺序执行，而不是临场乱切路线。
 
 ---
 
