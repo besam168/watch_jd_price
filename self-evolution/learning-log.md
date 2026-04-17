@@ -67,6 +67,20 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 早晨 heartbeat：补记 `scheduled-report-mailer` collect-only 验证的收口边界
+- **本次 heartbeat 做了什么：** 把刚刚围绕 `scheduled-report-mailer` 脚本改造时暴露出的一个真实小坑，正式记到 heartbeat 推进记录里：`evaluate-report.py` 的新分层评估结构已验证，但 `run-job.py --collect-only` 这轮真实运行没有自然收口，最终在外层表现为 exec 会话 `SIGKILL`。
+- **为什么做这件事：** 如果不把这层边界记下来，下次很容易把“评估输出结构已经正确”误说成“整条 collect-only 自动化链路已经完全健康”。这属于典型的自动化验收口径不够分层。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已确认 `evaluate-report.py` 新增的 `contentCoverageGate` / `headlineEvidenceGate` 分层输出本身已经生效；
+  - 已确认当前还不能直接宣称 `collect-only` 全链路已稳定，因为真实运行会话没有自然收口；
+  - 说明 `scheduled-report-mailer` 下一步除了继续调评估逻辑，也应补一条“collect-only 长链路收口 / 超时 / 挂起排查”的小 SOP 或 worklog。
+- **沉淀到哪里：**
+  - `self-evolution/learning-log.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 追查 `run-job.py --collect-only` 挂住时究竟卡在采集、fallback、子进程等待，还是外层 exec 会话管理；
+  - 把“评估脚本结构验收”和“整条 collect-only 自然收口验收”明确拆成两层口径。
+
 ### 2026-04-18 早晨 heartbeat：沉淀 OpenClaw 适配 Claude Code / Codex CLI 的真实边界
 - **本次 heartbeat 做了什么：** 把刚刚围绕 OpenClaw 兼容 Claude Code / Codex CLI 的本机勘探结果，正式沉淀成两份实施文档：
   - `IMPLEMENTATION_PLAN_OPENCLAW_CLAUDE_CODE_CODEX.md`
