@@ -67,6 +67,56 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-17 晚间 heartbeat：完成 self-evolution-radar 第三轮功能测试
+- **本次 heartbeat 做了什么：** 对 `skills/self-evolution-radar/scripts/run_real_patrol.py` 做了第三轮接口测试，重点验证 `--no-summary` 模式是否正常工作。
+- **为什么做这件事：** 前两轮已经验证了最小真测、topic 切换、source 切换和自定义输出路径；这轮补上 `--no-summary`，可以把 V1 原型脚本的主要参数面收口。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已确认命令：
+    `python .\\skills\\self-evolution-radar\\scripts\\run_real_patrol.py --topic memory --source github --github-limit 4 --output .\\skills\\self-evolution-radar\\test-memory-raw.txt --no-summary`
+    可正常执行；
+  - 已确认 raw 文件真实生成：`skills/self-evolution-radar/test-memory-raw.txt`；
+  - 已确认 summary 文件不会生成，`--no-summary` 行为符合预期；
+  - 说明当前 `self-evolution-radar` 已具备：最小运行、topic/source 切换、自定义输出、可选关闭摘要 这几项核心脚本能力。
+- **沉淀到哪里：**
+  - `skills/self-evolution-radar/test-memory-raw.txt`
+  - 当天 `memory/2026-04-17.md`
+- **下次接着做什么：**
+  - 可以从“参数面测试”切到“真实闭环联动测试”，也就是从真实 worklog 卡点出发，跑 radar，再回写总结。
+
+### 2026-04-17 晚间 heartbeat：完成 self-evolution-radar 第四轮真实闭环联动测试
+- **本次 heartbeat 做了什么：** 从 `worklog` 中“搜索 / 抓取路线不稳”这条真实卡点出发，按 `worklog -> radar -> summary -> 回写` 的顺序，完整跑了一轮真实闭环联动测试。
+- **为什么做这件事：** 前三轮主要验证的是脚本接口与参数面；这一轮开始验证 `self-evolution-radar` 是否真的能接进 `self-evolution` 的真实工作流，而不只是独立脚本。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已确认从真实卡点出发重跑 `agent` topic 巡逻是可行的；
+  - 已生成：
+    - `skills/self-evolution-radar/loop-test-agent-raw.txt`
+    - `skills/self-evolution-radar/loop-test-agent-summary.md`
+  - 已完成回写到 `self-evolution/worklog.md`；
+  - 本轮再次稳定暴露的回灌点包括：原始材料与结构化判断拆开输出、尽快引入轻量评分字段、把摘要模板长期固定下来；
+  - 说明 `self-evolution-radar` 现在已不仅是“能跑”，而是**能接进真实闭环**。
+- **沉淀到哪里：**
+  - `self-evolution/worklog.md`
+  - `skills/self-evolution-radar/loop-test-agent-raw.txt`
+  - `skills/self-evolution-radar/loop-test-agent-summary.md`
+  - 当天 `memory/2026-04-17.md`
+- **下次接着做什么：**
+  - 不要继续只测同一条闭环；下一步更值钱的是选第二个 skill / 第二类问题，开始做第一轮多 skill / 多场景复用验证。
+
+### 2026-04-17 晚间 heartbeat：补出第三方 skill 改造后独立发布 GitHub 的固定 SOP
+- **本次 heartbeat 做了什么：** 针对“第三方 skill 拉到工作区后再改造、再发布到独立 GitHub 仓库”这条真实工作链路，补了一份固定发布 SOP。
+- **为什么做这件事：** 这两天真实工作已经暴露出两个稳定坑：一是第三方目录自带 `.git`，容易被主工作区误识别成 embedded repo / submodule；二是总工作区很脏，直接从根目录做发布会让边界失控。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已把“发布边界永远以 skill 目录为准，不以总工作区为准”写成明确原则；
+  - 已把“先收口 skill -> 检查/移除旧 `.git` -> 不在总工作区直接推 -> 独立 init/commit/push”固定成顺序；
+  - 说明当前 `self-evolution` 不只是补搜索/抓取 fallback，也开始补 **skill 产品化 / 发布链路** 的稳定性。
+- **沉淀到哪里：**
+  - `self-evolution/skill-publish-workflow.md`
+  - `self-evolution/worklog.md`
+  - 当天 `memory/2026-04-17.md`
+- **下次接着做什么：**
+  - 下次真正发布独立 skill 到 GitHub 时，直接按这份 SOP 执行一轮真验收；
+  - 若再踩坑，就继续把它补成更细的“仓库初始化 + SSH remote + 首次 push 验收”版本。
+
 ### 模板
 - 日期：
 - 本次 heartbeat 做了什么：
