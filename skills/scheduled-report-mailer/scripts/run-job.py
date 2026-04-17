@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -22,9 +23,13 @@ def load_config() -> dict:
 
 def run_step(python_exe: str, script_name: str) -> tuple[int, str, str]:
     script_path = ROOT / script_name if not str(script_name).startswith(str(SKILL_ROOT)) else Path(script_name)
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
     completed = subprocess.run(
         [python_exe, str(script_path)],
         cwd=str(ROOT),
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -65,30 +70,125 @@ def summarize_policy(cfg: dict) -> dict:
     }
 
 
+def load_latest_evidence() -> dict:
+    path = ROOT / "reports" / "scheduled" / "latest_report_evidence.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def should_trigger_desktop_fallback(cfg: dict, eval_summary: dict) -> dict:
+    fallback_cfg = cfg.get("desktop_fallback", {})
+    enabled = bool(fallback_cfg.get("enabled", False))
+    mode = str(fallback_cfg.get("mode", "conditional_trigger") or "conditional_trigger")
+    reasons: list[str] = []
+
+    if eval_summary.get("status") != "pass":
+        reasons.append("quality_gate_not_pass")
+
+    trigger_cfg = fallback_cfg.get("trigger", {}) if isinstance(fallback_cfg.get("trigger", {}), dict) else {}
+    evidence = load_latest_evidence()
+    headline_count = int(evidence.get("headlineCount", 0) or 0)
+    evidence_count = int(evidence.get("headlineEvidenceCount", 0) or 0)
+    has_placeholder = bool(evidence.get("hasPlaceholderSearchDiscovery", False))
+
+    min_headlines = int(trigger_cfg.get("min_headlines", 0) or 0)
+    min_evidence = int(trigger_cfg.get("min_evidence", 0) or 0)
+
+    if min_headlines > 0 and headline_count < min_headlines:
+        reasons.append(f"headline_count_below_{min_headlines}")
+    if min_evidence > 0 and evidence_count < min_evidence:
+        reasons.append(f"evidence_count_below_{min_evidence}")
+    if trigger_cfg.get("block_placeholder_search_discovery", False) and has_placeholder:
+        reasons.append("placeholder_search_discovery_present")
+
+    if trigger_cfg.get("block_empty_summary_marker", False):
+        report_path = ROOT / cfg.get("paths", {}).get("latest_report_txt", "reports/scheduled/latest_report.txt")
+        report_text = report_path.read_text(encoding="utf-8", errors="replace") if report_path.exists() else ""
+        if "今日无额外摘要" in report_text:
+            reasons.append("empty_summary_marker_present")
+
+    if not enabled:
+        should_run = False
+    elif mode == "always":
+        should_run = True
+        if not reasons:
+            reasons.append("mode_always")
+    else:
+        should_run = bool(reasons)
+
+    return {
+        "enabled": enabled,
+        "mode": mode,
+        "shouldRun": should_run,
+        "reasons": reasons,
+        "headlineCount": headline_count,
+        "headlineEvidenceCount": evidence_count,
+        "hasPlaceholderSearchDiscovery": has_placeholder,
+    }
+
+
 def load_evaluation_summary() -> dict:
     eval_path = STATE_DIR / "report-evaluation.json"
     if not eval_path.exists():
-        return {"status": "unknown", "missing": [], "okCount": 0, "total": 0, "summaryText": "无验收结果"}
+        return {
+            "status": "unknown",
+            "missing": [],
+            "okCount": 0,
+            "total": 0,
+            "summaryText": "无验收结果",
+            "anchorMissing": [],
+            "contentCoverageOk": False,
+        }
     data = json.loads(eval_path.read_text(encoding="utf-8"))
     checks = data.get("mustCheckResults", {})
-    missing = [k for k, v in checks.items() if not v.get("ok")]
+    anchor_missing = [k for k, v in checks.items() if not v.get("ok")]
+    missing = list(anchor_missing)
     ok_count = data.get("summary", {}).get("okCount", 0)
     total = data.get("summary", {}).get("total", 0)
-    if not missing:
-        status = "pass"
-        summary_text = f"状态：通过 | 命中：{ok_count}/{total} | 缺口：无 | 建议：可直接发送"
-    elif ok_count >= max(total - 1, 1):
-        status = "partial"
-        summary_text = f"状态：部分通过 | 命中：{ok_count}/{total} | 缺口：{', '.join(missing)} | 建议：优先补抓或先发后补"
-    else:
+
+    content_gate = data.get("contentCoverageGate", {})
+    content_coverage_ok = bool(content_gate.get("ok", False))
+    if not content_coverage_ok:
+        missing = list(dict.fromkeys(missing + ["content-coverage"]))
+
+    headline_gate = data.get("headlineEvidenceGate", {})
+    if headline_gate and not headline_gate.get("ok"):
+        missing = list(dict.fromkeys(missing + ["headline-evidence"]))
+
+    if not content_coverage_ok:
         status = "fail"
-        summary_text = f"状态：未通过 | 命中：{ok_count}/{total} | 缺口：{', '.join(missing)} | 建议：重跑并补抓"
+        summary_text = (
+            f"状态：未通过 | 锚点命中：{ok_count}/{total} | 缺口：{', '.join(missing)} | "
+            f"建议：先补足可信国际时事内容，再谈发送"
+        )
+    elif headline_gate and not headline_gate.get("ok"):
+        status = "partial"
+        summary_text = (
+            f"状态：部分通过 | 锚点命中：{ok_count}/{total} | 缺口：{', '.join(missing)} | "
+            f"建议：内容已命中，但应优先补正文证据"
+        )
+    elif anchor_missing:
+        status = "pass"
+        summary_text = (
+            f"状态：通过 | 锚点命中：{ok_count}/{total} | 缺口：{', '.join(anchor_missing)} | "
+            f"建议：可发送；未命中锚点按观察项处理"
+        )
+    else:
+        status = "pass"
+        summary_text = f"状态：通过 | 锚点命中：{ok_count}/{total} | 缺口：无 | 建议：可直接发送"
+
     return {
         "status": status,
         "missing": missing,
         "okCount": ok_count,
         "total": total,
         "summaryText": summary_text,
+        "anchorMissing": anchor_missing,
+        "contentCoverageOk": content_coverage_ok,
     }
 
 
@@ -162,14 +262,46 @@ def main() -> int:
     append_log(args.job, "===== SUMMARY =====")
     append_log(args.job, eval_summary["summaryText"])
 
-    if eval_summary["status"] != "pass" and cfg.get("desktop_fallback", {}).get("enabled", False):
+    fallback_decision = should_trigger_desktop_fallback(cfg, eval_summary)
+    state["desktopFallbackDecision"] = fallback_decision
+    append_log(args.job, "===== DESKTOP_FALLBACK_DECISION =====")
+    append_log(
+        args.job,
+        f"enabled={fallback_decision['enabled']} shouldRun={fallback_decision['shouldRun']} reasons={','.join(fallback_decision['reasons']) or 'none'} "
+        f"headlineCount={fallback_decision['headlineCount']} headlineEvidenceCount={fallback_decision['headlineEvidenceCount']} "
+        f"hasPlaceholderSearchDiscovery={fallback_decision['hasPlaceholderSearchDiscovery']}",
+    )
+
+    if fallback_decision["shouldRun"]:
         fb_rc, fb_stdout, fb_stderr = run_step(python_exe, str(desktop_fallback_script))
-        state["desktopFallback"] = {"rc": fb_rc, "stdout": fb_stdout, "stderr": fb_stderr}
+        state["desktopFallback"] = {
+            "rc": fb_rc,
+            "stdout": fb_stdout,
+            "stderr": fb_stderr,
+            "decision": fallback_decision,
+        }
         append_log(args.job, f"===== DESKTOP_FALLBACK {datetime.now().isoformat()} rc={fb_rc} =====")
         append_log(args.job, fb_stdout or "(no desktop fallback stdout)")
         if fb_stderr:
             append_log(args.job, "[desktop fallback stderr]")
             append_log(args.job, fb_stderr)
+
+        eval_rc_after_fb, eval_stdout_after_fb, eval_stderr_after_fb = run_step(python_exe, str(eval_script))
+        state["evaluationAfterFallback"] = {
+            "rc": eval_rc_after_fb,
+            "stdout": eval_stdout_after_fb,
+            "stderr": eval_stderr_after_fb,
+        }
+        append_log(args.job, f"===== EVALUATE_AFTER_FALLBACK {datetime.now().isoformat()} rc={eval_rc_after_fb} =====")
+        append_log(args.job, eval_stdout_after_fb or "(no eval-after-fallback stdout)")
+        if eval_stderr_after_fb:
+            append_log(args.job, "[eval-after-fallback stderr]")
+            append_log(args.job, eval_stderr_after_fb)
+
+        eval_summary = load_evaluation_summary()
+        state["summary"] = eval_summary
+        append_log(args.job, "===== SUMMARY_AFTER_FALLBACK =====")
+        append_log(args.job, eval_summary["summaryText"])
 
     if eval_summary["status"] == "pass":
         state["status"] = "pass"
