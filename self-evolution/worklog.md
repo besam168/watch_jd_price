@@ -219,6 +219,69 @@
 
 ---
 
+### 2026-04-18：`scheduled-report-mailer` 的 `headline evidence gate` 不稳定，抓到内容不等于达到可信入稿标准
+- **工作场景：** 在把 `scheduled-report-mailer` 作为第二个 `self-evolution` 验证对象推进时，继续梳理其第二类高价值生产型 bottleneck。
+- **本次目标：** 固定收口一条比“发送策略口径不一致”更贴近内容质量核心的卡点，明确为什么“抓到内容”仍可能不足以支持稳定入稿。
+- **卡点：** `headline evidence gate` 会把一些“表面上命中 enough topics / headlines”的结果拦成 `partial`，原因不是主题没覆盖，而是**正文证据链不足或 headline evidence 不够扎实**。
+- **具体不稳定表现：**
+  - `state/report-evaluation.json` 可见 `headlineEvidenceGate` 是单独的一层门，不等同于 `mustCheckResults`；
+  - 日志中已出现过：`状态：部分通过 | 命中：6/6 | 缺口：headline-evidence`，说明即使主题命中全过，仍可能因证据门不足而降级；
+  - 当前一份评估状态里虽显示 `headlineEvidenceGate.ok = true`，但 `headlineEvidenceCount = 1`，说明证据门可能仍比较薄，离“稳定通过”还有不确定性。
+- **影响了什么：**
+  - 会让维护者误以为“只要 must-check 都命中就算稳了”；
+  - 实际上报告质量受“是否拿到足够可信正文证据”强约束，若这层不稳，报告就容易在“看起来有内容”与“真的可入稿”之间反复摇摆；
+  - 也会让 fallback、发送策略与内容验收三者之间更难统一口径。
+- **如果不处理，下次还会不会重复踩坑：** 会，而且会继续以“偶尔 partial、偶尔 pass”的方式反复出现，不利于形成稳定流水线。
+- **当场怎么处理：** 本轮先不急着重写评估逻辑，而是先把它固定成第二条 worklog 样板，明确这不是单一数据源失手，而是“发现层、正文证据层、质量门”之间尚未形成稳定余量的问题。
+- **当前结果：**
+  - [ ] 已彻底解决
+  - [ ] 仅临时绕过
+  - [x] 部分解决
+  - [ ] 还没解决
+- **根因判断：**
+  - [ ] 搜索不稳
+  - [x] 抓取不稳
+  - [ ] skill 设计缺口
+  - [ ] 脚本能力不足
+  - [x] 工作流顺序不稳
+  - [ ] 外部服务不稳定
+  - [x] 文档 / SOP 缺失
+  - [x] 其他：内容命中与证据可信度当前仍由不同层判断，缺少统一的“稳定入稿阈值”表达
+- **我当前对根因的判断：**
+  - 这条问题的本质不是“有没有抓到新闻”，而是“抓到的东西是否拿到了足够可追溯、可验证的正文证据”；
+  - 目前 headline discovery、正文抽取、evidence gate 三层虽然都存在，但还没有形成足够稳的富余量；
+  - 因此 `headline evidence gate` 是很适合作为第二个 skill 验证中的第二条连续卡点样板。
+- **应沉淀成什么：**
+  - [ ] 一个小补丁
+  - [ ] 一个新脚本
+  - [x] 一个备用路径
+  - [ ] 一个新 skill
+  - [ ] 一个模板
+  - [x] 一个更稳的执行顺序
+  - [x] 一段文档 / SOP
+  - [x] 其他：一条“headline evidence 稳定性检查基线”记录
+- **具体应该沉淀为：**
+  - 一条固定检查顺序：先看 `mustCheckResults`，再看 `headlineEvidenceGate`，最后结合日志里的 `SUMMARY` / `DESKTOP_FALLBACK_DECISION` 判断当前报告是“内容缺口”还是“证据缺口”；
+  - 一条明确验收认识：`6/6` 命中不等于可直接入稿，必须单独确认 `headlineEvidenceGate`；
+  - 后续可扩展成 `scheduled-report-mailer` 的“headline evidence gate 稳定性 SOP”或质量评分模板。
+- **下次更稳的做法：**
+  - 下次遇到 `partial` 时，不只盯 `gaza/ukraine/...` 这些 must-check 项，还要先看是不是 `headline-evidence` 在拖后腿；
+  - 若 `headlineEvidenceCount` 过低，即使表面通过，也应优先补正文证据，而不是先动发送策略；
+  - 应逐步记录哪些抓取路线最容易产出可用正文证据，哪些只能做发现层补充；
+  - 以后围绕内容质量的判断，应默认区分“主题覆盖通过”和“证据充分通过”两层。
+- **已落盘到：**
+  - `self-evolution/worklog.md`
+  - `memory/2026-04-18.md`
+- **已更新脚本 / skill / 模板：**
+  - 当前先完成第二条 bottleneck 样板落账；尚未修改 `scheduled-report-mailer` 的评估逻辑。
+- **是否已 git 提交：** 本轮待提交。
+- **下一个跟进动作：**
+  1. 继续补一份围绕 `headline evidence gate` 的最小检查 SOP；
+  2. 视需要把 `headlineEvidenceCount`、`headlineCount`、`mustCheckResults` 的关系整理成更直观的验收模板；
+  3. 若继续推进第二个 skill 的真实闭环，可围绕这条记录再做一轮“状态文件 -> 日志 -> SOP”最小闭环。
+
+---
+
 ## 说明
 
 如果某次问题只靠“经验”解决，但没有沉淀成文件，那不算完成。
