@@ -203,13 +203,19 @@
 - **已落盘到：**
   - `self-evolution/worklog.md`
   - `memory/2026-04-18.md`
+  - `skills/scheduled-report-mailer/README.md`
+  - `skills/scheduled-report-mailer/OPS_CHECKLIST.md`
 - **已更新脚本 / skill / 模板：**
-  - 暂未改 `scheduled-report-mailer` 代码；当前先完成 bottleneck 固定收口与方法层接入。
+  - 已完成第一轮“配置 -> 日志 -> 文档对齐”最小闭环：
+    - 以 `config/report-config.json` 锁定当前真实发送策略为 `send_with_warning`；
+    - 以运行日志确认存在 `partial -> SEND_OK + [warning]` 的真实行为；
+    - 已将 README 中旧的 `strict_block` 口径改为当前生效基线；
+    - 已在 `OPS_CHECKLIST.md` 中补入涉及 `delivery_policy.send_on_partial` 的固定对齐顺序。
 - **是否已 git 提交：** 本轮待提交。
 - **下一个跟进动作：**
-  1. 视需要补一份 `scheduled-report-mailer` 的质量门策略对齐 SOP；
-  2. 再决定是否引入一轮与“质量门 / 发送策略 / 生产型 skill 可靠性”相关的外部 radar 输入；
-  3. 若继续推进第二个 skill 验证，可围绕这条记录补第一轮“配置 -> 日志 -> 文档对齐”最小闭环。
+  1. 若要继续做第二个 skill 的真实闭环验证，可再补一条围绕 `headline evidence gate` 的 worklog；
+  2. 或把本轮对齐动作进一步固化成独立 SOP（例如 `quality-gate-alignment-workflow.md`）；
+  3. 若未来确实要切回 `block`，必须连同配置、文档与最小真测一并收口。
 
 ---
 

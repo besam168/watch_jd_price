@@ -1,5 +1,15 @@
 # scheduled-report-mailer / 新闻项目维护说明
 
+## 当前固定执行标准
+详见：
+- `REPORT_STANDARDS.md`
+- `OPS_CHECKLIST.md`（运维检查清单：按模块优先级 + 失败回退）
+
+当前报告项目后续应统一按这份标准执行，核心包括：
+- 固定采集标准（0–24小时、重点源白名单）
+- 固定输出标准（标题、结构、溯源、禁止虚构）
+- 固定核查清单（市场、地缘、内容质量）
+
 ## 项目作用
 这套项目负责：
 - 收集新闻与市场数据
@@ -8,19 +18,53 @@
 - 记录状态与日志
 - 必要时触发桌面浏览器 fallback
 
-## 当前关键脚本
-### 1. 主报告生成
-- `daily_comprehensive_report.py`
+## 默认上线策略（当前生效基线）
+- 质量门策略：`send_with_warning`
+  - 当前配置位置：`config/report-config.json` -> `delivery_policy.send_on_partial = "send_with_warning"`
+  - 当前已观察到的运行行为（以日志为准）：
+    - `pass`：正常发送
+    - `partial`：**允许发送，但会附 warning / 质量提示**
+    - `fail`：阻断发送（返回 `JOB_BLOCKED_AT_FAIL`）
+- 说明：
+  - 若未来切回 `strict_block` / `block`，必须同步更新 `report-config.json`、本 README、`OPS_CHECKLIST.md`，并保留一轮最小真测日志作为验收证据。
+- 桌面 fallback：`conditional_trigger`
+  - 配置位置：`config/report-config.json` -> `desktop_fallback`
+  - 触发信号：
+    - 质量门非 pass
+    - 头条数不足 / 证据数不足
+    - 出现占位搜索发现
+    - 报告中出现“今日无额外摘要”标记
 
-### 2. 采集入口
-- `collect_comprehensive_report.py`
+## 运行命令（验收用）
+在 `C:\Users\besam\.openclaw\workspace` 下执行：
 
-### 3. 邮件发送入口
-- `send_collected_comprehensive_report.py`
+```bash
+# 语法检查
+python -m py_compile skills/scheduled-report-mailer/scripts/run-job.py skills/scheduled-report-mailer/scripts/desktop-fallback.py
 
-### 4. 桌面浏览器 fallback
-- `desktop_browser_fallback.py`
-- `desktop_browser_scroll.py`
+# 仅采集+评估（不发信）
+python skills/scheduled-report-mailer/scripts/run-job.py --job comprehensive-morning --collect-only
+
+# 全链路（采集 -> 评估 -> 条件fallback -> 发信）
+python skills/scheduled-report-mailer/scripts/run-job.py --job comprehensive-morning
+```
+
+## 关键状态与日志
+- 主状态：`state/last-comprehensive-morning.json`
+- 评估结果：`state/report-evaluation.json`
+- fallback执行状态：`state/desktop-fallback-status.json`
+- 运行日志：`logs/comprehensive-morning.log`
+
+日志中会明确写出：
+- `DESKTOP_FALLBACK_DECISION`（是否触发 + 原因）
+- `DESKTOP_FALLBACK`（fallback执行结果）
+- `EVALUATE_AFTER_FALLBACK`（fallback后复评）
+
+## 失败恢复 / 回滚开关
+- 临时关闭 fallback：`desktop_fallback.enabled = false`
+- 强制始终触发 fallback：`desktop_fallback.mode = "always"`
+- 切到“部分通过阻断发送”：`delivery_policy.send_on_partial = "block"`
+- 当前默认基线：`delivery_policy.send_on_partial = "send_with_warning"`
 
 ## 当前已接入能力
 ### 主链
