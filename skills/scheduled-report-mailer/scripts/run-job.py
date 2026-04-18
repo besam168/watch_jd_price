@@ -21,11 +21,13 @@ def load_config() -> dict:
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-def run_step(python_exe: str, script_name: str) -> tuple[int, str, str]:
+def run_step(python_exe: str, script_name: str, extra_env: dict[str, str] | None = None) -> tuple[int, str, str]:
     script_path = ROOT / script_name if not str(script_name).startswith(str(SKILL_ROOT)) else Path(script_name)
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
+    if extra_env:
+        env.update(extra_env)
     completed = subprocess.run(
         [python_exe, str(script_path)],
         cwd=str(ROOT),
@@ -36,6 +38,18 @@ def run_step(python_exe: str, script_name: str) -> tuple[int, str, str]:
         errors="replace",
     )
     return completed.returncode, completed.stdout, completed.stderr
+
+
+def heartbeat(message: str) -> None:
+    print(message, flush=True)
+
+
+def mark_stage(state: dict, job_name: str, stage: str, **extra: object) -> None:
+    state["lastStage"] = stage
+    state["lastStageAt"] = datetime.now().isoformat()
+    if extra:
+        state.update(extra)
+    save_state(job_name, state)
 
 
 def save_state(job: str, data: dict) -> None:
@@ -207,17 +221,18 @@ def main() -> int:
 
     python_exe = cfg["python"]
     started = datetime.now().isoformat()
+    run_id = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     plan_script = SKILL_ROOT / "scripts" / "build-collect-plan.py"
     eval_script = SKILL_ROOT / "scripts" / "evaluate-report.py"
     desktop_fallback_script = SKILL_ROOT / "scripts" / "desktop-fallback.py"
     send_on_partial = cfg.get("delivery_policy", {}).get("send_on_partial", "send_with_warning")
-    plan_rc, plan_stdout, plan_stderr = run_step(python_exe, str(plan_script))
     state: dict = {
         "job": args.job,
         "mode": "collect-only" if args.collect_only else "collect-and-send",
         "startedAt": started,
+        "runId": run_id,
         "policy": summarize_policy(cfg),
-        "plan": {"rc": plan_rc, "stdout": plan_stdout, "stderr": plan_stderr},
+        "plan": None,
         "collect": None,
         "send": None,
         "evaluation": None,
@@ -225,10 +240,24 @@ def main() -> int:
         "desktopFallback": None,
         "status": "running",
         "failedStage": None,
+        "lastStage": "init",
+        "lastStageAt": started,
         "outputs": {},
     }
+    mark_stage(state, args.job, "plan:start")
+    heartbeat(f"[run-job] {args.job} plan:start")
+    plan_rc, plan_stdout, plan_stderr = run_step(python_exe, str(plan_script))
+    state["plan"] = {"rc": plan_rc, "stdout": plan_stdout, "stderr": plan_stderr}
+    mark_stage(state, args.job, "plan:done")
+    heartbeat(f"[run-job] {args.job} plan:done rc={plan_rc}")
 
-    rc, stdout, stderr = run_step(python_exe, job["collect_script"])
+    mark_stage(state, args.job, "collect:start")
+    heartbeat(f"[run-job] {args.job} collect:start")
+    rc, stdout, stderr = run_step(
+        python_exe,
+        job["collect_script"],
+        extra_env={"SWS_COLLECT_RUN_ID": run_id},
+    )
     state["collect"] = {"rc": rc, "stdout": stdout, "stderr": stderr}
     append_log(args.job, f"===== PLAN {started} rc={plan_rc} =====")
     append_log(args.job, plan_stdout or "(no plan stdout)")
@@ -241,6 +270,8 @@ def main() -> int:
         append_log(args.job, "[stderr]")
         append_log(args.job, stderr)
     state["outputs"] = resolve_outputs(cfg)
+    mark_stage(state, args.job, "collect:done")
+    heartbeat(f"[run-job] {args.job} collect:done rc={rc}")
     if rc != 0:
         state["status"] = "failed"
         state["failedStage"] = "collect"
@@ -249,6 +280,8 @@ def main() -> int:
         print("JOB_FAILED_AT_COLLECT")
         return rc
 
+    mark_stage(state, args.job, "evaluate:start")
+    heartbeat(f"[run-job] {args.job} evaluate:start")
     eval_rc, eval_stdout, eval_stderr = run_step(python_exe, str(eval_script))
     state["evaluation"] = {"rc": eval_rc, "stdout": eval_stdout, "stderr": eval_stderr}
     append_log(args.job, f"===== EVALUATE {datetime.now().isoformat()} rc={eval_rc} =====")
@@ -259,11 +292,19 @@ def main() -> int:
 
     eval_summary = load_evaluation_summary()
     state["summary"] = eval_summary
+    mark_stage(state, args.job, "evaluate:done")
+    heartbeat(
+        f"[run-job] {args.job} evaluate:done rc={eval_rc} status={eval_summary['status']}"
+    )
     append_log(args.job, "===== SUMMARY =====")
     append_log(args.job, eval_summary["summaryText"])
 
     fallback_decision = should_trigger_desktop_fallback(cfg, eval_summary)
     state["desktopFallbackDecision"] = fallback_decision
+    mark_stage(state, args.job, "desktop-fallback:decision")
+    heartbeat(
+        f"[run-job] {args.job} desktop-fallback:decision shouldRun={fallback_decision['shouldRun']} reasons={','.join(fallback_decision['reasons']) or 'none'}"
+    )
     append_log(args.job, "===== DESKTOP_FALLBACK_DECISION =====")
     append_log(
         args.job,
@@ -273,6 +314,8 @@ def main() -> int:
     )
 
     if fallback_decision["shouldRun"]:
+        mark_stage(state, args.job, "desktop-fallback:start")
+        heartbeat(f"[run-job] {args.job} desktop-fallback:start")
         fb_rc, fb_stdout, fb_stderr = run_step(python_exe, str(desktop_fallback_script))
         state["desktopFallback"] = {
             "rc": fb_rc,
@@ -286,6 +329,8 @@ def main() -> int:
             append_log(args.job, "[desktop fallback stderr]")
             append_log(args.job, fb_stderr)
 
+        mark_stage(state, args.job, "desktop-fallback:done")
+        heartbeat(f"[run-job] {args.job} desktop-fallback:done rc={fb_rc}")
         eval_rc_after_fb, eval_stdout_after_fb, eval_stderr_after_fb = run_step(python_exe, str(eval_script))
         state["evaluationAfterFallback"] = {
             "rc": eval_rc_after_fb,
@@ -300,6 +345,10 @@ def main() -> int:
 
         eval_summary = load_evaluation_summary()
         state["summary"] = eval_summary
+        mark_stage(state, args.job, "evaluate-after-fallback:done")
+        heartbeat(
+            f"[run-job] {args.job} evaluate-after-fallback:done rc={eval_rc_after_fb} status={eval_summary['status']}"
+        )
         append_log(args.job, "===== SUMMARY_AFTER_FALLBACK =====")
         append_log(args.job, eval_summary["summaryText"])
 
@@ -315,7 +364,7 @@ def main() -> int:
             state["failedStage"] = "quality-gate"
             state["finishedAt"] = datetime.now().isoformat()
             state["outputs"] = resolve_outputs(cfg)
-            save_state(args.job, state)
+            mark_stage(state, args.job, "quality-gate:blocked-partial")
             print("JOB_BLOCKED_AT_PARTIAL")
             print(eval_summary["summaryText"])
             return 3
@@ -323,11 +372,13 @@ def main() -> int:
             state["failedStage"] = "quality-gate"
             state["finishedAt"] = datetime.now().isoformat()
             state["outputs"] = resolve_outputs(cfg)
-            save_state(args.job, state)
+            mark_stage(state, args.job, "quality-gate:blocked-fail")
             print("JOB_BLOCKED_AT_FAIL")
             print(eval_summary["summaryText"])
             return 4
 
+        mark_stage(state, args.job, "send:start")
+        heartbeat(f"[run-job] {args.job} send:start")
         rc, stdout, stderr = run_step(python_exe, job["send_script"])
         state["send"] = {"rc": rc, "stdout": stdout, "stderr": stderr, "sendPolicy": send_on_partial}
         append_log(args.job, f"===== SEND {datetime.now().isoformat()} rc={rc} =====")
@@ -338,6 +389,8 @@ def main() -> int:
         if stderr:
             append_log(args.job, "[stderr]")
             append_log(args.job, stderr)
+        mark_stage(state, args.job, "send:done")
+        heartbeat(f"[run-job] {args.job} send:done rc={rc}")
         if rc != 0:
             state["status"] = "failed"
             state["failedStage"] = "send"
@@ -349,7 +402,7 @@ def main() -> int:
 
     state["finishedAt"] = datetime.now().isoformat()
     state["outputs"] = resolve_outputs(cfg)
-    save_state(args.job, state)
+    mark_stage(state, args.job, "done")
     print("JOB_OK")
     if state["outputs"].get("latest_subject"):
         try:

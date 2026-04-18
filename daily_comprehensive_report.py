@@ -71,6 +71,10 @@ SEARCH_DISCOVERY_SITES = [
     ("TechCrunch", "techcrunch.com", ["ai", "robotics", "openai"]),
 ]
 SEARCH_ENGINE_PREFERENCE = ["DuckDuckGo", "Startpage", "Yahoo"]
+MAX_SEARCH_ENGINES = 1
+MAX_TOPICS_PER_SITE = 2
+MAX_DISCOVERY_ITEMS = 18
+MAX_EVIDENCE_FETCH = 18
 TECH_SOURCE_WHITELIST = {
     "the verge",
     "techcrunch",
@@ -377,12 +381,14 @@ def discover_news_via_multi_search() -> list[dict[str, str]]:
         return []
 
     items: list[dict[str, str]] = []
-    for engine_name in SEARCH_ENGINE_PREFERENCE:
+    active_engines = SEARCH_ENGINE_PREFERENCE[:MAX_SEARCH_ENGINES] if MAX_SEARCH_ENGINES > 0 else SEARCH_ENGINE_PREFERENCE
+    for engine_name in active_engines:
         template = templates.get(engine_name)
         if not template:
             continue
         for source_name, site, topics in SEARCH_DISCOVERY_SITES:
-            for topic in topics[:4]:
+            active_topics = topics[:MAX_TOPICS_PER_SITE] if MAX_TOPICS_PER_SITE > 0 else topics
+            for topic in active_topics:
                 query = f"site:{site} {topic} latest"
                 encoded = urllib.parse.quote_plus(query)
                 url = template.replace("{keyword}", encoded)
@@ -391,7 +397,9 @@ def discover_news_via_multi_search() -> list[dict[str, str]]:
                 except Exception:
                     continue
                 items.extend(extract_search_result_candidates(source_name, site, page, priority_topic=topic))
-    return items
+                if MAX_DISCOVERY_ITEMS > 0 and len(items) >= MAX_DISCOVERY_ITEMS:
+                    return items[:MAX_DISCOVERY_ITEMS]
+    return items[:MAX_DISCOVERY_ITEMS] if MAX_DISCOVERY_ITEMS > 0 else items
 
 
 def fetch_article_preview(url: str) -> str:
@@ -421,12 +429,16 @@ def enrich_news_items_with_evidence(items: list[dict[str, str]]) -> tuple[list[d
         "sources": [],
     }
     source_rows: list[dict[str, str | bool]] = []
-    for item in items:
+    for idx, item in enumerate(items, start=1):
         row = dict(item)
         url = (row.get("link") or "").strip()
-        stats["attempted"] += 1
-        preview = fetch_article_preview(url)
-        has_evidence = len(preview) >= 180
+        should_fetch_evidence = MAX_EVIDENCE_FETCH <= 0 or idx <= MAX_EVIDENCE_FETCH
+        preview = ""
+        has_evidence = False
+        if should_fetch_evidence:
+            stats["attempted"] += 1
+            preview = fetch_article_preview(url)
+            has_evidence = len(preview) >= 180
         row["evidence_preview"] = preview[:280] if preview else ""
         row["has_evidence"] = has_evidence
         if has_evidence and row.get("pub_date", "").startswith("搜索发现"):
