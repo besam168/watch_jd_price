@@ -25,19 +25,33 @@ INTERNATIONAL_CURRENT_AFFAIRS_KEYWORDS = [
     "韩国", "台湾", "航运", "能源", "原油", "黄金", "市场", "风险", "制裁", "谈判"
 ]
 
+MAIN_HEADLINE_SECTION_MARKERS = [
+    "一、重要头条新闻",
+    "📊 实时头条（过去24-48小时）",
+    "📊 实时头条",
+]
+
+MAIN_HEADLINE_SECTION_END_MARKERS = [
+    "二、AI科技专栏头条",
+    "二、",
+    "三、全球市场动态",
+    "🌍 地缘政治分析",
+    "📈 金融市场速报",
+]
+
 SOURCE_LINE_RE = re.compile(r"（来源：.+?\|\s*发布时间：.+?）")
 HEADLINE_LINE_RE = re.compile(r"^\s*(\d+)\.\s+(.+?)\s*$")
 
 
 def extract_main_headline_block(text: str) -> str:
-    start_marker = "一、重要头条新闻"
-    if start_marker not in text:
-        return ""
-    after = text.split(start_marker, 1)[1]
-    for marker in ["二、AI科技专栏头条", "二、", "三、全球市场动态"]:
-        if marker in after:
-            return after.split(marker, 1)[0]
-    return after
+    for start_marker in MAIN_HEADLINE_SECTION_MARKERS:
+        if start_marker in text:
+            after = text.split(start_marker, 1)[1]
+            for marker in MAIN_HEADLINE_SECTION_END_MARKERS:
+                if marker in after:
+                    return after.split(marker, 1)[0]
+            return after
+    return ""
 
 
 def parse_main_headlines(text: str) -> list[dict]:
