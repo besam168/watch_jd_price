@@ -67,6 +67,38 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 中午前 heartbeat：OpenClaw Claude `/v1/messages` 已从施工单推进到第一轮真实代码落刀
+- **本次 heartbeat 做了什么：** 把 OpenClaw 兼容 Claude `/v1/messages` 这条线，从“最终施工单”正式推进到第一轮真实代码改造：已直接修改本机 dist 与 gateway 类型定义，补入最小 `anthropic-messages` 入口骨架。
+- **为什么做这件事：** 这条兼容改造此前已经把路由、auth wrapper、runtime bridge、response mapper 都写成了接近实装版方案，如果 heartbeat 还停留在继续写文档，就会变成“方案很完整，但永远不动刀”。当前最有价值的小事，不是再写新草案，而是把第一刀真的切进去，验证方案是否能落到运行时结构上。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已在 `gateway-cli-CWpalJNJ.js` 中补入第一轮最小模块：`getAnthropicApiKey(...)`、`authorizeAnthropicMessagesRequest(...)`、`handleAnthropicPostJsonEndpoint(...)`、`normalizeClaudeCompatModel(...)`、`extractTextFromClaudeContent(...)`、`buildClaudeMessagesPrompt(...)`、`buildClaudeAgentCommandInput(...)`、`runAnthropicMessageViaAgentRuntime(...)`、`createClaudeMessageResponse(...)`、`handleAnthropicMessagesHttpRequest(...)`；
+  - 已在 `createGatewayHttpServer(...)` 中接入 `anthropic-messages` stage，使 `/v1/messages` 不再只停留在文档层；
+  - 已在 `types.gateway.d.ts` 中补入 `GatewayHttpMessagesConfig` 与 `GatewayHttpEndpointsConfig.messages`；
+  - 当前这条线的阶段性状态已从“方案级完成”推进到“最小实现骨架已进 runtime 文件”，下一步最值钱的是跑最小验收，而不是继续扩 streaming / tools / multimodal。
+- **沉淀到哪里：**
+  - `self-evolution/learning-log.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 先验 `POST /v1/messages` 不再 404；
+  - 再验 `x-api-key` 能否过 auth；
+  - 再验 text-only 最小请求能否打回 `CLAUDE_MESSAGES_OK`。
+
+### 2026-04-18 上午 heartbeat：补记 `scheduled-report-mailer` collect 日志已切 run-id 单文件
+- **本次 heartbeat 做了什么：** 把 `scheduled-report-mailer` collect-only 排障线里一个已经跑实的关键修补正式记账：`collect_comprehensive_report.py` 现已支持按 `run-id` 输出单独日志文件，同时保留总日志；并且已做最小验证，确认 root 总日志里多段 `COLLECT START/END` 不是单 run 内部重入，而是多次运行混写同一文件造成的视觉误判。
+- **为什么做这件事：** 之前总日志混写会严重污染判断：明明是在看某一轮 collect，却很容易被历史 run 的 `START/END` 干扰，导致误以为单个 collect 脚本内部重复触发。把日志按 run-id 拆开，本质上是在补“排障观测面不干净”这个真实能力缺口。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - `collect_comprehensive_report.py` 现会输出 `RUN_ID` 与 `RUN_LOG`，并把当前轮日志写入 `logs/collect_comprehensive_report-<RUN_ID>.log`；
+  - `latest_collect_status.json` 现新增 `runId` 与 `runLogPath`；
+  - 结合这套 run-id 观测后，已验证单轮 run 在 root 总日志中只有 1 次 `COLLECT START`，并未出现“同一 run 自己刷多段 `START/END`”；
+  - 说明之前看到的多段 `COLLECT START/END`，本质上是不同运行共写 `logs/collect_comprehensive_report.log`，而不是单脚本内部重入。
+- **沉淀到哪里：**
+  - `collect_comprehensive_report.py`
+  - `self-evolution/learning-log.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 直接基于单轮 `run-id` 独立日志继续查“为什么单次 collect 本身久不结束”；
+  - 若后续仍需多人/多轮并发排障，可继续补“单实例锁 / 入口幂等保护 / run-id 分状态目录”的下一层 SOP。
+
 ### 2026-04-18 上午 heartbeat：把 Claude `/v1/messages` 的 `x-api-key` 认证入口正式收口成 wrapper 草案
 - **本次 heartbeat 做了什么：** 把 OpenClaw 适配 Claude `/v1/messages` 这条线里最后一个还没钉死的实现卡点——`x-api-key` 认证入口——正式沉淀成文档，新增 `ANTHROPIC_MESSAGES_AUTH_WRAPPER_DRAFT.md`。
 - **为什么做这件事：** 当前 `/v1/messages` 的 request parser、runtime bridge、response mapper 草案已经基本成形，但如果认证入口还停留在口头提醒，第一轮实现依然容易卡死在“Claude 客户端请求进不来”这一步。这属于典型的工程闭环只差最后一层胶水。
