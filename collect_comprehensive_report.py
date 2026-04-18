@@ -20,11 +20,15 @@ RUN_LOG = LOG_DIR / "collect_comprehensive_report.log"
 STATUS_JSON = OUT_DIR / "latest_collect_status.json"
 CONFIG_PATH = ROOT / "skills" / "scheduled-report-mailer" / "config" / "report-config.json"
 RUN_ID = os.environ.get("SWS_COLLECT_RUN_ID") or dt.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+RUN_LOG_BY_ID = LOG_DIR / f"collect_comprehensive_report-{RUN_ID}.log"
 
 
 def append_log(text: str) -> None:
+    line = f"[{RUN_ID}] {text.rstrip()}\n"
     with RUN_LOG.open("a", encoding="utf-8") as f:
-        f.write(f"[{RUN_ID}] {text.rstrip()}\n")
+        f.write(line)
+    with RUN_LOG_BY_ID.open("a", encoding="utf-8") as f:
+        f.write(line)
 
 
 def load_whitelist_urls() -> list[str]:
@@ -165,6 +169,7 @@ append_log(json.dumps(evidence_summary, ensure_ascii=False, indent=2))
 collect_status = {
     "generatedAt": dt.datetime.now().isoformat(),
     "runId": RUN_ID,
+    "runLogPath": str(RUN_LOG_BY_ID),
     "mode": "full-whitelist-crawl-every-run",
     "freshnessWindowHours": {"min": 24, "max": 48},
     "plannedWhitelistUrlCount": len(whitelist_urls),
@@ -223,6 +228,7 @@ STATUS_JSON.write_text(json.dumps(collect_status, ensure_ascii=False, indent=2),
 append_log("===== COLLECT END rc=0 =====")
 print("COLLECT_OK")
 print(f"RUN_ID: {RUN_ID}")
+print(f"RUN_LOG: {RUN_LOG_BY_ID}")
 print(subject)
 print(str(OUT_DIR / "latest_report.txt"))
 failed_group_names = collect_status.get("failed_groups", [])
