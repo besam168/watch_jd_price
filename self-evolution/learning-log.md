@@ -67,6 +67,21 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 中午 heartbeat：Claude `/v1/messages` 第一轮最小兼容层已被真实请求打通
+- **本次 heartbeat 做了什么：** 把刚完成的真实最小验收正式沉淀下来：在 OpenClaw gateway 已启用 `token` 鉴权的前提下，使用真实 gateway token 作为 Claude 风格 `x-api-key`，已成功打通 `POST /v1/messages` 的 text-only 非流式请求，并拿到 `CLAUDE_MESSAGES_OK`。
+- **为什么做这件事：** 这条线在方案、auth wrapper、runtime bridge、真实落刀之后，如果不把“401 的真正原因”和“最小可用闭环已经打通”明确记账，下次很容易把配置问题误判成代码问题，或者重复怀疑 route/handler/runtime 是否没生效。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已确认此前持续 `401` 的真正原因不是 `/v1/messages` 实现失效，而是测试时误用了 `x-api-key: test`；当前 gateway 实际配置是 `gateway.auth.mode = "token"`，因此 Claude 风格 `x-api-key` 在第一轮实现下本质上复用的是 OpenClaw gateway shared token auth；
+  - 换成真实 gateway token 后，`POST /v1/messages` 已成功返回 `200`，并输出 Claude 风格 message JSON，正文为 `CLAUDE_MESSAGES_OK`；
+  - 同时 `stream=true` 请求已不再卡在 `401`，而是进入 handler 后返回 `400`，说明第一轮“不支持 streaming”的边界已开始按预期生效；
+  - 当前这条线的最准阶段口径应升级为：**Claude `/v1/messages` 第一轮最小兼容层已被真实请求跑通。**
+- **沉淀到哪里：**
+  - `self-evolution/learning-log.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 优先补 `stream=true` 的明确错误体与返回文案；
+  - 再考虑是否进入 SSE / tools / multimodal 第二轮，而不是马上扩范围。
+
 ### 2026-04-18 中午前 heartbeat：OpenClaw Claude `/v1/messages` 已从施工单推进到第一轮真实代码落刀
 - **本次 heartbeat 做了什么：** 把 OpenClaw 兼容 Claude `/v1/messages` 这条线，从“最终施工单”正式推进到第一轮真实代码改造：已直接修改本机 dist 与 gateway 类型定义，补入最小 `anthropic-messages` 入口骨架。
 - **为什么做这件事：** 这条兼容改造此前已经把路由、auth wrapper、runtime bridge、response mapper 都写成了接近实装版方案，如果 heartbeat 还停留在继续写文档，就会变成“方案很完整，但永远不动刀”。当前最有价值的小事，不是再写新草案，而是把第一刀真的切进去，验证方案是否能落到运行时结构上。
