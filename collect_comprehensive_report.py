@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -29,6 +30,15 @@ def append_log(text: str) -> None:
         f.write(line)
     with RUN_LOG_BY_ID.open("a", encoding="utf-8") as f:
         f.write(line)
+
+
+def timed_step(label: str, fn, *args, **kwargs):
+    started = time.perf_counter()
+    append_log(f"===== {label} START =====")
+    result = fn(*args, **kwargs)
+    elapsed = time.perf_counter() - started
+    append_log(f"===== {label} END elapsed={elapsed:.2f}s =====")
+    return result, elapsed
 
 
 def load_whitelist_urls() -> list[str]:
@@ -129,18 +139,22 @@ append_log("Mode switched: force full whitelist crawl every run.")
 
 refresh_script = ROOT / "refresh_qveris_market_snapshot.py"
 refresh_rc = None
+refresh_elapsed = None
 if refresh_script.exists():
     try:
-        completed = subprocess.run(
-            ["python", str(refresh_script)],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-            check=False,
-        )
+        def _run_refresh():
+            return subprocess.run(
+                ["python", str(refresh_script)],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+                check=False,
+            )
+
+        completed, refresh_elapsed = timed_step("REFRESH_MARKET_SNAPSHOT", _run_refresh)
         refresh_rc = completed.returncode
         append_log(f"===== REFRESH_MARKET_SNAPSHOT rc={completed.returncode} =====")
         append_log(completed.stdout or "(no refresh stdout)")
@@ -152,9 +166,9 @@ if refresh_script.exists():
         append_log(f"REFRESH_MARKET_SNAPSHOT_EXCEPTION: {e}")
 
 whitelist_urls = load_whitelist_urls()
-probe_summary = run_whitelist_full_probe(whitelist_urls)
+probe_summary, probe_elapsed = timed_step("FULL_WHITELIST_PROBE", run_whitelist_full_probe, whitelist_urls)
 
-subject, text_body, html_body = build_report()
+(subject, text_body, html_body), build_report_elapsed = timed_step("BUILD_REPORT", build_report)
 
 headline_count = len([line for line in text_body.splitlines() if re.match(r"^\d+\. ", line)])
 headline_evidence_count = text_body.count("已抓正文")
@@ -171,6 +185,11 @@ collect_status = {
     "runId": RUN_ID,
     "runLogPath": str(RUN_LOG_BY_ID),
     "mode": "full-whitelist-crawl-every-run",
+    "timings": {
+        "refreshMarketSnapshotSeconds": refresh_elapsed,
+        "fullWhitelistProbeSeconds": probe_elapsed,
+        "buildReportSeconds": build_report_elapsed,
+    },
     "freshnessWindowHours": {"min": 24, "max": 48},
     "plannedWhitelistUrlCount": len(whitelist_urls),
     "touchedWhitelistUrlCount": probe_summary["touchedUrlCount"],
