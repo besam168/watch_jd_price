@@ -67,6 +67,37 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 上午 heartbeat：把 Claude `/v1/messages` 的 `x-api-key` 认证入口正式收口成 wrapper 草案
+- **本次 heartbeat 做了什么：** 把 OpenClaw 适配 Claude `/v1/messages` 这条线里最后一个还没钉死的实现卡点——`x-api-key` 认证入口——正式沉淀成文档，新增 `ANTHROPIC_MESSAGES_AUTH_WRAPPER_DRAFT.md`。
+- **为什么做这件事：** 当前 `/v1/messages` 的 request parser、runtime bridge、response mapper 草案已经基本成形，但如果认证入口还停留在口头提醒，第一轮实现依然容易卡死在“Claude 客户端请求进不来”这一步。这属于典型的工程闭环只差最后一层胶水。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已明确当前不适合让 Claude 入口硬套 `handleGatewayPostJsonEndpoint(...)`，因为它先做通用 auth，而 Claude 更可能走 `x-api-key`；
+  - 已明确第一轮最稳路线是新增两个最小函数：`authorizeAnthropicMessagesRequest(...)` 与 `handleAnthropicPostJsonEndpoint(...)`；
+  - 已把“`x-api-key` 临时映射成 Bearer，再复用现有 gateway auth/scope/body 读取逻辑”的接近实装版伪代码写实；
+  - 说明当前这条 OpenClaw 兼容改造线，已经从“路由 / handler / runtime bridge”进一步收口到“认证入口胶水层”级别。
+- **沉淀到哪里：**
+  - `ANTHROPIC_MESSAGES_AUTH_WRAPPER_DRAFT.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 可以把 `/v1/messages` 第一轮实现所需模块清单汇总成最终执行单；
+  - 或直接进入真实代码改造阶段。
+
+### 2026-04-18 上午 heartbeat：补记 `scheduled-report-mailer` collect-only 的阶段心跳与重复触发嫌疑
+- **本次 heartbeat 做了什么：** 把 `scheduled-report-mailer` 这条真实排障链最新推进正式记账：一方面已给 `run-job.py` 加上阶段心跳与中途 state 落盘，另一方面已确认 `evaluate-report.py` 的 `contentCoverageGate` 需要兼容 `📊 实时头条` 新结构；继续往下排时，又新暴露出 `collect` 阶段可能存在“重复触发 / 多轮重入”现象。
+- **为什么做这件事：** 这条链如果只记“外层又 SIGKILL 了”，信息密度太低，下次仍然得从头扒开。当前最值钱的不是记结果，而是把排障口径分层：外层 exec 生命周期、`run-job.py` 阶段可见性、评估解析正确性、以及 `collect` 真正耗时 / 重入来源，要分别记录。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已给 `run-job.py` 增加 `plan:start / plan:done / collect:start / ...` 这类阶段心跳，并把 `lastStage` / `lastStageAt` 写入 `last-<job>.json`，因此外层再被杀时，至少能知道停在哪一段；
+  - 已修掉 `evaluate-report.py` 只认旧版 `一、重要头条新闻` 的问题，使其兼容当前报告里的 `📊 实时头条（过去24-48小时）`，避免把明明有头条的报告误判成 `contentCoverageGate.ok = false`；
+  - 已进一步确认当前 collect 主耗时面不只是 whitelist probe，而在 `daily_comprehensive_report.py` 的 `discover_news_via_multi_search()` 与 `enrich_news_items_with_evidence()`；
+  - 已先做一轮降载：减少搜索引擎数、topic 数、discovery 总量与 evidence 抓取数；
+  - 但最新 root 侧日志又显示连续多段 `===== COLLECT START ===== ... ===== COLLECT END rc=0 =====`，说明下一步最该排查的是：到底是单次 collect 太重，还是同一链路被重复启动 / 多轮任务叠加写同一日志。
+- **沉淀到哪里：**
+  - `self-evolution/learning-log.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 区分 root 日志里的多段 `COLLECT START/END` 究竟来自单进程内部重入，还是多个独立 collect 进程共用同一日志；
+  - 若确认存在并发 / 重复触发，再补一条 `scheduled-report-mailer` 的“单实例锁 / 幂等保护 / 日志分 run-id” SOP。
+
 ### 2026-04-18 上午 heartbeat：把 OpenClaw Claude/Codex 兼容改造的源码锚点写死进施工清单
 - **本次 heartbeat 做了什么：** 给 `OPENCLAW_CLAUDE_CODEX_BUILD_CHECKLIST.md` 增补了一节“已确认的源码锚点”，把本机 dist 里已经定位到的关键函数和大致位置直接写死。
 - **为什么做这件事：** 这类源码入口如果只留在聊天上下文里，下次很容易又花时间重翻一次。把锚点写进施工清单，本质上是在补“后续实现切入速度”这个很小但真实的能力缺口。
