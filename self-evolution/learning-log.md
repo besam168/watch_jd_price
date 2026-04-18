@@ -67,6 +67,20 @@
 
 ## Heartbeat 推进记录
 
+### 2026-04-18 上午 heartbeat：把 OpenClaw Claude/Codex 兼容改造的源码锚点写死进施工清单
+- **本次 heartbeat 做了什么：** 给 `OPENCLAW_CLAUDE_CODEX_BUILD_CHECKLIST.md` 增补了一节“已确认的源码锚点”，把本机 dist 里已经定位到的关键函数和大致位置直接写死。
+- **为什么做这件事：** 这类源码入口如果只留在聊天上下文里，下次很容易又花时间重翻一次。把锚点写进施工清单，本质上是在补“后续实现切入速度”这个很小但真实的能力缺口。
+- **解决了什么问题 / 捕捉到什么信号：**
+  - 已把 `createGatewayHttpServer`、`requestStages`、`handleOpenAiModelsHttpRequest`、`handleOpenAiHttpRequest`、`handleOpenResponsesHttpRequest`、`GatewayHttpEndpointsConfig`、`GatewayHttpConfig` 的源码锚点写死；
+  - 已明确 `anthropic-messages` stage 最自然的插入区间，就是 `models/embeddings` 之后、`openresponses/openai` 前后；
+  - 说明当前这条 OpenClaw 兼容改造线已经开始从“文档规划”继续收口到“实施锚点固化”层。
+- **沉淀到哪里：**
+  - `OPENCLAW_CLAUDE_CODEX_BUILD_CHECKLIST.md`
+  - 当天 `memory/2026-04-18.md`
+- **下次接着做什么：**
+  - 继续把 `/v1/messages` 的最小 handler 伪代码骨架补出来；
+  - 或直接进入第一轮代码级实现草案。
+
 ### 2026-04-18 早晨 heartbeat：补记 `scheduled-report-mailer` collect-only 验证的收口边界
 - **本次 heartbeat 做了什么：** 把刚刚围绕 `scheduled-report-mailer` 脚本改造时暴露出的一个真实小坑，正式记到 heartbeat 推进记录里：`evaluate-report.py` 的新分层评估结构已验证，但 `run-job.py --collect-only` 这轮真实运行没有自然收口，最终在外层表现为 exec 会话 `SIGKILL`。
 - **为什么做这件事：** 如果不把这层边界记下来，下次很容易把“评估输出结构已经正确”误说成“整条 collect-only 自动化链路已经完全健康”。这属于典型的自动化验收口径不够分层。
