@@ -17,6 +17,16 @@ DEFAULT_SCORING_WEIGHTS = {
     "rmse": 0.20,
 }
 
+DEFAULT_UNIVERSE_FILTERS = {
+    "include_mainboard_small_mid_only": True,
+    "prefer_sz_00": True,
+    "exclude_chinext": True,
+    "exclude_star": True,
+    "exclude_bse": True,
+    "exclude_new_within_days": 60,
+    "exclude_non_common_stock": True,
+}
+
 
 @dataclass
 class RuntimeConfig:
@@ -34,4 +44,5 @@ class ScanConfig:
     top_n: int = 100
     thresholds: dict = field(default_factory=lambda: dict(DEFAULT_THRESHOLDS))
     scoring_weights: dict = field(default_factory=lambda: dict(DEFAULT_SCORING_WEIGHTS))
+    universe_filters: dict = field(default_factory=lambda: dict(DEFAULT_UNIVERSE_FILTERS))
     runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
