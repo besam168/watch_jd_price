@@ -10,14 +10,20 @@ from output.writer import write_outputs
 from config import ScanConfig
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = BASE_DIR / "outputs"
+UNIVERSE_PATH = OUTPUT_DIR / "sz_mainboard_00_universe.json"
 
 
 def load_universe(cfg: ScanConfig) -> list[str]:
     if cfg.universe_mode == "custom" and cfg.custom_symbols:
-        return [normalize_symbol(x) for x in cfg.custom_symbols]
+        return [normalize_symbol(x) for x in cfg.custom_symbols if is_sz_mainboard_target(x)]
 
-    # 当前阶段先把“深市00主板池”规则钉死在这里；
-    # 真正的批量股票池抓取后续接入东财/akshare现货列表并叠加上市天数过滤。
+    if UNIVERSE_PATH.exists():
+        import json
+        obj = json.loads(UNIVERSE_PATH.read_text(encoding="utf-8"))
+        selected = obj.get("selected") or []
+        return [normalize_symbol(x.get("code", "")) for x in selected if x.get("code")]
+
     return []
 
 

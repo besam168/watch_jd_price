@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-04-20 08:15:49",
+  "selected_count": 2,
+  "excluded_count": 2,
+  "selected": [
+    {
+      "code": "000001",
+      "name": "平安银行",
+      "days_since_list": 5000,
+      "security_type": "stock",
+      "reasons": []
+    },
+    {
+      "code": "002001",
+      "name": "新和成",
+      "days_since_list": 5000,
+      "security_type": "stock",
+      "reasons": []
+    }
+  ],
+  "excluded": [
+    {
+      "code": "300001",
+      "name": "特锐德",
+      "days_since_list": 5000,
+      "security_type": "stock",
+      "reasons": [
+        "not_sz_00_mainboard"
+      ]
+    },
+    {
+      "code": "001234",
+      "name": "N测试股",
+      "days_since_list": 10,
+      "security_type": "stock",
+      "reasons": [
+        "new_or_delisting_name_flag",
+        "listed_lt_60d"
+      ]
+    }
+  ]
+}

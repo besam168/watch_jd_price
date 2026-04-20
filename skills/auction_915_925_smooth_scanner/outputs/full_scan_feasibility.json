@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-04-20 08:15:53",
+  "total_symbols": 1600,
+  "avg_seconds_per_symbol": 1.1,
+  "concurrency": 20,
+  "estimated_total_seconds": 88.0,
+  "estimated_total_minutes": 1.47,
+  "assumed_fail_rate": 0.15
+}
