@@ -41,8 +41,19 @@ def parse_individual_info(df) -> dict:
 
 
 def fetch_base_codes() -> list[dict]:
-    path = BASE_DIR.parent / "a-share-hot-spots" / "references" / "name_map.csv"
     rows = []
+
+    curated_path = BASE_DIR / "references" / "sz_mainboard_codes.txt"
+    if curated_path.exists():
+        text = curated_path.read_text(encoding="utf-8")
+        for line in text.splitlines():
+            code = line.strip()
+            if code_ok(code):
+                rows.append({"code": code, "name": code})
+        if rows:
+            return rows
+
+    path = BASE_DIR.parent / "a-share-hot-spots" / "references" / "name_map.csv"
     if path.exists():
         text = path.read_text(encoding="utf-8")
         for line in text.splitlines():
