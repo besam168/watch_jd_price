@@ -62,9 +62,11 @@ python {baseDir}/pipeline/run.py --date 2026-04-20 --universe-mode custom --symb
 - `amt_float_ratio`
 
 ## 数据源优先级
-1. 腾讯（主）
-2. 东方财富（备）
-3. 新浪（兜底）
+1. **东方财富 pre-minute 接口（当前优先主路径）**
+   - 已确认可通过 AKShare `stock_zh_a_hist_pre_min_em(symbol, start_time='09:15:00', end_time='09:25:00')` 获取 09:15–09:25 竞价分钟序列
+   - 当前返回形态更接近 **minute_agg**，不是逐笔，必须标记降级
+2. 腾讯（待继续摸接口）
+3. 新浪（兜底待继续摸接口）
 
 所有数据源都必须归一到统一 `auction_ticks` 结构，再进入指标计算。
 

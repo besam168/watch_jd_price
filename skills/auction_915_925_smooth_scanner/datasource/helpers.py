@@ -17,3 +17,15 @@ def normalize_symbol(symbol: str) -> str:
     if digits.startswith(("60", "68", "51", "58", "11")):
         return f"sh{digits}"
     return f"sz{digits}"
+
+
+def is_sz_mainboard_target(symbol: str) -> bool:
+    s = normalize_symbol(symbol)
+    if not s.startswith("sz"):
+        return False
+    code = s[2:]
+    if not code.startswith("00"):
+        return False
+    if code.startswith(("300", "301", "688", "689", "8", "4")):
+        return False
+    return True

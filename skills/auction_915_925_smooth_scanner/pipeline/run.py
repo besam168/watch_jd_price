@@ -4,7 +4,7 @@ from core.filters import apply_filters
 from core.metrics import calc_metrics
 from core.scoring import calc_smooth_score
 from datasource import tencent, eastmoney, sina
-from datasource.helpers import normalize_symbol
+from datasource.helpers import normalize_symbol, is_sz_mainboard_target
 from datasource.normalize import normalize_payload
 from output.writer import write_outputs
 from config import ScanConfig
@@ -15,12 +15,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 def load_universe(cfg: ScanConfig) -> list[str]:
     if cfg.universe_mode == "custom" and cfg.custom_symbols:
         return [normalize_symbol(x) for x in cfg.custom_symbols]
-    # 当前先给骨架：默认只返回空，等真实股票池接入
+
+    # 当前阶段先把“深市00主板池”规则钉死在这里；
+    # 真正的批量股票池抓取后续接入东财/akshare现货列表并叠加上市天数过滤。
     return []
 
 
 def fetch_with_failover(symbol: str, date_text: str, enabled: bool = True):
-    chain = [tencent.fetch, eastmoney.fetch, sina.fetch]
+    # 当前已确认 akshare/东方财富 pre-minute 路径可返回 09:15~09:25 的分钟序列，先放主位。
+    chain = [eastmoney.fetch, tencent.fetch, sina.fetch]
     last = None
     for fn in chain:
         payload = fn(symbol, date_text)
