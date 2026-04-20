@@ -10,6 +10,7 @@ OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UNIVERSE_PATH = OUTPUT_DIR / "sz_mainboard_00_universe.json"
 UNIVERSE_STATS_PATH = OUTPUT_DIR / "sz_mainboard_00_universe_stats.json"
+LISTING_CACHE_PATH = OUTPUT_DIR / "listing_days_cache.json"
 
 
 def code_ok(code: str) -> bool:
@@ -69,26 +70,39 @@ def fetch_base_codes() -> list[dict]:
     return rows
 
 
+def load_listing_cache() -> dict:
+    if LISTING_CACHE_PATH.exists():
+        try:
+            return json.loads(LISTING_CACHE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def save_listing_cache(cache: dict) -> None:
+    LISTING_CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def maybe_fill_listing_days(code: str, cache: dict) -> int | None:
+    if code in cache:
+        try:
+            return int(cache[code])
+        except Exception:
+            return None
+    return None
+
+
 def fetch_live_universe_rows(limit: int | None = None) -> list[dict]:
     base_rows = fetch_base_codes()
+    cache = load_listing_cache()
     rows = []
     count = 0
     for item in base_rows:
         code = str(item["code"]).zfill(6)
         name = decode_mojibake(str(item["name"]))
-        days_since_list = None
+        days_since_list = maybe_fill_listing_days(code, cache)
         float_mkt_cap = None
         security_type = "stock"
-        try:
-            info_df = ak.stock_individual_info_em(symbol=code)
-            info = parse_individual_info(info_df)
-            listing_date = str(info.get("上市时间") or "").strip()
-            if listing_date and listing_date.isdigit() and len(listing_date) == 8:
-                dt = datetime.strptime(listing_date, "%Y%m%d")
-                days_since_list = (datetime.now() - dt).days
-            float_mkt_cap = info.get("流通市值")
-        except Exception:
-            pass
         rows.append({
             "code": code,
             "name": name,
@@ -99,6 +113,7 @@ def fetch_live_universe_rows(limit: int | None = None) -> list[dict]:
         count += 1
         if limit and count >= limit:
             break
+    save_listing_cache(cache)
     return rows
 
 
@@ -111,8 +126,11 @@ def classify_row(row: dict) -> tuple[bool, list[str]]:
 
     if not code_ok(code):
         reasons.append("not_sz_00_mainboard")
-    if name.startswith(("N", "C")) or "退" in name:
+    upper_name = name.upper()
+    if upper_name.startswith(("N", "C")) or "退" in name:
         reasons.append("new_or_delisting_name_flag")
+    if "ST" in upper_name:
+        reasons.append("st_flag")
     if isinstance(days_since_list, int) and days_since_list < 60:
         reasons.append("listed_lt_60d")
     if security_type not in {"stock", "a_share", "common_stock", "unknown"}:
