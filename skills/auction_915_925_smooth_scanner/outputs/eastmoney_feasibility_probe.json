@@ -1,0 +1,80 @@
+{
+  "sample_size": 10,
+  "success_count": 0,
+  "failure_count": 10,
+  "success_rate": 0.0,
+  "total_seconds": 18.98,
+  "avg_seconds_per_symbol": 1.9,
+  "rows": [
+    {
+      "symbol": "sz000001",
+      "ok": false,
+      "elapsed_seconds": 2.01,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.000001 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz000002",
+      "ok": false,
+      "elapsed_seconds": 1.92,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.000002 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz000333",
+      "ok": false,
+      "elapsed_seconds": 1.81,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.000333 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz000651",
+      "ok": false,
+      "elapsed_seconds": 1.82,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.000651 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz000858",
+      "ok": false,
+      "elapsed_seconds": 1.82,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.000858 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz002001",
+      "ok": false,
+      "elapsed_seconds": 1.84,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.002001 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz002230",
+      "ok": false,
+      "elapsed_seconds": 1.81,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.002230 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz002371",
+      "ok": false,
+      "elapsed_seconds": 1.85,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.002371 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz002475",
+      "ok": false,
+      "elapsed_seconds": 1.89,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.002475 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    },
+    {
+      "symbol": "sz002594",
+      "ok": false,
+      "elapsed_seconds": 2.19,
+      "error": "eastmoney_pre_min_failed: HTTPSConnectionPool(host='push2.eastmoney.com', port=443): Max retries exceeded with url: /api/qt/stock/trends2/get?fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6%2Cf7%2Cf8%2Cf9%2Cf10%2Cf11%2Cf12%2Cf13&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58&ndays=1&iscr=1&iscca=0&secid=0.002594 (Caused by ProxyError('Unable to connect to proxy', RemoteDisconnected('Remote end closed connection without response')))",
+      "tick_count": 0
+    }
+  ]
+}
