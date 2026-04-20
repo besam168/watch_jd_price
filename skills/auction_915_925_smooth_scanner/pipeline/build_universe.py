@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +9,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / "outputs"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UNIVERSE_PATH = OUTPUT_DIR / "sz_mainboard_00_universe.json"
+UNIVERSE_STATS_PATH = OUTPUT_DIR / "sz_mainboard_00_universe_stats.json"
 
 
 def code_ok(code: str) -> bool:
@@ -107,7 +109,7 @@ def classify_row(row: dict) -> tuple[bool, list[str]]:
     return (len(reasons) == 0, reasons)
 
 
-def build_universe(rows: list[dict]) -> dict:
+def build_universe(rows: list[dict], stats: dict | None = None) -> dict:
     selected = []
     excluded = []
     for row in rows:
@@ -124,12 +126,26 @@ def build_universe(rows: list[dict]) -> dict:
         "excluded_count": len(excluded),
         "selected": selected,
         "excluded": excluded,
+        "stats": stats or {},
     }
     UNIVERSE_PATH.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
 
 
 if __name__ == "__main__":
-    rows = fetch_live_universe_rows(limit=30)
-    result = build_universe(rows)
-    print(json.dumps({"selected_count": result["selected_count"], "excluded_count": result["excluded_count"]}, ensure_ascii=False))
+    started = time.time()
+    rows = fetch_live_universe_rows(limit=None)
+    elapsed_fetch = time.time() - started
+    stats = {
+        "fetched_rows": len(rows),
+        "fetch_seconds": round(elapsed_fetch, 2),
+        "fetch_minutes": round(elapsed_fetch / 60.0, 2),
+    }
+    result = build_universe(rows, stats=stats)
+    UNIVERSE_STATS_PATH.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({
+        "selected_count": result["selected_count"],
+        "excluded_count": result["excluded_count"],
+        "fetch_seconds": stats["fetch_seconds"],
+        "fetched_rows": stats["fetched_rows"],
+    }, ensure_ascii=False))
