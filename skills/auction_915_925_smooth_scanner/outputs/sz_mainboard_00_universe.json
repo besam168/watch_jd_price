@@ -1,42 +1,112 @@
 {
-  "generated_at": "2026-04-20 08:15:49",
-  "selected_count": 2,
-  "excluded_count": 2,
+  "generated_at": "2026-04-20 08:20:55",
+  "selected_count": 13,
+  "excluded_count": 0,
   "selected": [
+    {
+      "code": "000002",
+      "name": "A",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
     {
       "code": "000001",
       "name": "平安银行",
-      "days_since_list": 5000,
+      "days_since_list": null,
       "security_type": "stock",
+      "float_mkt_cap": null,
       "reasons": []
     },
     {
-      "code": "002001",
-      "name": "新和成",
-      "days_since_list": 5000,
+      "code": "002594",
+      "name": "比亚迪",
+      "days_since_list": null,
       "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "000858",
+      "name": "五粮液",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "000651",
+      "name": "格力电器",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "000333",
+      "name": "美的集团",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002475",
+      "name": "立讯精密",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "000977",
+      "name": "浪潮信息",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002230",
+      "name": "科大讯飞",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002241",
+      "name": "歌尔股份",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002714",
+      "name": "牧原股份",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002371",
+      "name": "北方华创",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
+      "reasons": []
+    },
+    {
+      "code": "002463",
+      "name": "沪电股份",
+      "days_since_list": null,
+      "security_type": "stock",
+      "float_mkt_cap": null,
       "reasons": []
     }
   ],
-  "excluded": [
-    {
-      "code": "300001",
-      "name": "特锐德",
-      "days_since_list": 5000,
-      "security_type": "stock",
-      "reasons": [
-        "not_sz_00_mainboard"
-      ]
-    },
-    {
-      "code": "001234",
-      "name": "N测试股",
-      "days_since_list": 10,
-      "security_type": "stock",
-      "reasons": [
-        "new_or_delisting_name_flag",
-        "listed_lt_60d"
-      ]
-    }
-  ]
+  "excluded": []
 }
