@@ -7,6 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 BASE_DIR = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = BASE_DIR / 'output'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -151,8 +157,8 @@ def main():
             'mode': mode,
             'command': cmd,
             'returncode': result['returncode'],
-            'stderr': result['stderr'][-4000:],
-            'stdout': result['stdout'][-2000:],
+            'stderr': result['stderr'][-1200:].encode('ascii', errors='replace').decode('ascii'),
+            'stdout': result['stdout'][-800:].encode('ascii', errors='replace').decode('ascii'),
             'output_file': str(output_file),
             'content_length': len(content),
         }

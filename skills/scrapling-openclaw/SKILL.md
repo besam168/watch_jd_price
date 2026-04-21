@@ -35,6 +35,7 @@ python {baseDir}/scripts/run_scrapling.py --url https://example.com --mode get -
 python {baseDir}/scripts/run_scrapling.py --url https://example.com --mode fetch --format md --wait-ms 3000 --network-idle
 python {baseDir}/scripts/run_scrapling.py --url https://example.com --mode stealthy --format md --ai-targeted
 python {baseDir}/scripts/run_scrapling.py --url https://news.ycombinator.com --mode auto --format html
+python {baseDir}/scripts/reuters_via_yahoo.py --limit 12
 ```
 
 ## 主力抓新闻建议
@@ -43,6 +44,16 @@ python {baseDir}/scripts/run_scrapling.py --url https://news.ycombinator.com --m
 - **正文是 JS 渲染**：`--mode fetch --format md --wait-ms 3000 --network-idle`
 - **普通抓取被拦**：`--mode stealthy --format md --wait-ms 3000`
 - **只抓正文局部**：补 `--css-selector "article, main, .article, .post-content"`
+- **Reuters 特殊处理**：优先用 `python {baseDir}/scripts/reuters_via_yahoo.py --limit 12`
+
+## Reuters 旁路说明
+Reuters 本站当前在这台机器上会频繁触发 DataDome / 401 / XML connect 失败，因此本 skill 现在把 Reuters 作为**单独 fallback** 处理：
+
+- 抓取 `Yahoo News` 动态页
+- 从页面中筛出带 `Reuters` 来源信号的新闻块
+- 返回 Reuters 相关新闻标题 + Yahoo 对应文章链接
+
+当前这条 fallback 已实测可返回多条 Reuters 头条，但数量取决于 Yahoo 当下首页里实际聚合到多少条 Reuters 内容，不保证每次都满 12 条。
 
 ## 输出规则
 - 默认输出到：`{baseDir}/output/`
