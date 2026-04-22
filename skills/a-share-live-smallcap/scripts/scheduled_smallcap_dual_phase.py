@@ -28,9 +28,9 @@ os.makedirs(REPORT_DIR, exist_ok=True)
 CONFIGS = {
     '0935': {
         'sample_label': '0935',
-        'min_change_pct': 0.8,
+        'min_change_pct': 0.5,
         'max_change_pct': 7,
-        'min_amount_yi': 0.02,
+        'min_amount_yi': 0.005,
         'rounds': 3,
         'interval_seconds': 8,
         'pick_count': 24,
