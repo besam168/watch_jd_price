@@ -1,12 +1,11 @@
 {
   "job": "comprehensive-morning",
-  "mode": "collect-only",
-  "startedAt": "2026-04-18T15:22:42.522000",
-  "runId": "20260418-152242-522000",
+  "mode": "collect-and-send",
+  "startedAt": "2026-04-06T21:00:40.914695",
   "policy": {
     "timeWindowHours": {
-      "min": 24,
-      "max": 48
+      "min": 0,
+      "max": 24
     },
     "mustCheck": [
       "gaza",
@@ -24,9 +23,9 @@
       "ddg-discovery",
       "desktop-verification"
     ],
-    "whitelistCount": 27,
+    "whitelistCount": 26,
     "sendOnPartial": "send_with_warning",
-    "desktopFallbackEnabled": true
+    "desktopFallbackEnabled": false
   },
   "plan": {
     "rc": 0,
@@ -35,75 +34,37 @@
   },
   "collect": {
     "rc": 0,
-    "stdout": "COLLECT_OK\nRUN_ID: 20260418-152242-522000\nRUN_LOG: C:\\Users\\besam\\.openclaw\\workspace\\logs\\collect_comprehensive_report-20260418-152242-522000.log\n全球综合情报报告 - 2026-04-18\nC:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt\nFAILED_GROUPS: full_whitelist_probe_partial_fail, headline_evidence_gate\n",
+    "stdout": "COLLECT_OK\nȫ���ۺ��鱨���� - 2026-04-06\nC:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt\nFAILED_GROUPS: none\n",
     "stderr": ""
   },
-  "send": null,
+  "send": {
+    "rc": 0,
+    "stdout": "SEND_OK\nȫ���ۺ��鱨���� - 2026-04-06\n",
+    "stderr": "",
+    "sendPolicy": "send_with_warning"
+  },
   "evaluation": {
     "rc": 0,
     "stdout": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\scheduled-report-mailer\\state\\report-evaluation.json\n",
     "stderr": ""
   },
   "summary": {
-    "status": "fail",
+    "status": "partial",
     "missing": [
-      "gaza",
-      "us-china-trade",
-      "content-coverage",
-      "headline-evidence"
+      "gaza"
     ],
-    "okCount": 4,
+    "okCount": 5,
     "total": 6,
-    "summaryText": "状态：未通过 | 锚点命中：4/6 | 缺口：gaza, us-china-trade, content-coverage, headline-evidence | 建议：先补足可信国际时事内容，再谈发送",
-    "anchorMissing": [
-      "gaza",
-      "us-china-trade"
-    ],
-    "contentCoverageOk": false
+    "summaryText": "状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补"
   },
-  "desktopFallback": {
-    "rc": 0,
-    "stdout": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\scheduled-report-mailer\\state\\desktop-fallback-status.json\n",
-    "stderr": "",
-    "decision": {
-      "enabled": true,
-      "mode": "conditional_trigger",
-      "shouldRun": true,
-      "reasons": [
-        "quality_gate_not_pass",
-        "evidence_count_below_1"
-      ],
-      "headlineCount": 3,
-      "headlineEvidenceCount": 0,
-      "hasPlaceholderSearchDiscovery": false
-    }
-  },
-  "status": "fail",
+  "desktopFallback": null,
+  "status": "partial",
   "failedStage": null,
-  "lastStage": "done",
-  "lastStageAt": "2026-04-18T15:25:00.205470",
   "outputs": {
     "latest_subject": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_subject.txt",
     "latest_report_txt": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt",
     "latest_report_html": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.html",
     "latest_collect_status": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_collect_status.json"
   },
-  "desktopFallbackDecision": {
-    "enabled": true,
-    "mode": "conditional_trigger",
-    "shouldRun": true,
-    "reasons": [
-      "quality_gate_not_pass",
-      "evidence_count_below_1"
-    ],
-    "headlineCount": 3,
-    "headlineEvidenceCount": 0,
-    "hasPlaceholderSearchDiscovery": false
-  },
-  "evaluationAfterFallback": {
-    "rc": 0,
-    "stdout": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\scheduled-report-mailer\\state\\report-evaluation.json\n",
-    "stderr": ""
-  },
-  "finishedAt": "2026-04-18T15:25:00.205470"
+  "finishedAt": "2026-04-06T21:01:25.196579"
 }

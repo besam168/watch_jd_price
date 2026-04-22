@@ -9,10 +9,7 @@ param(
     [switch]$VirtualScreen,
     [int]$Retries = 1,
     [int]$RetryDelayMs = 700,
-    [int]$VerifyDelayMs = 900,
-    [int]$FocusRetries = 2,
-    [int]$FocusVerifyDelayMs = 250,
-    [switch]$RequireFocusSuccess
+    [int]$VerifyDelayMs = 900
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,113 +43,87 @@ $after = Join-Path $artifactDir ("locked-click-after-" + $stamp + ".png")
 
 $focusResult = $null
 $focusVerification = $null
-$lockApplied = $false
-try {
-    if (-not $UseForeground -and -not [string]::IsNullOrWhiteSpace($TargetWindow)) {
-        try {
-            $focusResult = Run-Py -ScriptArgs @("focus-window-verified", $TargetWindow, "0", "$FocusRetries", "$FocusVerifyDelayMs", "false")
-        } catch {
-            $focusResult = $_.Exception.Message
-        }
-
-        try {
-            $focusVerification = $focusResult | ConvertFrom-Json
-        } catch {
-            $focusVerification = $focusResult
-        }
-
-        if ($RequireFocusSuccess -and -not ($focusVerification -is [psobject] -and $focusVerification.ok)) {
-            [pscustomobject]@{
-                ok = $false
-                error = "focus required but failed"
-                stopped = $true
-                stoppedAt = "focus"
-                focusRequired = $true
-                inputAttempted = $false
-                focusResult = $focusVerification
-                lockState = $null
-            } | ConvertTo-Json -Depth 8
-            exit 1
-        }
-
+if (-not $UseForeground -and -not [string]::IsNullOrWhiteSpace($TargetWindow)) {
+    try {
+        $focusResult = Run-Py -ScriptArgs @("focus-window-verified", $TargetWindow, "0", "2", "250")
+        $focusVerification = $focusResult | ConvertFrom-Json
         Start-Sleep -Milliseconds 400
-    }
-
-    $lock = Run-Py -ScriptArgs @("set-window-lock", "", "0", "true") | ConvertFrom-Json
-    $lockApplied = $true
-    $foregroundBefore = Run-Py -ScriptArgs @("get-foreground-window-info") | ConvertFrom-Json
-    & powershell -ExecutionPolicy Bypass -File $capture $before | Out-Null
-
-    $baseOcrArgs = @($before, $Lang, "--query", $Query, "--query-mode", "contains", "--group-by", "auto", "--top-n", "3", "--preprocess", $Preprocess, "--debug-overlay", $dryOverlay)
-    $dry = Run-OcrJson -OcrArgs $baseOcrArgs
-    $match = $null
-    if ($dry.matches -and $dry.matches.Count -gt 0) {
-        $match = $dry.matches[0]
-    } elseif ($dry.items -and $dry.items.Count -gt 0) {
-        $match = $dry.items[0]
-    }
-    if (-not $match) {
-        throw "Dry-run OCR did not find query: $Query"
-    }
-
-    $x = [int][math]::Round($match.centerX)
-    $y = [int][math]::Round($match.centerY)
-    Run-Py -ScriptArgs @("mouse-move", "$x", "$y") | Out-Null
-    $clickResult = Run-Py -ScriptArgs @("mouse-click", "left")
-    Start-Sleep -Milliseconds $VerifyDelayMs
-    & powershell -ExecutionPolicy Bypass -File $capture $after | Out-Null
-
-    $verifyArgs = @($after, $Lang, "--group-by", "auto", "--top-n", "6", "--preprocess", $Preprocess, "--debug-overlay", $realOverlay)
-    $verify = Run-OcrJson -OcrArgs $verifyArgs
-    $verifyTexts = @()
-    if ($verify.items) {
-        $verifyTexts = $verify.items | ForEach-Object { [string]$_.normalizedText }
-    }
-    $present = $null
-    $absent = $null
-    if (-not [string]::IsNullOrWhiteSpace($VerifyQuery)) {
-        $needle = $VerifyQuery.ToLowerInvariant()
-        $present = ($verifyTexts | Where-Object { $_ -like "*${needle}*" }).Count -gt 0
-    }
-    if (-not [string]::IsNullOrWhiteSpace($VerifyAbsentQuery)) {
-        $needleAbsent = $VerifyAbsentQuery.ToLowerInvariant()
-        $absent = (($verifyTexts | Where-Object { $_ -like "*${needleAbsent}*" }).Count -eq 0)
-    }
-    $foregroundAfter = Run-Py -ScriptArgs @("get-foreground-window-info") | ConvertFrom-Json
-    $recent = Run-Py -ScriptArgs @("get-recent-actions", "8") | ConvertFrom-Json
-
-    $result = [pscustomobject]@{
-        ok = $true
-        query = $Query
-        focusResult = $focusResult
-        focusVerification = $focusVerification
-        lock = $lock
-        foregroundBefore = $foregroundBefore
-        before = $before
-        dryOverlay = $dryOverlay
-        dryMatch = $match
-        click = [pscustomobject]@{
-            x = $x
-            y = $y
-            result = $clickResult
-        }
-        after = $after
-        realOverlay = $realOverlay
-        verify = [pscustomobject]@{
-            verifyQuery = $(if ($VerifyQuery) { $VerifyQuery } else { $null })
-            verifyAbsentQuery = $(if ($VerifyAbsentQuery) { $VerifyAbsentQuery } else { $null })
-            present = $present
-            absent = $absent
-            count = $(if ($verify.count) { $verify.count } else { 0 })
-            engine = $verify.engine
-        }
-        foregroundAfter = $foregroundAfter
-        recentActions = $recent
-    }
-
-    $result | ConvertTo-Json -Depth 8
-} finally {
-    if ($lockApplied) {
-        Run-Py -ScriptArgs @("clear-window-lock") | Out-Null
+    } catch {
+        $focusResult = "FOCUS_FAILED: $($_.Exception.Message)"
     }
 }
+
+$lock = Run-Py -ScriptArgs @("set-window-lock", "", "0", "true") | ConvertFrom-Json
+$foregroundBefore = Run-Py -ScriptArgs @("get-foreground-window-info") | ConvertFrom-Json
+& powershell -ExecutionPolicy Bypass -File $capture $before | Out-Null
+
+$baseOcrArgs = @($before, $Lang, "--query", $Query, "--query-mode", "contains", "--group-by", "auto", "--top-n", "3", "--preprocess", $Preprocess, "--debug-overlay", $dryOverlay)
+$dry = Run-OcrJson -OcrArgs $baseOcrArgs
+$match = $null
+if ($dry.matches -and $dry.matches.Count -gt 0) {
+    $match = $dry.matches[0]
+} elseif ($dry.items -and $dry.items.Count -gt 0) {
+    $match = $dry.items[0]
+}
+if (-not $match) {
+    Run-Py -ScriptArgs @("clear-window-lock") | Out-Null
+    throw "Dry-run OCR did not find query: $Query"
+}
+
+$x = [int][math]::Round($match.centerX)
+$y = [int][math]::Round($match.centerY)
+Run-Py -ScriptArgs @("mouse-move", "$x", "$y") | Out-Null
+$clickResult = Run-Py -ScriptArgs @("mouse-click", "left")
+Start-Sleep -Milliseconds $VerifyDelayMs
+& powershell -ExecutionPolicy Bypass -File $capture $after | Out-Null
+
+$verifyArgs = @($after, $Lang, "--group-by", "auto", "--top-n", "6", "--preprocess", $Preprocess, "--debug-overlay", $realOverlay)
+$verify = Run-OcrJson -OcrArgs $verifyArgs
+$verifyTexts = @()
+if ($verify.items) {
+    $verifyTexts = $verify.items | ForEach-Object { [string]$_.normalizedText }
+}
+$present = $null
+$absent = $null
+if (-not [string]::IsNullOrWhiteSpace($VerifyQuery)) {
+    $needle = $VerifyQuery.ToLowerInvariant()
+    $present = ($verifyTexts | Where-Object { $_ -like "*${needle}*" }).Count -gt 0
+}
+if (-not [string]::IsNullOrWhiteSpace($VerifyAbsentQuery)) {
+    $needleAbsent = $VerifyAbsentQuery.ToLowerInvariant()
+    $absent = (($verifyTexts | Where-Object { $_ -like "*${needleAbsent}*" }).Count -eq 0)
+}
+$foregroundAfter = Run-Py -ScriptArgs @("get-foreground-window-info") | ConvertFrom-Json
+$recent = Run-Py -ScriptArgs @("get-recent-actions", "8") | ConvertFrom-Json
+Run-Py -ScriptArgs @("clear-window-lock") | Out-Null
+
+$result = [pscustomobject]@{
+    ok = $true
+    query = $Query
+    focusResult = $focusResult
+    focusVerification = $focusVerification
+    lock = $lock
+    foregroundBefore = $foregroundBefore
+    before = $before
+    dryOverlay = $dryOverlay
+    dryMatch = $match
+    click = [pscustomobject]@{
+        x = $x
+        y = $y
+        result = $clickResult
+    }
+    after = $after
+    realOverlay = $realOverlay
+    verify = [pscustomobject]@{
+        verifyQuery = $(if ($VerifyQuery) { $VerifyQuery } else { $null })
+        verifyAbsentQuery = $(if ($VerifyAbsentQuery) { $VerifyAbsentQuery } else { $null })
+        present = $present
+        absent = $absent
+        count = $(if ($verify.count) { $verify.count } else { 0 })
+        engine = $verify.engine
+    }
+    foregroundAfter = $foregroundAfter
+    recentActions = $recent
+}
+
+$result | ConvertTo-Json -Depth 8

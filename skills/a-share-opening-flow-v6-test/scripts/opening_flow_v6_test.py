@@ -104,16 +104,6 @@ def second_round_filter(candidates):
     for item in candidates:
         code = item['code']
         name = item['name']
-        # 新增过滤规则：排除科创板、排除N字头新股、排除创业板
-        if code.startswith('688'):
-            failed.append({**item, 'error': '科创板股票自动排除', 'score': -1})
-            continue
-        if code.startswith('300'):
-            failed.append({**item, 'error': '创业板股票自动排除', 'score': -1})
-            continue
-        if name.startswith('N'):
-            failed.append({**item, 'error': 'N字头新股自动排除', 'score': -1})
-            continue
         try:
             df = fetch_daily_df(code)
             last = df.tail(4).copy()

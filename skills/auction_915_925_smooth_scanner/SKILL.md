@@ -39,41 +39,6 @@ description: 扫描沪深主板中小票在 09:15-09:25 集合竞价阶段，寻
 python {baseDir}/pipeline/run.py --date auto_today
 ```
 
-### 9:15 轻量自动触发版
-用于“9:15 左右启动一次 -> 执行一轮既定扫描 -> 出结果就结束”：
-
-```powershell
-python {baseDir}/scripts/run_auto_0915.py --limit 1000
-```
-
-Windows bat 启动器：
-```powershell
-{baseDir}/scripts/run_auto_0915.bat
-```
-
-Windows 任务计划安装脚本：
-```powershell
-powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/install_auto_0915_task.ps1
-```
-
-默认安装的任务名：`沈万三_竞价平滑扫描_0915`
-
-常用参数：
-- `--limit 500`：快速试跑
-- `--limit 1000`：中档验证
-- `--limit 0`：全池扫描
-- `--full`：全池扫描（等价于不截断股票池）
-- `--earliest 09:15`：最早触发时间
-- `--dry-run`：只检查今天此刻是否会触发
-- `--force`：忽略时间与“今日已跑”限制，立即跑一次
-
-行为说明：
-- 默认每天只会真正执行一次，状态写入 `outputs/auto_0915_state.json`
-- 运行日志写入 `outputs/auto_0915.log`
-- 节假日名单读取 `config/cn_market_holidays.json`
-- 周六、周日不运行；若当天命中节假日名单，也会直接跳过
-- 到点后只触发一轮扫描，不做多阶段分时调度
-
 指定日期：
 ```powershell
 python {baseDir}/pipeline/run.py --date 2026-04-20

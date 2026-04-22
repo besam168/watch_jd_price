@@ -2,7 +2,6 @@
 import argparse
 import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -172,10 +171,7 @@ def sanitize_payload(payload: dict) -> dict:
         '����ҽҩ': '消费医药',
     }
     source_map = {
-        '��Ѷ/���˰��fallback': '新浪/腾讯候选池fallback',
-        '新浪/腾讯候选池fallback': '新浪/腾讯候选池fallback',
-        '新浪/腾讯板块fallback': '新浪/腾讯板块fallback',
-        '东方财富': '东方财富',
+        '��Ѷ/���˰��fallback': '腾讯/新浪候选池fallback',
     }
     leading_stock_map = {
         '�Ͻ��ҵ': '紫金矿业',
@@ -227,114 +223,6 @@ def sanitize_payload(payload: dict) -> dict:
     return clean
 
 
-def build_sector_strength_text(sectors: list[dict]) -> str:
-    lines = ['板块强弱结果']
-    if not sectors:
-        lines.append('今日暂无有效板块结果')
-        return '\n'.join(lines)
-    for idx, sec in enumerate(sectors[:10], 1):
-        sign = '+' if float(sec.get('change_pct', 0) or 0) >= 0 else ''
-        lines.append(
-            f"{idx}. {sec.get('name', '')} {sign}{sec.get('change_pct', 0)}%｜龙头 {sec.get('leading_stock', '-') or '-'}｜来源 {sec.get('source', '-') or '-'}"
-        )
-    return '\n'.join(lines)
-
-
-def build_leaderboard_text(core: list[dict], follow: list[dict], partial: list[dict]) -> str:
-    lines = ['龙头股结果', '']
-    lines.append('核心龙头：')
-    if core:
-        for idx, x in enumerate(core, 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']}｜{sign}{x['change_pct']}%｜成交额{x['amount_yi']}亿")
-    else:
-        lines.append('暂无')
-    lines.append('')
-    lines.append('跟随龙头：')
-    if follow:
-        for idx, x in enumerate(follow, 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']}｜{sign}{x['change_pct']}%｜成交额{x['amount_yi']}亿")
-    else:
-        lines.append('暂无')
-    lines.append('')
-    lines.append('次级关注：')
-    if partial:
-        for idx, x in enumerate(partial[:10], 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']}｜{sign}{x['change_pct']}%｜成交额{x['amount_yi']}亿")
-    else:
-        lines.append('暂无')
-    return '\n'.join(lines)
-
-
-def build_brief_text(payload: dict, sectors: list[dict], core: list[dict], follow: list[dict], partial: list[dict]) -> str:
-    lines = [
-        f"{PLUGIN_NAME} 简报",
-        f"时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        f"竞价窗口：{payload.get('auction_window', '')}",
-        f"开盘窗口：{payload.get('open_window', '')}",
-        '',
-        '最强板块：',
-    ]
-    if sectors:
-        for idx, sec in enumerate(sectors[:3], 1):
-            sign = '+' if float(sec.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {sec.get('name', '')} {sign}{sec.get('change_pct', 0)}%")
-    else:
-        lines.append('暂无')
-    lines.append('')
-    lines.append('核心龙头：')
-    if core:
-        for idx, x in enumerate(core[:5], 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']} {sign}{x['change_pct']}%")
-    else:
-        lines.append('暂无')
-    lines.append('')
-    lines.append('跟随龙头：')
-    if follow:
-        for idx, x in enumerate(follow[:5], 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']} {sign}{x['change_pct']}%")
-    else:
-        lines.append('暂无')
-    lines.append('')
-    lines.append('次级关注：')
-    if partial:
-        for idx, x in enumerate(partial[:5], 1):
-            sign = '+' if float(x.get('change_pct', 0) or 0) >= 0 else ''
-            lines.append(f"{idx}. {x['name']} {x['code']} {sign}{x['change_pct']}%")
-    else:
-        lines.append('暂无')
-    return '\n'.join(lines)
-
-
-def write_output_files(payload: dict, sectors: list[dict], core: list[dict], follow: list[dict], partial: list[dict]) -> dict:
-    out_dir = WORKSPACE / 'skills' / 'a-share-opening-flow' / 'output'
-    out_dir.mkdir(parents=True, exist_ok=True)
-    brief_path = out_dir / 'latest_brief.txt'
-    sector_path = out_dir / 'latest_sector_strength.txt'
-    leader_path = out_dir / 'latest_leaders.txt'
-    json_path = out_dir / 'latest_output.json'
-
-    brief_text = build_brief_text(payload, sectors, core, follow, partial)
-    sector_text = build_sector_strength_text(sectors)
-    leader_text = build_leaderboard_text(core, follow, partial)
-
-    brief_path.write_text(brief_text, encoding='utf-8')
-    sector_path.write_text(sector_text, encoding='utf-8')
-    leader_path.write_text(leader_text, encoding='utf-8')
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
-
-    return {
-        'brief': str(brief_path),
-        'sector_strength': str(sector_path),
-        'leaders': str(leader_path),
-        'json': str(json_path),
-    }
-
-
 def main():
     parser = argparse.ArgumentParser(description=PLUGIN_NAME)
     parser.add_argument('--auction-window', default='09:20-09:25', help='竞价窗口')
@@ -360,14 +248,13 @@ def main():
         'resonance_core': core,
         'resonance_follow': follow,
         'data_sources': {
-            'eastmoney_enabled': True,
-            'realtime_candidates': '东方财富→新浪→腾讯',
+            'eastmoney_enabled': False,
+            'realtime_candidates': '新浪/腾讯fallback',
             'daily_filter': '腾讯历史K线(akshare)',
-            'sector_source': '东方财富→新浪/腾讯分组fallback',
+            'sector_source': '新浪/腾讯分组fallback',
         },
     }
     payload = sanitize_payload(payload)
-    output_files = write_output_files(payload, sectors, core, follow, partial)
 
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -377,9 +264,6 @@ def main():
     print(f'竞价窗口: {args.auction_window}')
     print(f'开盘窗口: {args.open_window}')
     print(f'交易日: {args.date}')
-    print(f"简报文件: {output_files['brief']}")
-    print(f"板块强弱结果: {output_files['sector_strength']}")
-    print(f"龙头股结果: {output_files['leaders']}")
     print('最强板块 TOP3：')
     for sec in sectors[:3]:
         print(f"- {sec.get('name', '')}")

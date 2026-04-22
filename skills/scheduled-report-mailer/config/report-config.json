@@ -19,8 +19,8 @@
   },
   "collection_policy": {
     "time_window_hours": {
-      "min": 24,
-      "max": 48
+      "min": 0,
+      "max": 24
     },
     "must_check": [
       "gaza",
@@ -32,60 +32,41 @@
     ],
     "source_groups": {
       "macro_news_priority": [
-        "AP News",
-        "CNBC World",
-        "Yahoo Finance",
         "Reuters",
-        "BBC News",
-        "Al Jazeera",
-        "The Guardian",
-        "DW English",
-        "France24",
-        "USA Today",
-        "NPR",
-        "Bloomberg",
-        "WSJ"
+        "AP News",
+        "BBC",
+        "Al Jazeera"
       ],
       "market_priority": [
-        "Yahoo Finance",
-        "TWSE",
-        "CNBC World",
         "NYSE",
+        "TWSE",
         "SSE",
         "JPX",
-        "KRX",
-        "Naver Finance",
-        "Investing.com 日本站",
-        "东方财富"
+        "KRX"
       ],
       "finance_priority": [
+        "CNBC",
         "Yahoo Finance",
-        "CNBC World",
-        "Reuters",
-        "Investing.com",
-        "Bloomberg",
-        "WSJ"
+        "Investing.com"
       ]
     },
     "whitelist_urls": [
-      "https://apnews.com/",
-      "https://www.cnbc.com/world/?region=world",
-      "https://finance.yahoo.com/",
-      "https://www.reuters.com/",
       "https://www.bbc.com/news",
-      "https://www.aljazeera.com/",
       "https://www.theguardian.com/international",
-      "https://www.dw.com/en/top-stories/s-9097",
-      "https://www.france24.com/en/",
-      "https://www.usatoday.com/",
+      "https://www.reuters.com/",
+      "https://apnews.com/",
       "https://www.npr.org/",
+      "https://www.aljazeera.com/",
+      "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
+      "https://www.france24.com/en/",
+      "https://www.cnbc.com/world/?region=world",
+      "https://www.usatoday.com/",
       "https://www.nyse.com/index",
-      "https://www.sse.com.cn/",
-      "https://www.jpx.co.jp/english/",
-      "https://global.krx.co.kr/contents/GLB/06/0601/0601000000/GLB0601000000.jsp",
-      "https://finance.naver.com/",
       "https://jp.investing.com",
-      "https://www.eastmoney.com/",
+      "https://finance.naver.com/",
+      "https://www.twse.com.tw/zh/index.html",
+      "https://www.sse.com.cn/",
+      "https://finance.yahoo.com/",
       "https://www.theverge.com/",
       "https://techcrunch.com/",
       "https://spectrum.ieee.org/",
@@ -94,7 +75,8 @@
       "https://www.technologyreview.com/",
       "https://venturebeat.com/category/ai",
       "https://singularityhub.com/",
-      "https://www.artificialintelligence-news.com/"
+      "https://www.artificialintelligence-news.com/",
+      "https://www.engadget.com/"
     ],
     "capture_strategies": [
       {
@@ -138,20 +120,9 @@
     "send_on_partial": "send_with_warning"
   },
   "desktop_fallback": {
-    "enabled": true,
-    "mode": "conditional_trigger",
-    "trigger": {
-      "min_headlines": 3,
-      "min_evidence": 1,
-      "block_placeholder_search_discovery": true,
-      "block_empty_summary_marker": true
-    },
-    "default_urls": [
-      "https://www.bbc.com/news",
-      "https://www.reuters.com/",
-      "https://www.aljazeera.com/"
-    ],
-    "note": "When quality signals are weak, trigger desktop verification on mapped whitelist pages."
+    "enabled": false,
+    "mode": "placeholder",
+    "note": "Reserved for whitelist-page desktop fallback when must-check gaps remain."
   },
   "jobs": {
     "comprehensive-morning": {

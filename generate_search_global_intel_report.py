@@ -341,6 +341,7 @@ def main() -> int:
         "ft_en_headlines_latest.json": "FT.com",
     }
     tech_mapping = {
+        "techcrunch": "TechCrunch",
         "arstechnica": "Ars Technica",
         "ieee": "IEEE Spectrum",
         "wired": "Wired",

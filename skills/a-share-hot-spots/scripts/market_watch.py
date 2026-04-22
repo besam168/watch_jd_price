@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import akshare as ak
-ENABLE_EASTMONEY = True
+ENABLE_EASTMONEY = False
 
 
 HEADERS = {
@@ -117,29 +117,10 @@ def fetch_stock(code: str) -> dict:
     parts = m.group(1).split(",")
     if len(parts) < 32 or not parts[0]:
         return {"error": f"未拿到 {code} 行情", "symbol": symbol}
-
-    open_price = safe_float(parts[1])
-    prev_close = safe_float(parts[2])
-    current = safe_float(parts[3])
-    high = safe_float(parts[4])
-    low = safe_float(parts[5])
-
-    # 盘前竞价阶段，新浪经常返回 current=0，但买一/卖一仍有有效委托价。
-    # 若直接拿 0 去算涨跌幅，会错误得到 -100%。这里优先回退到最近有效价。
-    bid1 = safe_float(parts[11]) if len(parts) > 11 else 0.0
-    ask1 = safe_float(parts[21]) if len(parts) > 21 else 0.0
-    fallback_current = current
-    if fallback_current <= 0:
-        for candidate in [bid1, ask1, open_price, prev_close]:
-            if candidate and candidate > 0:
-                fallback_current = candidate
-                break
-    current = fallback_current
-
-    if prev_close <= 0 and open_price > 0:
-        prev_close = open_price
-    change = current - prev_close if current > 0 and prev_close > 0 else 0.0
-    change_pct = (change / prev_close * 100) if prev_close > 0 else 0.0
+    prev_close = float(parts[2] or 0)
+    current = float(parts[3] or 0)
+    change = current - prev_close
+    change_pct = (change / prev_close * 100) if prev_close else 0
     code_name_map = load_code_name_map()
     preferred_name = code_name_map.get(digits) or _decode_possible_garbled(parts[0])
     return {
@@ -149,12 +130,12 @@ def fetch_stock(code: str) -> dict:
         "current": round(current, 2),
         "change": round(change, 2),
         "change_pct": round(change_pct, 2),
-        "open": round(open_price, 2),
-        "high": round(high, 2),
-        "low": round(low, 2),
+        "open": round(float(parts[1] or 0), 2),
+        "high": round(float(parts[4] or 0), 2),
+        "low": round(float(parts[5] or 0), 2),
         "prev_close": round(prev_close, 2),
-        "volume_lot": int(safe_float(parts[8] or 0)),
-        "amount_yi": round(safe_float(parts[9] or 0) / 1e8, 2),
+        "volume_lot": int(float(parts[8] or 0)),
+        "amount_yi": round(float(parts[9] or 0) / 1e8, 2),
         "date": parts[30],
         "time": parts[31],
         "source": "新浪财经",
@@ -319,7 +300,7 @@ def fetch_index() -> list:
 
 
 def fetch_hot_sectors_tx_fallback() -> list:
-    candidates = fetch_hot_stocks_sina_qq_fallback()
+    candidates = fetch_hot_stocks_tx_fallback()
     groups = {
         '算力/AI': ['中芯国际', '寒武纪', '工业富联'],
         '金融科技': ['东方财富', '中国平安', '中信证券'],
@@ -341,43 +322,10 @@ def fetch_hot_sectors_tx_fallback() -> list:
             'leading_stock': leader.get('name', ''),
             'leading_change_pct': leader.get('change_pct', 0),
             'amount_yi': round(sum(x.get('amount_yi', 0) for x in rows), 2),
-            'source': '新浪/腾讯板块fallback',
+            'source': '腾讯/新浪板块fallback',
         })
     out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
     return out[:5]
-
-
-def is_bad_eastmoney_stock_result(items: list) -> bool:
-    if not items:
-        return True
-    valid = [x for x in items if isinstance(x, dict)]
-    if not valid:
-        return True
-    zero_change_count = sum(1 for x in valid if abs(safe_float(x.get('change_pct', 0))) < 0.0001)
-    zero_amount_count = sum(1 for x in valid if safe_float(x.get('amount_yi', 0)) <= 0)
-    suspicious_kcb_count = sum(1 for x in valid if str(x.get('symbol', '')).lower().startswith('sh688'))
-    if zero_change_count >= max(10, int(len(valid) * 0.8)):
-        return True
-    if zero_amount_count >= max(10, int(len(valid) * 0.8)):
-        return True
-    if suspicious_kcb_count >= max(10, int(len(valid) * 0.8)):
-        return True
-    return False
-
-
-def is_bad_eastmoney_sector_result(items: list) -> bool:
-    if not items:
-        return True
-    valid = [x for x in items if isinstance(x, dict)]
-    if not valid:
-        return True
-    zero_change_count = sum(1 for x in valid if abs(safe_float(x.get('change_pct', 0))) < 0.0001)
-    blank_leader_count = sum(1 for x in valid if str(x.get('leading_stock', '')).strip() in {'', '-', '--'})
-    if zero_change_count >= max(3, int(len(valid) * 0.6)):
-        return True
-    if blank_leader_count >= max(3, int(len(valid) * 0.6)):
-        return True
-    return False
 
 
 def fetch_hot_sectors() -> list:
@@ -402,14 +350,14 @@ def fetch_hot_sectors() -> list:
                     "amount_yi": round(safe_float(item.get("f20", 0)) / 1e8, 2),
                     "source": "东方财富",
                 })
-            if out and not is_bad_eastmoney_sector_result(out):
+            if out:
                 return out
         except Exception:
             pass
     return fetch_hot_sectors_tx_fallback()
 
 
-def fetch_hot_stocks_sina_qq_fallback() -> list:
+def fetch_hot_stocks_tx_fallback() -> list:
     mapping = load_name_map()
     names = list(mapping.keys())[:20]
     out = []
@@ -431,7 +379,7 @@ def fetch_hot_stocks_sina_qq_fallback() -> list:
             "change": stock.get("change", 0),
             "volume_lot": stock.get("volume_lot", 0),
             "amount_yi": stock.get("amount_yi", 0),
-            "source": "新浪/腾讯候选池fallback",
+            "source": "腾讯/新浪候选池fallback",
         })
     out.sort(key=lambda x: (x.get("change_pct", 0), x.get("amount_yi", 0)), reverse=True)
     return out[:15]
@@ -463,11 +411,11 @@ def fetch_hot_stocks() -> list:
                     "amount_yi": round(safe_float(item.get("f6", 0)) / 1e8, 2),
                     "source": "东方财富",
                 })
-            if out and not is_bad_eastmoney_stock_result(out):
+            if out:
                 return out
         except Exception:
             pass
-    return fetch_hot_stocks_sina_qq_fallback()
+    return fetch_hot_stocks_tx_fallback()
 
 
 def fetch_industry_sectors() -> list:

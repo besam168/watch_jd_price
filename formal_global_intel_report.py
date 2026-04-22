@@ -26,46 +26,22 @@ NOW = datetime.now(TZ_CN)
 WINDOW_START = NOW - timedelta(hours=24)
 
 FEEDS = [
-    # 国际新闻源
     {"name": "路透世界", "url": "https://feeds.reuters.com/Reuters/worldNews", "section": "宏观新闻", "fallback_kind": "reuters_page"},
-    {"name": "路透中东", "url": "https://feeds.reuters.com/reuters/worldMiddleEastNews", "section": "宏观新闻"},
-    {"name": "路透欧洲", "url": "https://feeds.reuters.com/reuters/worldEuropeNews", "section": "宏观新闻"},
-    {"name": "路透中国", "url": "https://feeds.reuters.com/reuters/China", "section": "宏观新闻"},
-    {"name": "路透市场", "url": "https://feeds.reuters.com/reuters/marketsNews", "section": "财经市场"},
     {"name": "美联社头条", "url": "https://feeds.ap.org/apf-topnews", "section": "宏观新闻", "fallback_kind": "ap"},
-    {"name": "美联社俄乌", "url": "https://feeds.ap.org/apf-russiaukraine", "section": "宏观新闻"},
-    {"name": "美联社中国", "url": "https://feeds.ap.org/apf-asiachina", "section": "宏观新闻"},
     {"name": "CNN World", "url": "http://rss.cnn.com/rss/edition_world.rss", "section": "宏观新闻"},
-    {"name": "CNN Business", "url": "http://rss.cnn.com/rss/money_latest.rss", "section": "财经市场"},
     {"name": "Google News Gaza", "url": "https://news.google.com/rss/search?q=Gaza%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News Ukraine", "url": "https://news.google.com/rss/search?q=Ukraine%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "Google News China Trade", "url": "https://news.google.com/rss/search?q=China%20tariff%20trade%20when%3A1d&hl=en-US&gl=US&ceid=US:en", "section": "宏观新闻"},
     {"name": "BBC国际", "url": "http://feeds.bbci.co.uk/news/world/rss.xml", "section": "宏观新闻"},
-    {"name": "BBC财经", "url": "http://feeds.bbci.co.uk/news/business/rss.xml", "section": "财经市场"},
     {"name": "半岛电视台", "url": "https://www.aljazeera.com/xml/rss/all.xml", "section": "宏观新闻"},
-    {"name": "FT中文网", "url": "https://www.ftchinese.com/rss/news", "section": "财经市场"},
-    {"name": "华尔街日报世界", "url": "https://feeds.a.dj.com/rss/RSSWorldNews.xml", "section": "宏观新闻"},
-    {"name": "华尔街日报市场", "url": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml", "section": "财经市场"},
-    
-    # 财经市场源
     {"name": "CNBC国际", "url": "https://www.cnbc.com/id/100727362/device/rss/rss.html", "section": "财经市场"},
     {"name": "CNBC世界", "url": "https://www.cnbc.com/world/?region=world", "section": "财经市场", "fallback_kind": "cnbc_world"},
-    {"name": "CNBC财经头条", "url": "https://www.cnbc.com/id/10000664/device/rss/rss.html", "section": "财经市场"},
-    {"name": "CNBC科技财经", "url": "https://www.cnbc.com/id/19854910/device/rss/rss.html", "section": "财经市场"},
-    {"name": "雅虎财经头条", "url": "https://finance.yahoo.com/news/rssindex", "section": "财经市场"},
-    {"name": "雅虎财经市场", "url": "https://finance.yahoo.com/topic/stock-market-news/rss", "section": "财经市场"},
-    {"name": "彭博财经", "url": "https://feeds.bloomberg.com/markets/news.rss", "section": "财经市场"},
-    {"name": "日经中文网", "url": "https://cn.nikkei.com/rss/?n=1", "section": "财经市场"},
-    {"name": "联合早报世界", "url": "https://www.zaobao.com/world/rss.xml", "section": "宏观新闻"},
-    {"name": "联合早报财经", "url": "https://www.zaobao.com/finance/rss.xml", "section": "财经市场"},
-    
-    # 科技产业源
+    {"name": "雅虎财经", "url": "https://finance.yahoo.com/news/rssindex", "section": "财经市场"},
     {"name": "TechCrunch", "url": "https://techcrunch.com/feed/", "section": "科技产业"},
     {"name": "The Verge", "url": "https://www.theverge.com/rss/index.xml", "section": "科技产业"},
     {"name": "IEEE Spectrum", "url": "https://spectrum.ieee.org/feeds/feed.rss", "section": "科技产业"},
     {"name": "Ars Technica", "url": "https://feeds.arstechnica.com/arstechnica/index", "section": "科技产业"},
     {"name": "Engadget", "url": "https://www.engadget.com/rss.xml", "section": "科技产业"},
-    {"name": "36氪科技", "url": "https://36kr.com/feed", "section": "科技产业"},
 ]
 
 
@@ -247,50 +223,29 @@ def title_to_cn(title: str) -> str:
     raw = strip_html(title)
     lower = raw.lower()
     rules = [
-        ("tariff", "china"), "美国对华关税口径再度收紧",
-        ("trade", "china"), "中美经贸博弈出现新动向",
-        ("exports", "china"), "中国外贸数据变化引发市场关注",
-        ("hormuz",), "霍尔木兹海峡风险再度牵动全球能源预期",
-        ("iran", "dialogue"), "美伊接触释放新一轮外交信号",
-        ("iran", "talk"), "伊朗问题谈判预期再度升温",
-        ("iran",), "伊朗相关动态继续推升中东风险溢价",
-        ("gaza",), "加沙局势仍牵动中东风险定价",
-        ("israel",), "以色列相关动态继续牵动中东局势",
-        ("ukraine",), "俄乌局势仍在持续发酵",
-        ("russia",), "俄罗斯相关动态继续牵动欧洲安全预期",
-        ("oil",), "国际油价波动继续受地缘局势牵动",
-        ("dollar",), "美元走势继续反映避险与政策预期",
-        ("market", "rise"), "全球市场风险偏好出现修复迹象",
-        ("stocks", "rebound"), "全球股市反弹带动风险偏好修复",
-        ("openai",), "OpenAI 新动向继续牵动科技板块预期",
-        ("anthropic",), "Anthropic 动向继续反映企业级 AI 竞争",
-        ("nvidia",), "NVIDIA 相关动态继续影响算力板块",
-        ("robot",), "机器人主题继续升温",
-        ("ai",), "AI 产业动态继续升温",
-        ("goldman sachs",), "高盛业绩与投行业务恢复情况受市场关注",
-        # 新增经济/能源/机构相关规则
-        ("energy crisis", "uk", "britain"), "英国能源危机影响持续发酵，成为G7受冲击最大国家",
-        ("iea", "oil", "demand"), "国际能源署发布最新报告，全球石油需求出现大幅下降",
-        ("imf", "middle east", "war", "growth"), "IMF发布预警，中东战火将显著压低全球经济增速",
-        ("imf", "gdp", "growth"), "IMF调整全球经济增速预期，地缘风险成为主要拖累因素",
-        ("fed", "rate", "cut", "hike"), "美联储货币政策表态引发市场对利率路径的新预期",
-        ("inflation", "us", "cpi"), "美国通胀数据超出预期，美联储货币政策调整节奏生变",
-        ("china", "gdp", "growth"), "中国经济增速数据发布，市场对后续政策预期升温",
-        ("eu", "economy", "growth"), "欧元区经济数据弱于预期，市场担忧复苏动能不足",
-        ("energy", "price", "europe"), "欧洲能源价格再度波动，市场关注通胀压力变化",
-        ("supply chain", "global"), "全球供应链扰动加剧，地缘冲突成为主要影响因素",
-        ("commodity", "price", "rise"), "大宗商品价格普遍上涨，通胀压力再度抬升",
-        ("gold", "price", "rise"), "黄金价格持续走高，避险需求支撑金价强势",
-        ("stock", "market", "volatility"), "全球股市波动加剧，市场风险偏好出现变化",
-        ("central bank", "policy", "rate"), "全球主要央行货币政策调整牵动市场预期",
-        ("trade", "global", "growth"), "全球贸易增速放缓，地缘冲突和需求疲软是主要原因",
-        ("emerging market", "capital", "flow"), "新兴市场资本流动出现变化，美元走势是核心影响因素",
-        ("real estate", "china", "policy"), "中国房地产政策调整引发市场关注，行业预期逐步修复",
-        ("tech", "earnings", "growth"), "科技龙头企业财报超预期，板块反弹动能增强",
+        (("tariff", "china"), "美国对华关税口径再度收紧"),
+        (("trade", "china"), "中美经贸博弈出现新动向"),
+        (("exports", "china"), "中国外贸数据变化引发市场关注"),
+        (("hormuz",), "霍尔木兹海峡风险再度牵动全球能源预期"),
+        (("iran", "dialogue"), "美伊接触释放新一轮外交信号"),
+        (("iran", "talk"), "伊朗问题谈判预期再度升温"),
+        (("iran",), "伊朗相关动态继续推升中东风险溢价"),
+        (("gaza",), "加沙局势仍牵动中东风险定价"),
+        (("israel",), "以色列相关动态继续牵动中东局势"),
+        (("ukraine",), "俄乌局势仍在持续发酵"),
+        (("russia",), "俄罗斯相关动态继续牵动欧洲安全预期"),
+        (("oil",), "国际油价波动继续受地缘局势牵动"),
+        (("dollar",), "美元走势继续反映避险与政策预期"),
+        (("market", "rise"), "全球市场风险偏好出现修复迹象"),
+        (("stocks", "rebound"), "全球股市反弹带动风险偏好修复"),
+        (("openai",), "OpenAI 新动向继续牵动科技板块预期"),
+        (("anthropic",), "Anthropic 动向继续反映企业级 AI 竞争"),
+        (("nvidia",), "NVIDIA 相关动态继续影响算力板块"),
+        (("robot",), "机器人主题继续升温"),
+        (("ai",), "AI 产业动态继续升温"),
+        (("goldman sachs",), "高盛业绩与投行业务恢复情况受市场关注"),
     ]
-    for i in range(0, len(rules), 2):
-        keywords = rules[i]
-        zh = rules[i+1]
+    for keywords, zh in rules:
         if all(k in lower for k in keywords):
             return zh
     if re.search(r"[\u4e00-\u9fff]", raw):
@@ -915,29 +870,14 @@ def check_consistency(title: str, summary: str, candidate: str) -> tuple[bool, s
 
 def analyst_content(title: str, summary: str, section: str = "") -> str:
     signal = classify_item_signal(title, summary)
-    lower = f"{title} {summary}".lower()
     if signal == "geo_energy":
-        if any(k in lower for k in ["hormuz", "strait", "blockade"]):
-            text = "这条新闻的关键不只是冲突本身，而是航运咽喉是否面临新的中断定价；若霍尔木兹风险上升，原油、航运与黄金通常会先同步反应。"
-        elif any(k in lower for k in ["iran", "dialogue", "talk", "nuclear"]):
-            text = "这条动态更偏外交与博弈重估，重点不是战事本身，而是谈判预期是否会压缩能源风险溢价；若缓和预期增强，油金强势可能先钝化。"
-        elif any(k in lower for k in ["gaza", "israel"]):
-            text = "这条新闻反映中东局势仍在持续扰动风险偏好，核心影响路径在于地缘情绪是否继续外溢到能源、航运和全球避险资产。"
-        else:
-            text = "这条新闻的核心不在事件表面，而在能源运输安全溢价是否重新抬头；若中东出口链风险抬升，油价、航运与避险资产会先被重新定价。"
+        text = "这条新闻的核心不在事件表面，而在能源运输安全溢价是否重新抬头；若霍尔木兹、红海或中东出口链风险抬升，油价、航运与避险资产会先被重新定价。"
     elif signal == "russia_ukraine":
-        if any(k in lower for k in ["sanction", "eu", "europe"]):
-            text = "这条新闻更偏欧洲政策与制裁定价，关键是欧洲能源、工业成本和区域风险资产会不会出现第二轮压力传导。"
-        else:
-            text = "这条新闻反映欧洲安全风险并未退出定价区间；若后续伴随军援升级、能源设施受损或制裁扩围，欧洲资产、军工链与能源预期会同步承压。"
+        text = "这条新闻反映欧洲安全风险并未退出定价区间；若后续伴随军援升级、能源设施受损或制裁扩围，欧洲资产、军工链与能源预期会同步承压。"
     elif signal == "china_trade":
-        if any(k in lower for k in ["tariff", "duties"]):
-            text = "这条新闻的关键在于关税与政策口径是否再次收紧，重点影响的是出口链利润率、订单迁移方向以及全球制造链风险偏好。"
-        elif any(k in lower for k in ["export", "shipment", "orders"]):
-            text = "这条动态更偏订单与出口结构变化，真正要看的不是 headline，而是高附加值制造、机器人链和传统外贸链是否出现进一步分化。"
-        else:
-            text = "核心不是 headline 本身，而是出口结构和关税口径是否再度变化；若订单转向东南亚和中东、而高附加值制造继续扩张，制造链与出口链的表现会出现分化。"
+        text = "核心不是 headline 本身，而是出口结构和关税口径是否再度变化；若订单转向东南亚和中东、而高附加值制造继续扩张，制造链与出口链的表现会出现分化。"
     elif signal == "tech_ai":
+        lower = f"{title} {summary}".lower()
         if any(k in lower for k in ["robot", "embodied", "humanoid"]):
             text = "市场关注点已从纯模型参数转向具身智能落地；若机器人在真实作业场景中的成功率提升，边缘推理芯片、执行器和工业软件链条会比通用概念股更先受益。"
         elif any(k in lower for k in ["openai", "anthropic", "model", "llm"]):
@@ -947,12 +887,7 @@ def analyst_content(title: str, summary: str, section: str = "") -> str:
         else:
             text = "AI 板块已从讲故事阶段进入效率兑现阶段；后续定价重点将落在推理成本、工作流渗透与数据中心能耗约束，而不是单纯模型更新。"
     else:
-        if any(k in lower for k in ["fed", "inflation", "yield", "rates"]):
-            text = "这条新闻更偏利率与宏观预期重估，核心是市场对降息、通胀和债券收益率的定价是否再次偏移。"
-        elif any(k in lower for k in ["earnings", "goldman sachs", "bank", "stocks"]):
-            text = "这条动态更偏企业盈利与风险偏好修复，关键是龙头财报和金融权重股表现能否继续支撑权益市场估值。"
-        else:
-            text = "这条新闻的关键在于市场此前是否已经 price-in；若本轮新增信息超出预期，资金会优先在汇率、权益和商品之间重新分配风险敞口。"
+        text = "这条新闻的关键在于市场此前是否已经 price-in；若本轮新增信息超出预期，资金会优先在汇率、权益和商品之间重新分配风险敞口。"
     ok, fixed = check_consistency(title, summary, text)
     return fixed
 
@@ -963,24 +898,14 @@ def analyst_comment(title: str, summary: str, section: str = "", used_comments: 
     if signal == "geo_energy":
         if any(k in lower for k in ["hormuz", "strait", "blockade"]):
             text = "先看布油与黄金是否继续同向走强，再看航运链是否放量跟涨；未来 24 小时关键观察点是霍尔木兹航线风险有没有进一步扩散。"
-        elif any(k in lower for k in ["iran", "dialogue", "talk", "nuclear"]):
+        elif any(k in lower for k in ["iran", "dialogue", "talk"]):
             text = "先盯未来 24 至 48 小时外交表态是否继续缓和，再看布油、美元与黄金是否同步回落；若三者不共振，地缘溢价大概率只是短炒。"
-        elif any(k in lower for k in ["gaza", "israel"]):
-            text = "关键看局势是否外溢到更广泛地区，而不是只盯 headline；若航运保费和避险资产同时抬升，中东风险仍在升级通道。"
         else:
             text = "关键看接下来 24 小时中东风险是否外溢到能源运输与供应链；若布油站稳关键位而黄金同步走强，避险定价就还没结束。"
     elif signal == "russia_ukraine":
-        if any(k in lower for k in ["sanction", "eu", "europe"]):
-            text = "重点不是旧闻本身，而是欧洲政策表态会不会继续加码；若能源、军工和区域信用风险同步反应，二次定价就成立。"
-        else:
-            text = "先盯未来 48 小时是否出现新制裁、军援或基础设施打击，再看欧洲天然气、军工与区域风险资产是否同步反应，这是判断二次定价是否成立的关键。"
+        text = "先盯未来 48 小时是否出现新制裁、军援或基础设施打击，再看欧洲天然气、军工与区域风险资产是否同步反应，这是判断二次定价是否成立的关键。"
     elif signal == "china_trade":
-        if any(k in lower for k in ["tariff", "duties"]):
-            text = "关键不是 headline，而是未来 24 至 48 小时关税口径有没有继续收紧；若出口链利润率预期被下修，制造与跨境资产会先承压。"
-        elif any(k in lower for k in ["export", "shipment", "orders"]):
-            text = "重点看订单流向和高附加值制造能否继续强于传统外贸；若结构改善延续，A股制造龙头弹性会高于普通出口链。"
-        else:
-            text = "关键不是 headline，而是未来 24 至 48 小时关税口径、出口结构和订单流向有没有新变化；若高端制造出口继续增强，A股制造链会强于传统外贸链。"
+        text = "关键不是 headline，而是未来 24 至 48 小时关税口径、出口结构和订单流向有没有新变化；若高端制造出口继续增强，A股制造链会强于传统外贸链。"
     elif signal == "tech_ai":
         if any(k in lower for k in ["openai", "anthropic", "model", "llm"]):
             text = "真正要看的是未来一个季度推理成本、企业付费转化和 Agent 工作流渗透率，而不是模型 headline 本身；若没有 ROI 兑现，估值容易先热后冷。"
@@ -991,23 +916,8 @@ def analyst_comment(title: str, summary: str, section: str = "", used_comments: 
         else:
             text = "后续重点看真实工作流渗透、客户 ROI 和数据中心成本曲线；若只剩题材热度而没有落地数据，科技估值会很脆。"
     else:
-        if any(k in lower for k in ["fed", "inflation", "yield", "rates"]):
-            text = "要看的不是 headline 本身，而是利率与美元有没有重新共振；若收益率继续上行，权益和商品的短线节奏都会被打断。"
-        elif any(k in lower for k in ["earnings", "goldman sachs", "bank", "stocks"]):
-            text = "关键看财报改善能否扩散到更广泛板块；若只有少数龙头撑盘而成交跟不上，市场修复更像局部反弹。"
-        else:
-            text = "关键要看未来 24 至 48 小时价格、利率与美元能否形成共振；若没有跨资产确认，这类消息大多只能形成短线交易，难以演化成趋势。"
+        text = "关键要看未来 24 至 48 小时价格、利率与美元能否形成共振；若没有跨资产确认，这类消息大多只能形成短线交易，难以演化成趋势。"
     ok, fixed = check_consistency(title, summary, text)
-    if not ok:
-        fallback_map = {
-            'geo_energy': '继续观察油价、黄金与航运链是否在未来24小时出现同步放大。',
-            'russia_ukraine': '继续观察欧洲政策、能源与军工链是否在未来48小时出现联动反应。',
-            'china_trade': '继续观察关税口径、订单流向和出口链利润预期是否进一步变化。',
-            'tech_ai': '继续观察模型商业化、算力投入或机器人落地数据是否给出新验证。',
-            'market_macro': '继续观察利率、美元与风险资产是否在未来24至48小时形成共振。',
-            'generic': '继续观察未来24至48小时内是否出现新的价格、政策或事件确认信号。',
-        }
-        fixed = fallback_map.get(signal, fallback_map['generic'])
     if used_comments is not None:
         normalized = re.sub(r"\s+", "", fixed)
         if normalized in used_comments:
@@ -1032,131 +942,67 @@ def build_analyst_item(item: dict, used_comments: set[str] | None = None) -> dic
 def select_top_headlines(grouped, limit: int = 12):
     used_comments = set()
     all_items = []
-    # First priority: take independent site items, push Google aggregation to last
-    def source_priority(item):
-        source = item.get('source', '').lower()
-        if 'reuters' in source or 'ap news' in source or 'bbc' in source or 'cnbc' in source or 'yahoo finance' in source or 'bloomberg' in source or 'ft.com' in source:
-            return 0  # Highest priority
-        elif 'google' in source or 'aggregation' in source:
-            return 1  # No penalty for aggregation now
-        else:
-            return 1  # Medium
+    for section in ("宏观新闻", "财经市场"):
+        all_items.extend(grouped.get(section, []))
 
-    # Collect all valid non-AI items first
-    for section in ("宏观新闻", "财经市场", "国际新闻"):
-        for item in grouped.get(section, []):
-            # Only filter out explicit AI/tech items from headlines
-            text = f"{item.get('title','')} {item.get('summary','')}".lower()
-            if any(k in text for k in ["openai", "anthropic", "nvidia", "robot", "chip", "llm", "agent", "gpu", "humanoid", "embodied", "ai"]):
-                continue
-            if not item.get('title', '').strip():
-                continue
-            all_items.append(item)
+    def topic_bucket(item):
+        signal = classify_item_signal(item.get("title", ""), item.get("summary", ""))
+        if signal == "geo_energy":
+            return "geo_energy"
+        if signal == "russia_ukraine":
+            return "russia_ukraine"
+        if signal == "china_trade":
+            return "china_trade"
+        if signal == "market_macro":
+            return "market_macro"
+        return item.get("section", "other")
 
-    # Sort by priority first, then by relevance score
     def score(item):
         text = f"{item.get('title','')} {item.get('summary','')}".lower()
         pts = 0
         for keyword, val in [
-            ("fed", 120), ("inflation", 115), ("interest rate", 115), ("earnings", 110), ("stock", 108),
-            ("oil", 105), ("gold", 102), ("commodity", 100), ("gaza", 95), ("iran", 92), ("hormuz", 90), 
-            ("israel", 88), ("ukraine", 85), ("russia", 82), ("tariff", 80), ("trade", 78),
-            ("us economy", 75), ("eurozone", 72), ("global market", 70), ("gdp", 68), ("job", 65),
+            ("gaza", 120), ("iran", 118), ("hormuz", 116), ("israel", 110), ("ukraine", 108),
+            ("russia", 100), ("tariff", 98), ("trade", 94), ("oil", 90), ("market", 80),
+            ("fed", 74), ("inflation", 72), ("goldman sachs", 70), ("earnings", 66),
         ]:
             if keyword in text:
                 pts = max(pts, val)
+        if any(k in text for k in ["openai", "anthropic", "nvidia", " ai ", "robot", "chip", "llm", "agent", "gpu"]):
+            pts -= 40
+        if item.get("source", "").startswith("Google News"):
+            pts += 5
         return pts
 
-    # Only deduplicate completely identical titles, allow all similar content
-    seen_titles = set()
-    filtered = []
-    for item in sorted(all_items, key=lambda x: (source_priority(x), -score(x))):
-        title = item.get('title_cn') or normalize_headline_title(item.get('title', ''), item.get('summary', ''))
-        title_key = title.lower().strip()
-        if title_key in seen_titles:
-            continue
-        seen_titles.add(title_key)
-        filtered.append(item)
-
-    # No more theme limits, select as many as needed up to limit
     selected = []
-    for item in filtered:
-        analyst_item = build_analyst_item(item, used_comments=used_comments)
-        # Only skip completely empty items
-        if not analyst_item.get('标题', '').strip():
+    seen = set()
+    bucket_counts = {}
+    bucket_caps = {
+        "geo_energy": 4,
+        "russia_ukraine": 2,
+        "china_trade": 2,
+        "market_macro": 4,
+    }
+    for item in sorted(all_items, key=score, reverse=True):
+        signal = classify_item_signal(item.get("title", ""), item.get("summary", ""))
+        if signal == "tech_ai":
             continue
-        selected.append(analyst_item)
+        if not item.get("title", "").strip():
+            continue
+        title = item.get("title_cn") or normalize_headline_title(item.get("title", ""), item.get("summary", ""))
+        if title in {"AI 产业动态继续升温", "国际要闻出现新变化"} and signal in {"tech_ai", "generic"}:
+            continue
+        bucket = topic_bucket(item)
+        cap = bucket_caps.get(bucket, 3)
+        if bucket_counts.get(bucket, 0) >= cap:
+            continue
+        key = title.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
+        selected.append(build_analyst_item(item, used_comments=used_comments))
         if len(selected) >= limit:
             break
-
-    # Auto fill with market data if still not enough to reach limit
-    if len(selected) < limit:
-        # Import market data here (we'll reuse the same data as global market section)
-        pub_time = NOW.strftime('%Y-%m-%d %H:%M +0800')
-        market_fills = [
-            {
-                "标题": "A股市场今日走势分化，创业板小幅调整",
-                "内容": "今日A股市场整体走势分化，上证指数小幅收涨，深证成指和创业板指出现小幅调整，市场成交量保持平稳，板块轮动特征明显。",
-                "评论": "继续观察市场量能变化和板块轮动方向，控制仓位等待明确信号。",
-                "来源": "东方财富网",
-                "时间": pub_time
-            },
-            {
-                "标题": "美股市场三大指数全线收涨，纳指涨幅接近2%",
-                "内容": "隔夜美股市场表现强势，三大指数全线收涨，纳斯达克指数涨幅接近2%，科技龙头股普遍上涨，市场风险偏好明显修复。",
-                "评论": "关注美联储货币政策表态和龙头企业财报表现，科技板块弹性值得继续跟踪。",
-                "来源": "雅虎财经",
-                "时间": pub_time
-            },
-            {
-                "标题": "国际原油价格维持高位震荡，能源板块受关注",
-                "内容": "受中东地缘局势影响，国际原油价格近期维持高位震荡走势，能源产业链相关板块表现强势，市场对能源供给风险的担忧持续存在。",
-                "评论": "继续跟踪地缘局势发展和原油库存变化，能源板块的防御属性值得关注。",
-                "来源": "路透财经",
-                "时间": pub_time
-            },
-            {
-                "标题": "黄金价格维持强势，避险属性继续凸显",
-                "内容": "在全球地缘政治不确定性和通胀预期的支撑下，黄金价格近期维持强势走势，避险资产的配置价值再度受到市场关注。",
-                "评论": "黄金作为对冲地缘和通胀风险的工具，仍有配置价值，不宜追高。",
-                "来源": "彭博财经",
-                "时间": pub_time
-            },
-            {
-                "标题": "美元指数保持平稳，人民币汇率双向波动",
-                "内容": "美元指数近期保持平稳运行，人民币汇率维持双向波动走势，市场对美联储货币政策节奏的预期保持稳定。",
-                "评论": "关注美联储货币政策表态和中美利差变化，人民币汇率预计维持区间震荡格局。",
-                "来源": "央行公开数据",
-                "时间": pub_time
-            },
-            {
-                "标题": "全球大宗商品市场表现分化，工业品偏强农产品偏弱",
-                "内容": "近期全球大宗商品市场走势分化，受地缘和供给端影响的工业品走势偏强，农产品整体表现偏弱，市场对通胀的担忧仍存。",
-                "评论": "关注供给端变化和需求恢复情况，大宗商品的配置节奏宜谨慎。",
-                "来源": "Wind资讯",
-                "时间": pub_time
-            },
-            {
-                "标题": "港股市场今日小幅收涨，互联网科技板块表现活跃",
-                "内容": "今日港股市场整体表现平稳，恒生指数小幅收涨，互联网科技板块表现活跃，南向资金保持净流入态势。",
-                "评论": "关注互联网企业业绩表现和政策动向，港股估值修复行情仍值得期待。",
-                "来源": "新浪财经",
-                "时间": pub_time
-            },
-            {
-                "标题": "美联储货币政策表态继续牵动全球市场预期",
-                "内容": "美联储官员近期关于货币政策的表态继续牵动全球市场预期，市场对利率调整的时间点和幅度存在分歧，美元和美股走势明显受到相关表态影响。",
-                "评论": "重点关注美联储最新议息会议纪要和官员表态，利率路径变化会直接影响全球资产定价。",
-                "来源": "CNBC财经",
-                "时间": pub_time
-            }
-        ]
-        # Add fill items until we reach limit
-        for fill in market_fills:
-            if len(selected) >= limit:
-                break
-            selected.append(fill)
-
     return selected
 
 
@@ -1180,9 +1026,6 @@ def build_template_report(grouped, focus_hits, errors):
             lines.append(f"   内容：{item['内容']}")
             lines.append(f"   评论：{item['评论']}")
             lines.append(f"   （来源：{item['来源']} | 发布时间：{item['时间']}）")
-            lines.append("")
-        if len(headline_items) < 12:
-            lines.append(f"- 说明：过去24小时内可验证且通过去同质化筛选的重要头条暂为 {len(headline_items)} 条，剩余条目宁缺毋滥，不用低质量重复素材补洞。")
             lines.append("")
     else:
         lines.append("- 今日无足够扎实的头条更新")

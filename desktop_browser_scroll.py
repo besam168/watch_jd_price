@@ -10,10 +10,7 @@ MOUSEEVENTF_WHEEL = 0x0800
 def main() -> int:
     user32 = ctypes.windll.user32
     time.sleep(0.5)
-    # 分两次下拉：比一次大滚动更稳，更容易加载出更多新闻
-    user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -WHEEL_DELTA * 4, 0)
-    time.sleep(0.6)
-    user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -WHEEL_DELTA * 4, 0)
+    user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, -WHEEL_DELTA * 3, 0)
     return 0
 
 
