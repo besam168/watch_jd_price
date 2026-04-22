@@ -146,7 +146,7 @@ def looks_like_noise(title: str) -> bool:
     return False
 
 
-def take_titles(payload, limit=10):
+def take_titles(payload, limit=10, source_hint: str = ""):
     if isinstance(payload, list):
         rows = payload
     elif isinstance(payload, dict):
@@ -155,7 +155,13 @@ def take_titles(payload, limit=10):
             rows = []
             for source in payload.get("sources", []):
                 if isinstance(source, dict):
-                    rows.extend(source.get("items") or source.get("headlines") or [])
+                    source_name = str(source.get("source") or "")
+                    source_rows = source.get("items") or source.get("headlines") or []
+                    for item in source_rows:
+                        if isinstance(item, dict):
+                            item = dict(item)
+                            item["_source_hint"] = source_name
+                        rows.append(item)
         if not rows and isinstance(payload.get("sites"), list):
             rows = []
             for site in payload.get("sites", []):
@@ -165,11 +171,17 @@ def take_titles(payload, limit=10):
         rows = []
     out = []
     for row in rows:
+        row_source_hint = source_hint
         if isinstance(row, dict):
             title = str(row.get("title") or row.get("headline") or row.get("text") or "").strip()
+            row_source_hint = str(row.get("_source_hint") or source_hint)
         else:
             title = str(row).strip()
         title = clean_title(title)
+        if row_source_hint == "npr_world":
+            title = salvage_npr_style_title(title)
+            if len(title) < 25 or title.endswith(" U.S") or title.endswith(" U.S."):
+                continue
         if title and not looks_like_noise(title) and title not in out:
             out.append(title)
     return out[:limit]
@@ -244,7 +256,7 @@ def strip_html(text: str) -> str:
     return fix_mojibake(text)
 
 
-def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
+def extract_titles_from_html(path: Path, limit: int = 8, source_name: str = "") -> list[str]:
     encodings = ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be")
     text = None
     for encoding in encodings:
@@ -257,21 +269,37 @@ def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
         return []
 
     candidates = []
-    for pattern in [
+    patterns = [
         r"<title[^>]*>(.*?)</title>",
         r"<h1[^>]*>(.*?)</h1>",
         r"<h2[^>]*>(.*?)</h2>",
         r"<h3[^>]*>(.*?)</h3>",
         r">([^<>]{20,160})<",
-    ]:
+    ]
+    if source_name.lower() == "techcrunch":
+        patterns = [
+            r"<h2[^>]*>(.*?)</h2>",
+            r"<h3[^>]*>(.*?)</h3>",
+            r"<a[^>]*>([^<>]{25,160})</a>",
+        ]
+
+    for pattern in patterns:
         for match in re.findall(pattern, text, flags=re.I):
             line = clean_title(strip_html(match))
             if 15 <= len(line) <= 160 and not looks_like_noise(line):
+                if source_name.lower() == "techcrunch":
+                    low = line.lower()
+                    if low in SITE_TITLE_PATTERNS or "strictlyvc" in low or "download" == low.strip():
+                        continue
+                    if line.count("|") > 0:
+                        continue
                 candidates.append(line)
 
     out = []
     seen = set()
     bad_tokens = ["privacy", "cookie", "subscribe", "sign in", "login", "newsletter", "advertisement"]
+    if source_name.lower() == "techcrunch":
+        bad_tokens.extend(["strictlyvc", "download", "events", "podcast"])
     for line in candidates:
         low = line.lower()
         if any(token in low for token in bad_tokens):
@@ -318,21 +346,21 @@ def main() -> int:
         payload = load_json(path)
         if payload is None:
             continue
-        add_source_items(sources, take_titles(payload, limit=20), source)
+        add_source_items(sources, take_titles(payload, limit=20, source_hint=source), source)
 
     for key, source in tech_mapping.items():
         path = SCRAPLING_OUTPUT / f"{key}_latest.json"
         titles = []
         payload = load_json(path)
         if payload is not None:
-            titles.extend(take_titles(payload, limit=8))
+            titles.extend(take_titles(payload, limit=8, source_hint=source))
             if isinstance(payload, dict):
                 title = clean_title(str(payload.get("title") or "").strip())
                 if title:
                     titles.append(title)
                 output_file = payload.get("output_file")
                 if output_file:
-                    titles.extend(extract_titles_from_html(Path(output_file), limit=8))
+                    titles.extend(extract_titles_from_html(Path(output_file), limit=8, source_name=source))
                 content = str(payload.get("content") or "")
                 for line in content.splitlines():
                     line = clean_title(line.strip(" -*•\t"))
@@ -341,7 +369,7 @@ def main() -> int:
         else:
             latest_html = find_latest(f"*{key}*get*.html") or find_latest(f"*{key}*.html")
             if latest_html:
-                titles.extend(extract_titles_from_html(latest_html, limit=8))
+                titles.extend(extract_titles_from_html(latest_html, limit=8, source_name=source))
         add_source_items(sources, titles[:8], source, forced_category="tech")
 
     seen = set()
