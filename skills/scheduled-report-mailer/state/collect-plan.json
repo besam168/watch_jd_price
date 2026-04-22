@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-04-06T11:32:47.904061",
+  "generatedAt": "2026-04-18T20:12:35.056134",
   "timeWindowHours": {
-    "min": 0,
-    "max": 24
+    "min": 24,
+    "max": 48
   },
   "mustCheck": [
     "gaza",
@@ -14,22 +14,39 @@
   ],
   "sourceGroups": {
     "macro_news_priority": [
-      "Reuters",
       "AP News",
-      "BBC",
-      "Al Jazeera"
+      "CNBC World",
+      "Yahoo Finance",
+      "Reuters",
+      "BBC News",
+      "Al Jazeera",
+      "The Guardian",
+      "DW English",
+      "France24",
+      "USA Today",
+      "NPR",
+      "Bloomberg",
+      "WSJ"
     ],
     "market_priority": [
-      "NYSE",
+      "Yahoo Finance",
       "TWSE",
+      "CNBC World",
+      "NYSE",
       "SSE",
       "JPX",
-      "KRX"
+      "KRX",
+      "Naver Finance",
+      "Investing.com 日本站",
+      "东方财富"
     ],
     "finance_priority": [
-      "CNBC",
       "Yahoo Finance",
-      "Investing.com"
+      "CNBC World",
+      "Reuters",
+      "Investing.com",
+      "Bloomberg",
+      "WSJ"
     ]
   },
   "captureStrategies": [
@@ -87,22 +104,24 @@
     }
   ],
   "whitelistUrls": [
-    "https://www.bbc.com/news",
-    "https://www.theguardian.com/international",
-    "https://www.reuters.com/",
     "https://apnews.com/",
-    "https://www.npr.org/",
-    "https://www.aljazeera.com/",
-    "https://www.dw.com/zh/%E5%9C%A8%E7%BA%BF%E6%8A%A5%E5%AF%BC/s-9058",
-    "https://www.france24.com/en/",
     "https://www.cnbc.com/world/?region=world",
-    "https://www.usatoday.com/",
-    "https://www.nyse.com/index",
-    "https://jp.investing.com",
-    "https://finance.naver.com/",
-    "https://www.twse.com.tw/zh/index.html",
-    "https://www.sse.com.cn/",
     "https://finance.yahoo.com/",
+    "https://www.reuters.com/",
+    "https://www.bbc.com/news",
+    "https://www.aljazeera.com/",
+    "https://www.theguardian.com/international",
+    "https://www.dw.com/en/top-stories/s-9097",
+    "https://www.france24.com/en/",
+    "https://www.usatoday.com/",
+    "https://www.npr.org/",
+    "https://www.nyse.com/index",
+    "https://www.sse.com.cn/",
+    "https://www.jpx.co.jp/english/",
+    "https://global.krx.co.kr/contents/GLB/06/0601/0601000000/GLB0601000000.jsp",
+    "https://finance.naver.com/",
+    "https://jp.investing.com",
+    "https://www.eastmoney.com/",
     "https://www.theverge.com/",
     "https://techcrunch.com/",
     "https://spectrum.ieee.org/",
@@ -111,8 +130,7 @@
     "https://www.technologyreview.com/",
     "https://venturebeat.com/category/ai",
     "https://singularityhub.com/",
-    "https://www.artificialintelligence-news.com/",
-    "https://www.engadget.com/"
+    "https://www.artificialintelligence-news.com/"
   ],
   "antiHallucination": {
     "require_source_and_time": true,

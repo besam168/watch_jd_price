@@ -1060,20 +1060,40 @@ def news_priority_score(item: dict[str, str]) -> int:
             score = max(score, pts)
     source = (item.get("source") or "").lower()
     if "reuters" in source:
-        score += 10
-    elif "ap" in source:
-        score += 8
-    elif "bbc" in source:
-        score += 6
+        score += 40
+    elif source.startswith("ap") or "ap news" in source:
+        score += 32
     elif "al jazeera" in source:
+        score += 28
+    elif "bbc" in source:
+        score += 18
+    elif "cnbc" in source:
         score += 6
     return score
+
+
+def classify_headline_tier(item: dict[str, str]) -> int:
+    text = f"{item.get('title', '')} {item.get('summary', '')} {item.get('source', '')}".lower()
+    source = (item.get("source") or "").lower()
+    tier1_keywords = [
+        "gaza", "israel", "iran", "middle east", "ukraine", "russia",
+        "china trade", "us-china", "tariff", "sanction", "shipping",
+        "oil", "brent", "energy", "war", "conflict", "ceasefire",
+    ]
+    if any(keyword in text for keyword in tier1_keywords):
+        return 1
+    if any(name in source for name in ["reuters", "ap news", "associated press", "al jazeera"]):
+        return 1
+    if "bbc" in source and any(keyword in text for keyword in ["world", "iran", "gaza", "ukraine", "russia", "china", "trade", "war", "conflict"]):
+        return 1
+    return 2
 
 
 def news_items_to_pairs(items: Iterable[dict[str, str]], require_evidence: bool = True) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     seen_display_titles: set[str] = set()
-    sorted_items = sorted(list(items), key=news_priority_score, reverse=True)
+    all_items = sorted(list(items), key=news_priority_score, reverse=True)
+    sorted_items = [item for item in all_items if classify_headline_tier(item) == 1] + [item for item in all_items if classify_headline_tier(item) != 1]
     for item in sorted_items:
         title = item.get("title", "").strip()
         summary = re.sub(r"<[^>]+>", "", item.get("summary", "")).strip()
@@ -1101,6 +1121,35 @@ def news_items_to_pairs(items: Iterable[dict[str, str]], require_evidence: bool 
             continue
         seen_display_titles.add(display_key)
         pairs.append((display_title, zh_summary or "今日无额外摘要。"))
+    return pairs
+
+
+def fallback_news_items_to_pairs(items: Iterable[dict[str, str]], require_evidence: bool = True) -> list[tuple[str, str]]:
+    pairs: list[tuple[str, str]] = []
+    seen_titles: set[str] = set()
+    sorted_items = sorted(list(items), key=news_priority_score, reverse=True)
+    for item in sorted_items:
+        title = re.sub(r"\s+", " ", (item.get("title") or "").strip())
+        summary = re.sub(r"<[^>]+>", "", (item.get("summary") or "").strip())
+        preview = re.sub(r"<[^>]+>", "", (item.get("evidence_preview") or "").strip())
+        source = (item.get("source") or "未知").strip()
+        pub_date = (item.get("pub_date") or "未知").strip()
+        if not title or is_stale(title) or is_query_like_title(title):
+            continue
+        if require_evidence and not item.get("has_evidence"):
+            continue
+        key = title.lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        display_title = f"{title}（来源：{source} | 发布时间：{pub_date}）"
+        display_summary = summary or preview or title
+        display_summary = re.sub(r"\s+", " ", display_summary).strip()
+        if len(display_summary) > 120:
+            display_summary = display_summary[:120].rstrip(" ,;，；。") + "…"
+        if not display_summary:
+            display_summary = "正文已抓取，但当前缺少可用摘要。"
+        pairs.append((display_title, display_summary))
     return pairs
 
 
@@ -1136,6 +1185,10 @@ def build_report() -> tuple[str, str, str]:
     core_summary_pairs = news_items_to_pairs(enriched_news)[:5]
     if not core_summary_pairs and merged_news:
         core_summary_pairs = news_items_to_pairs(enriched_news, require_evidence=False)[:5]
+    if not core_summary_pairs:
+        core_summary_pairs = fallback_news_items_to_pairs(enriched_news)[:5]
+    if not core_summary_pairs:
+        core_summary_pairs = fallback_news_items_to_pairs(enriched_news, require_evidence=False)[:5]
     if not core_summary_pairs:
         core_summary_pairs = [("今日无足够扎实头条更新", "本轮自动抓取与搜索发现未形成足够可靠的核心头条，报告保留结构但不虚构补洞。")]
 

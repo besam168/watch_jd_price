@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-20 08:51:05",
+  "generated_at": "2026-04-20 09:02:54",
   "selected_count": 1501,
   "excluded_count": 0,
   "selected": [
@@ -12015,7 +12015,7 @@
   "excluded": [],
   "stats": {
     "fetched_rows": 1501,
-    "fetch_seconds": 0.0,
-    "fetch_minutes": 0.0
+    "fetch_seconds": 1013.57,
+    "fetch_minutes": 16.89
   }
 }

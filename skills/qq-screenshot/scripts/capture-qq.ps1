@@ -5,7 +5,10 @@ param(
     [string]$Method = 'system',
     [ValidateSet('primary','secondary','all')]
     [string]$Screen = 'primary',
-    [int]$KeepCount = 50
+    [int]$KeepCount = 50,
+    [switch]$Grid,
+    [ValidateSet('quarter','original','two-thirds','one-fifth','double','four-fifths')]
+    [string]$GridPreset = 'quarter'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -146,6 +149,98 @@ switch ($Method) {
     'system' { Invoke-SystemCapture }
     'pil' { Invoke-PilCapture }
     default { Invoke-GdiCapture }
+}
+
+function Add-GridOverlay {
+    param(
+        [string]$ImagePath,
+        [string]$Preset
+    )
+
+    $presetToCell = @{
+        'quarter' = 60
+        'original' = 120
+        'two-thirds' = 80
+        'one-fifth' = 24
+        'double' = 48
+        'four-fifths' = 19
+    }
+    $cell = $presetToCell[$Preset]
+    if (-not $cell) { $cell = 60 }
+
+    $gridPy = @"
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+import math
+import sys
+
+src = Path(sys.argv[1])
+preset = sys.argv[2]
+cell = int(sys.argv[3])
+out = src.with_name(src.stem + '_grid_' + preset + src.suffix)
+
+img = Image.open(src).convert('RGB')
+draw = ImageDraw.Draw(img)
+w, h = img.size
+cols = math.ceil(w / cell)
+rows = math.ceil(h / cell)
+letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+font_size = 16
+if cell <= 80:
+    font_size = 12
+if cell <= 60:
+    font_size = 10
+if cell <= 24:
+    font_size = 8
+if cell <= 19:
+    font_size = 7
+
+try:
+    font = ImageFont.truetype('arial.ttf', font_size)
+except Exception:
+    font = ImageFont.load_default()
+
+line_w = 2 if cell >= 60 else 1
+for c in range(1, cols):
+    x = c * cell
+    draw.line((x, 0, x, h), fill=(255, 0, 0), width=line_w)
+for r in range(1, rows):
+    y = r * cell
+    draw.line((0, y, w, y), fill=(255, 0, 0), width=line_w)
+for r in range(rows):
+    for c in range(cols):
+        row_label = letters[r] if r < len(letters) else f'R{r+1}'
+        label = f'{row_label}{c+1}'
+        x0 = c * cell
+        y0 = r * cell
+        rect_w = max(14, min(cell - 2, int(cell * 0.75)))
+        rect_h = max(8, min(cell - 2, int(cell * 0.28)))
+        draw.rectangle((x0 + 1, y0 + 1, x0 + rect_w, y0 + rect_h), fill=(255,255,255))
+        draw.text((x0 + 2, y0 + 1), label, fill=(255,0,0), font=font)
+
+img.save(out)
+print(str(out))
+"@
+
+    $tmpDir = Join-Path $OutputDir '.tmp'
+    New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+    $tmpPy = Join-Path $tmpDir ("qq-grid-" + [guid]::NewGuid().ToString() + ".py")
+    Set-Content -LiteralPath $tmpPy -Value $gridPy -Encoding UTF8
+    try {
+        $gridPath = python $tmpPy $ImagePath $Preset $cell
+        return ($gridPath | Select-Object -Last 1).Trim()
+    } finally {
+        Remove-Item -LiteralPath $tmpPy -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($Grid) {
+    $gridOutput = Add-GridOverlay -ImagePath $outputPath -Preset $GridPreset
+    if (-not (Test-Path $gridOutput)) {
+        throw "Grid screenshot file was not created: $gridOutput"
+    }
+    $outputPath = $gridOutput
 }
 
 if (-not (Test-Path $outputPath)) {

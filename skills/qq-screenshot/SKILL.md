@@ -23,6 +23,23 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 - Output filename: `qq-screenshot_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 - Auto-prune: keep the newest 50 screenshot files by default
+- Optional grid mode: `-Grid`
+- Default remembered grid preset for 方块截图: `quarter`（四分之一小）
+
+## Grid screenshot mode
+Use `-Grid` to generate a QQ-sendable screenshot with labeled square-like grid cells.
+
+### Default remembered preset
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq.ps1 -Method system -Grid -GridPreset quarter
+```
+
+### Other grid presets
+- `original`
+- `two-thirds`
+- `one-fifth`
+- `double`
+- `four-fifths`
 
 ## Useful options
 ### Force PIL capture

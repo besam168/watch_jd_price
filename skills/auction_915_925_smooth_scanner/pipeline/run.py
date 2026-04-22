@@ -6,6 +6,7 @@ from core.scoring import calc_smooth_score
 from datasource import tencent, eastmoney, sina
 from datasource.helpers import normalize_symbol, is_sz_mainboard_target
 from datasource.normalize import normalize_payload
+from datasource.pytdx_snapshot import fetch_quotes_with_fallback
 from output.writer import write_outputs
 from config import ScanConfig
 
@@ -28,8 +29,8 @@ def load_universe(cfg: ScanConfig) -> list[str]:
 
 
 def fetch_with_failover(symbol: str, date_text: str, enabled: bool = True):
-    # 当前已确认 akshare/东方财富 pre-minute 路径可返回 09:15~09:25 的分钟序列，先放主位。
-    chain = [eastmoney.fetch, tencent.fetch, sina.fetch]
+    # 单股路径保留作兼容 / 调试。正式全池主流程改走 pytdx 批量快照轮询。
+    chain = [tencent.fetch, eastmoney.fetch, sina.fetch]
     last = None
     for fn in chain:
         payload = fn(symbol, date_text)

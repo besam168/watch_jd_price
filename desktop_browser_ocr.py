@@ -6,6 +6,26 @@ import subprocess
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
+def resolve_tesseract_path() -> str | None:
+    direct = shutil.which("tesseract")
+    if direct:
+        return direct
+    fallback_paths = [
+        Path("C:/Program Files/Tesseract-OCR/tesseract.exe"),
+        Path("C:/Program Files (x86)/Tesseract-OCR/tesseract.exe"),
+    ]
+    for p in fallback_paths:
+        if p.exists():
+            return str(p)
+    return None
+
 
 def run() -> int:
     if len(sys.argv) < 2:
@@ -28,9 +48,14 @@ def run() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
 
-    tesseract = shutil.which("tesseract")
+    tesseract = resolve_tesseract_path()
     if not tesseract:
         result["error"] = "tesseract_not_found"
+        result["checkedPaths"] = [
+            "PATH:tesseract",
+            "C:/Program Files/Tesseract-OCR/tesseract.exe",
+            "C:/Program Files (x86)/Tesseract-OCR/tesseract.exe",
+        ]
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 1
 

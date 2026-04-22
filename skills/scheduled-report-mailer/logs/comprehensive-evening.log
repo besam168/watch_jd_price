@@ -6,3 +6,202 @@ FAILED_GROUPS: none
 ===== SEND 2026-04-06T11:04:52.164988 rc=0 =====
 SEND_OK
 ȫ���ۺ��鱨���� - 2026-04-06
+===== PLAN 2026-04-06T20:30:01.003370 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-06T20:30:01.003370 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-06T20:30:47.561807 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== PLAN 2026-04-06T21:00:00.999591 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-06T21:00:00.999591 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-06T21:00:44.236907 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SEND 2026-04-06T21:00:45.443537 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-06
+===== PLAN 2026-04-07T20:30:02.628377 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-07T20:30:02.628377 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-07
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-07T20:30:54.245849 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补
+===== PLAN 2026-04-07T21:00:02.358069 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-07T21:00:02.358069 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-07
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-07T21:00:50.557011 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补
+===== SEND 2026-04-07T21:00:51.465890 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-07
+[warning]
+状态：部分通过 | 命中：5/6 | 缺口：gaza | 建议：优先补抓或先发后补
+===== PLAN 2026-04-08T20:30:01.729770 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-08T20:30:01.729770 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-08
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-08T20:35:13.615128 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：通过 | 命中：6/6 | 缺口：无 | 建议：可直接发送
+===== PLAN 2026-04-08T21:00:01.832886 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-08T21:00:01.832886 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-08
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-08T21:05:12.317298 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：通过 | 命中：6/6 | 缺口：无 | 建议：可直接发送
+===== SEND 2026-04-08T21:05:13.408102 rc=0 =====
+SEND_OK
+ȫ���ۺ��鱨���� - 2026-04-08
+===== PLAN 2026-04-09T19:04:41.640671 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-09T19:04:41.640671 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-09
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-09T19:10:52.661159 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,empty_summary_marker_present headlineCount=3 headlineEvidenceCount=1 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-09T19:11:30.597860 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-09T19:11:30.673252 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== PLAN 2026-04-09T20:30:02.370849 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-09T20:30:02.370849 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-09
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-09T20:36:40.330142 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,empty_summary_marker_present headlineCount=3 headlineEvidenceCount=1 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-09T20:37:22.139610 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-09T20:37:22.279869 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== PLAN 2026-04-09T21:00:01.453249 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-09T21:00:01.453249 rc=0 =====
+COLLECT_OK
+ȫ���ۺ��鱨���� - 2026-04-09
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: none
+===== EVALUATE 2026-04-09T21:06:27.561706 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,empty_summary_marker_present headlineCount=3 headlineEvidenceCount=2 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-09T21:07:09.681133 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-09T21:07:09.774058 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade | 建议：优先补抓或先发后补
+===== PLAN 2026-04-10T20:30:02.219168 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-10T20:30:02.219168 rc=0 =====
+COLLECT_OK
+全球综合情报报告 - 2026-04-10
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: full_whitelist_probe_partial_fail, headline_evidence_gate
+===== EVALUATE 2026-04-10T20:38:59.948324 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：6/6 | 缺口：headline-evidence | 建议：优先补抓或先发后补
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,evidence_count_below_1,empty_summary_marker_present headlineCount=5 headlineEvidenceCount=0 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-10T20:39:32.029848 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-10T20:39:32.106225 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 命中：6/6 | 缺口：headline-evidence | 建议：优先补抓或先发后补
+===== PLAN 2026-04-10T21:00:02.198073 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-10T21:00:02.198073 rc=0 =====
+COLLECT_OK
+全球综合情报报告 - 2026-04-10
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: full_whitelist_probe_partial_fail, headline_evidence_gate
+===== EVALUATE 2026-04-10T21:06:46.453549 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade, headline-evidence | 建议：优先补抓或先发后补
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,evidence_count_below_1,empty_summary_marker_present headlineCount=5 headlineEvidenceCount=0 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-10T21:07:19.725075 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-10T21:07:19.803729 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade, headline-evidence | 建议：优先补抓或先发后补
+===== SEND 2026-04-10T21:07:20.923783 rc=0 =====
+SEND_OK
+全球综合情报报告 - 2026-04-10
+[warning]
+状态：部分通过 | 命中：5/6 | 缺口：us-china-trade, headline-evidence | 建议：优先补抓或先发后补
+===== PLAN 2026-04-18T20:12:34.985084 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\collect-plan.json
+===== COLLECT 2026-04-18T20:12:34.985084 rc=0 =====
+COLLECT_OK
+RUN_ID: 20260418-201234-985084
+RUN_LOG: C:\Users\besam\.openclaw\workspace\logs\collect_comprehensive_report-20260418-201234-985084.log
+全球综合情报报告 - 2026-04-18
+C:\Users\besam\.openclaw\workspace\reports\scheduled\latest_report.txt
+FAILED_GROUPS: full_whitelist_probe_partial_fail, headline_evidence_gate
+===== EVALUATE 2026-04-18T20:14:30.152661 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY =====
+状态：部分通过 | 锚点命中：4/6 | 缺口：gaza, us-china-trade, headline-evidence | 建议：内容已命中，但应优先补正文证据
+===== DESKTOP_FALLBACK_DECISION =====
+enabled=True shouldRun=True reasons=quality_gate_not_pass,headline_count_below_3,evidence_count_below_1 headlineCount=1 headlineEvidenceCount=0 hasPlaceholderSearchDiscovery=False
+===== DESKTOP_FALLBACK 2026-04-18T20:16:18.714261 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\desktop-fallback-status.json
+===== EVALUATE_AFTER_FALLBACK 2026-04-18T20:16:18.800575 rc=0 =====
+C:\Users\besam\.openclaw\workspace\skills\scheduled-report-mailer\state\report-evaluation.json
+===== SUMMARY_AFTER_FALLBACK =====
+状态：部分通过 | 锚点命中：4/6 | 缺口：gaza, us-china-trade, headline-evidence | 建议：内容已命中，但应优先补正文证据
+===== SEND 2026-04-18T20:16:20.422465 rc=0 =====
+SEND_OK
+全球综合情报报告 - 2026-04-18
+[warning]
+状态：部分通过 | 锚点命中：4/6 | 缺口：gaza, us-china-trade, headline-evidence | 建议：内容已命中，但应优先补正文证据

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-06T11:43:01.322168",
+  "generatedAt": "2026-04-18T20:16:18.791941",
   "reportPath": "C:\\Users\\besam\\.openclaw\\workspace\\reports\\scheduled\\latest_report.txt",
   "mustCheckResults": {
     "gaza": {
@@ -13,18 +13,13 @@
       ]
     },
     "us-china-trade": {
-      "ok": true,
-      "matchedKeywords": [
-        "中美关系",
-        "china"
-      ]
+      "ok": false,
+      "matchedKeywords": []
     },
     "us-equities": {
       "ok": true,
       "matchedKeywords": [
         "S&P 500",
-        "纳斯达克",
-        "道琼斯",
         "美股"
       ]
     },
@@ -41,8 +36,26 @@
       ]
     }
   },
+  "contentCoverageGate": {
+    "ok": true,
+    "mainHeadlineCount": 1,
+    "internationalCurrentAffairsCandidateCount": 1,
+    "candidateTitles": [
+      "NVIDIA 相关动向继续影响算力板块（来源：CNBC World | 发布时间：Fri, 17 Apr 2026 07:23:22 GMT）"
+    ]
+  },
+  "headlineEvidenceGate": {
+    "ok": false,
+    "headlineCount": 1,
+    "headlineEvidenceCount": 0,
+    "hasPlaceholderSearchDiscovery": false
+  },
   "summary": {
-    "okCount": 5,
-    "total": 6
+    "okCount": 4,
+    "total": 6,
+    "anchorMissing": [
+      "gaza",
+      "us-china-trade"
+    ]
   }
 }
