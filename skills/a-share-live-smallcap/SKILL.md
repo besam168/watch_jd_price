@@ -57,11 +57,18 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
   - 单批失败降级补拉
   - 统一字段输出格式
 - 股票池直接复用 **`5亿股 + 100亿流通市值`** 新股票池
+- 盘中版本已升级为 **多轮采样**：默认不再只看单帧快照，而是短窗口连续采样后再评分
 - 最后仍以 V6 测试版的日线过滤作收口
+
+## 推荐执行入口
+- 主扫描：`python {baseDir}/scripts/live_smallcap.py --json`
+- 双时点任务：
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0935`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0945`
 
 ## 注意
 - 当前版本已按要求**停掉东财 / 新浪旧主流程入口**，不再用于实时候选获取。
 - 定时脚本 `scheduled_smallcap_scan.py` / `scheduled_smallcap_final.py` 也已切到 **pytdx + 5亿股/100亿新池**，不再走旧口。
-- 这个版本更偏 **实战盘中扫描**，不是静态白名单版本。
+- 新增了 **双时点多轮采样版**，适合 09:35 / 09:45 两个时点做更像盘中实战的扫描。
 - 若 pytdx 节点抽风，主流程会在 pytdx 多节点之间 fallback，不再退回东财/新浪。
 - 若用户明确说“不要改原版”，就继续保留原 `a-share-opening-flow-v6-test` 不动，只单独调用这个插件。
