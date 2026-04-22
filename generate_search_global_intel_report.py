@@ -15,6 +15,26 @@ POLITICS_TARGET = 15
 FINANCE_TARGET = 10
 TECH_TARGET = 5
 
+TECH_KEYWORDS = [
+    "ai", "openai", "anthropic", "nvidia", "chip", "chips", "semiconductor", "data center",
+    "robot", "robotics", "drone", "moon", "nasa", "space", "satellite", "cerebras",
+    "apple ceo", "google", "amazon", "microsoft", "tesla", "biotech", "biology", "quantum"
+]
+FINANCE_KEYWORDS = [
+    "market", "markets", "stocks", "stock", "bitcoin", "oil", "etf", "ipo", "economy", "index",
+    "aluminum", "price", "prices", "msci", "bond", "bonds", "yield", "yields", "inflation",
+    "trade", "tariff", "shipping", "commodity", "commodities", "earnings", "investor", "investors"
+]
+POLITICS_KEYWORDS = [
+    "iran", "israel", "lebanon", "gaza", "ukraine", "russia", "trump", "ceasefire", "war",
+    "military", "defense", "defence", "diplom", "sanction", "president", "prime minister",
+    "foreign minister", "supreme court", "arrest", "police", "saudi", "china", "pakistan", "middle east"
+]
+NOISE_PATTERNS = [
+    "how was your weekend", "attention span", "menopause", "couples", "sundays",
+    "k-pop", "bts", "psychologist", "public speaking expert"
+]
+
 
 def load_json(path: Path):
     encodings = ("utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be")
@@ -31,6 +51,46 @@ def load_json(path: Path):
 def find_latest(prefix: str) -> Path | None:
     files = sorted(SCRAPLING_OUTPUT.glob(prefix), key=lambda x: x.stat().st_mtime, reverse=True)
     return files[0] if files else None
+
+
+def fix_mojibake(text: str) -> str:
+    replacements = {
+        "鈥檚": "’s",
+        "鈥": "’",
+        "聽": " ",
+        "聲": "",
+        "Â": "",
+        "%��j": "’",
+        "r�": "·",
+        "�": "",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
+def clean_title(title: str) -> str:
+    title = fix_mojibake(title)
+    title = re.sub(r"\s+", " ", title).strip(" -*•\t\r\n|")
+    title = re.sub(r"^(April\s+\d{1,2},\s+\d{4})\s*[·•-]?\s*", "", title, flags=re.I)
+    title = re.sub(r"^(Listen\s*[:\-]?\s*)", "", title, flags=re.I)
+    title = re.sub(r"^(Watch\s*[:\-]?\s*)", "", title, flags=re.I)
+    if len(title) > 180:
+        title = title[:177].rstrip() + "..."
+    return title.strip()
+
+
+def looks_like_noise(title: str) -> bool:
+    t = title.lower().strip()
+    if not t or len(t) < 18:
+        return True
+    if any(p in t for p in NOISE_PATTERNS):
+        return True
+    if t.startswith("have a tip?"):
+        return True
+    if "send us information securely" in t:
+        return True
+    return False
 
 
 def take_titles(payload, limit=10):
@@ -56,44 +116,51 @@ def take_titles(payload, limit=10):
             title = str(row.get("title") or row.get("headline") or row.get("text") or "").strip()
         else:
             title = str(row).strip()
-        if title and title not in out:
+        title = clean_title(title)
+        if title and not looks_like_noise(title) and title not in out:
             out.append(title)
     return out[:limit]
 
 
 def classify(title: str) -> str:
     t = title.lower()
-    if any(k in t for k in ["ai", "openai", "nvidia", "chip", "data center", "drone", "moon", "nasa", "cerebras", "apple ceo", "biology-tuned"]):
-        return "tech"
-    if any(k in t for k in ["market", "stocks", "bitcoin", "oil", "etf", "ipo", "economy", "index", "aluminum", "price", "msci"]):
+    tech_score = sum(1 for k in TECH_KEYWORDS if k in t)
+    finance_score = sum(1 for k in FINANCE_KEYWORDS if k in t)
+    politics_score = sum(1 for k in POLITICS_KEYWORDS if k in t)
+
+    if politics_score >= max(tech_score, finance_score) and politics_score > 0:
+        return "politics"
+    if finance_score >= max(tech_score, politics_score) and finance_score > 0:
         return "finance"
+    if tech_score > 0:
+        return "tech"
     return "politics"
 
 
 def summarize_content(title: str) -> str:
     t = title.lower()
-    if any(k in t for k in ["iran", "hormuz", "israel", "lebanon", "middle east"]):
+    if any(k in t for k in ["iran", "hormuz", "israel", "lebanon", "middle east", "gaza"]):
         return "中东、航运与能源安全仍在反复影响国际局势和市场风险偏好。"
     if any(k in t for k in ["russia", "ukraine"]):
-        return "俄乌与俄罗斯相关线索仍在，但当天整体权重明显弱于中东主线。"
-    if any(k in t for k in ["china", "tariff", "trade", "saudi"]):
+        return "俄乌线索仍在持续，地缘博弈与制裁预期继续影响欧洲安全与市场。"
+    if any(k in t for k in ["china", "tariff", "trade", "saudi", "pakistan"]):
         return "大国协调、资源通道与贸易政策仍在共同影响全球供应链预期。"
-    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf"]):
+    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "bond", "yield", "inflation"]):
         return "市场价格与资金流继续围绕风险偏好、政策预期和地缘变化波动。"
-    if any(k in t for k in ["oil", "aluminum"]):
+    if any(k in t for k in ["oil", "aluminum", "commodity", "shipping"]):
         return "大宗商品与工业链条正在对地缘冲突和运输风险进行重新定价。"
-    if any(k in t for k in ["ai", "openai", "chip", "data center", "drone", "nasa", "moon", "apple ceo", "cerebras"]):
+    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "drone", "nasa", "moon", "cerebras", "robot"]):
         return "AI 与科技产业链继续扩展到算力、模型、军工与太空等关键方向。"
     return "这条新闻反映出全球政治、市场或科技主线仍在继续演变。"
 
 
 def summarize_comment(title: str) -> str:
     t = title.lower()
-    if any(k in t for k in ["iran", "hormuz", "oil"]):
+    if any(k in t for k in ["iran", "hormuz", "oil", "ceasefire"]):
         return "未来24至48小时需看事件与价格信号是否继续强化。"
-    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf"]):
+    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "yield"]):
         return "重点观察资金流和风险偏好是否继续扩散。"
-    if any(k in t for k in ["ai", "openai", "chip", "data center", "cerebras"]):
+    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "cerebras", "robot"]):
         return "科技主线仍强，后续重点看商业化与估值延续性。"
     return "后续重点看是否出现政策、事件或价格的新确认信号。"
 
@@ -118,7 +185,7 @@ def strip_html(text: str) -> str:
     text = re.sub(r"<[^>]+>", " ", text)
     text = text.replace("&nbsp;", " ").replace("&amp;", "&")
     text = re.sub(r"\s+", " ", text)
-    return text
+    return fix_mojibake(text)
 
 
 def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
@@ -142,8 +209,8 @@ def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
         r">([^<>]{20,160})<",
     ]:
         for match in re.findall(pattern, text, flags=re.I):
-            line = strip_html(match).strip(" -*•\t\r\n")
-            if 15 <= len(line) <= 180:
+            line = clean_title(strip_html(match))
+            if 15 <= len(line) <= 180 and not looks_like_noise(line):
                 candidates.append(line)
 
     out = []
@@ -159,6 +226,15 @@ def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
         if len(out) >= limit:
             break
     return out
+
+
+def add_source_items(container: list, titles: list[str], source: str, forced_category: str | None = None):
+    for title in titles:
+        title = clean_title(title)
+        if not title or looks_like_noise(title):
+            continue
+        category = forced_category or classify(title)
+        container.append((title, source, category))
 
 
 def main() -> int:
@@ -184,36 +260,39 @@ def main() -> int:
         payload = load_json(path)
         if payload is None:
             continue
-        for title in take_titles(payload, limit=20):
-            sources.append((title, source, classify(title)))
+        add_source_items(sources, take_titles(payload, limit=20), source)
 
     for key, source in tech_mapping.items():
         path = SCRAPLING_OUTPUT / f"{key}_latest.json"
         payload = load_json(path)
-        if payload is None:
-            continue
-        titles = take_titles(payload, limit=8)
-        if not titles and isinstance(payload, dict):
-            title = str(payload.get("title") or "").strip()
-            if title:
-                titles.append(title)
-            output_file = payload.get("output_file")
-            if output_file:
-                titles.extend(extract_titles_from_html(Path(output_file), limit=8))
-            content = str(payload.get("content") or "")
-            for line in content.splitlines():
-                line = line.strip(" -*•\t")
-                if 15 <= len(line) <= 140 and line not in titles:
-                    titles.append(line)
-        for title in titles[:8]:
-            sources.append((title, source, "tech"))
+        titles = []
+        if payload is not None:
+            titles.extend(take_titles(payload, limit=8))
+            if isinstance(payload, dict):
+                title = clean_title(str(payload.get("title") or "").strip())
+                if title:
+                    titles.append(title)
+                output_file = payload.get("output_file")
+                if output_file:
+                    titles.extend(extract_titles_from_html(Path(output_file), limit=8))
+                content = str(payload.get("content") or "")
+                for line in content.splitlines():
+                    line = clean_title(line.strip(" -*•\t"))
+                    if 15 <= len(line) <= 140 and not looks_like_noise(line) and line not in titles:
+                        titles.append(line)
+        else:
+            latest_html = find_latest(f"*{key}*get*.html") or find_latest(f"*{key}*.html")
+            if latest_html:
+                titles.extend(extract_titles_from_html(latest_html, limit=8))
+        add_source_items(sources, titles[:8], source, forced_category="tech")
 
     seen = set()
     politics, finance, tech = [], [], []
     for title, source, category in sources:
-        if title in seen:
+        dedupe_key = title.lower()
+        if dedupe_key in seen:
             continue
-        seen.add(title)
+        seen.add(dedupe_key)
         if category == "politics" and len(politics) < POLITICS_TARGET:
             politics.append((title, source))
         elif category == "finance" and len(finance) < FINANCE_TARGET:
@@ -222,12 +301,13 @@ def main() -> int:
             tech.append((title, source))
 
     for title, source, category in sources:
-        if len(politics) < POLITICS_TARGET and (title, source) not in politics and category != "tech":
-            politics.append((title, source))
-        if len(finance) < FINANCE_TARGET and (title, source) not in finance and category != "politics":
-            finance.append((title, source))
-        if len(tech) < TECH_TARGET and (title, source) not in tech:
-            tech.append((title, source))
+        item = (title, source)
+        if len(politics) < POLITICS_TARGET and item not in politics and category != "tech":
+            politics.append(item)
+        if len(finance) < FINANCE_TARGET and item not in finance and category != "politics":
+            finance.append(item)
+        if len(tech) < TECH_TARGET and item not in tech:
+            tech.append(item)
 
     report = [
         f"全球综合情报报告 - {datetime.now().strftime('%Y-%m-%d')}（自动版）",
