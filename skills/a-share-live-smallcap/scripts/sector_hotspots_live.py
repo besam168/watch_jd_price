@@ -93,7 +93,10 @@ def load_json(path: Path):
 
 def fetch_auto_sector_payload():
     cmd = [sys.executable, str(HOT_SPOTS_SCRIPT), '--hot-sectors', '--industry-sectors', '--json']
-    r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=120)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=120)
+    except UnicodeDecodeError:
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding='gbk', errors='ignore', timeout=120)
     if r.returncode != 0 or not r.stdout:
         return {}
     try:
@@ -187,6 +190,8 @@ def main():
     auto_payload = fetch_auto_sector_payload()
     auto_sector_names = build_auto_sector_index(auto_payload)
     hot_sectors, enriched = summarize(pool, auto_sector_names=auto_sector_names)
+    if not hot_sectors:
+        hot_sectors, enriched = summarize(pool, auto_sector_names=None)
     payload = {
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'slot': args.slot,
