@@ -40,6 +40,15 @@ NOISE_PATTERNS = [
 TECH_NEGATIVE_KEYWORDS = [
     "iran", "hormuz", "ceasefire", "war", "oil", "vessels", "ship", "tehran", "saudi", "gaza", "lebanon"
 ]
+SITE_TITLE_PATTERNS = [
+    "techcrunch | startup and technology news",
+    "the verge",
+    "wired",
+    "mit technology review",
+    "ieee spectrum",
+    "ars technica",
+    "bloomberg markets"
+]
 
 
 def load_json(path: Path):
@@ -90,6 +99,22 @@ def shorten_summary_like_title(title: str) -> str:
     return title[:107].rstrip() + "..."
 
 
+def salvage_npr_style_title(title: str) -> str:
+    t = title.strip()
+    if len(t) <= 110:
+        return t
+    if any(prefix in t.lower() for prefix in [
+        "as the end of", "president trump said", "for 25 years", "the war in gaza", "a rare look at",
+        "iran's foreign minister", "u.k. police said", "experts who spent months"
+    ]):
+        for sep in [". ", "; "]:
+            if sep in t:
+                first = t.split(sep)[0].strip()
+                if 20 <= len(first) <= 140:
+                    return first
+    return shorten_summary_like_title(t)
+
+
 def clean_title(title: str) -> str:
     title = fix_mojibake(title)
     title = re.sub(r"\s+", " ", title).strip(" -*•\t\r\n|")
@@ -97,7 +122,8 @@ def clean_title(title: str) -> str:
     title = re.sub(r"^(Listen\s*[:\-]?\s*)", "", title, flags=re.I)
     title = re.sub(r"^(Watch\s*[:\-]?\s*)", "", title, flags=re.I)
     title = re.sub(r"^In this episode we learn about\s*", "", title, flags=re.I)
-    title = shorten_summary_like_title(title)
+    title = salvage_npr_style_title(title)
+    title = re.sub(r"\bU\.S\.$", "U.S.", title)
     if len(title) > 140:
         title = title[:137].rstrip() + "..."
     return title.strip()
@@ -109,9 +135,13 @@ def looks_like_noise(title: str) -> bool:
         return True
     if any(p in t for p in NOISE_PATTERNS):
         return True
+    if any(p in t for p in SITE_TITLE_PATTERNS):
+        return True
     if t.startswith("have a tip?"):
         return True
     if "send us information securely" in t:
+        return True
+    if t.endswith("startup and technology news"):
         return True
     return False
 
