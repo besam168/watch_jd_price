@@ -61,6 +61,7 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
 
 ## 注意
 - 当前版本已按要求**停掉东财 / 新浪旧主流程入口**，不再用于实时候选获取。
+- 定时脚本 `scheduled_smallcap_scan.py` / `scheduled_smallcap_final.py` 也已切到 **pytdx + 5亿股/100亿新池**，不再走旧口。
 - 这个版本更偏 **实战盘中扫描**，不是静态白名单版本。
 - 若 pytdx 节点抽风，主流程会在 pytdx 多节点之间 fallback，不再退回东财/新浪。
 - 若用户明确说“不要改原版”，就继续保留原 `a-share-opening-flow-v6-test` 不动，只单独调用这个插件。
