@@ -2,245 +2,148 @@
 import os
 os.environ.setdefault('PYTHONUTF8', '1')
 os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+
 import argparse
+import io
 import json
-import re
+import statistics
 import sys
-import urllib.request
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
-try:
-    import io
-    from contextlib import redirect_stderr, redirect_stdout
-except Exception:
-    io = None
-    redirect_stderr = None
-    redirect_stdout = None
-
-PLUGIN_NAME = 'A股盘中中小盘强势股插件（实时版）'
+PLUGIN_NAME = 'A股盘中中小盘强势股插件（pytdx版）'
+BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE = Path(__file__).resolve().parents[3]
-HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
+AUCTION_SKILL_DIR = WORKSPACE / 'skills' / 'auction_915_925_smooth_scanner'
+AUCTION_DS_DIR = AUCTION_SKILL_DIR / 'datasource'
 V6_TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts'
-sys.path.insert(0, str(HOT_SCRIPT))
+
+sys.path.insert(0, str(AUCTION_DS_DIR))
 sys.path.insert(0, str(V6_TEST_SCRIPT))
 
-import market_watch as mw  # type: ignore
+from pytdx_snapshot import fetch_quotes_with_fallback  # type: ignore
 import opening_flow_v6_test as v6  # type: ignore
 
+UNIVERSE_PATH = AUCTION_SKILL_DIR / 'outputs' / 'liutong5yi_marketcap100yi_universe_full.json'
+OUTPUT_DIR = BASE_DIR / 'output'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-def load_code_name_map() -> dict:
-    path = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'references' / 'name_map.csv'
-    mapping = {}
-    if not path.exists():
-        return mapping
-    for line in path.read_text(encoding='utf-8').splitlines():
-        if not line.strip() or ',' not in line:
-            continue
-        name, code = line.split(',', 1)
-        mapping[code.strip()] = name.strip()
-    return mapping
-
-
-CODE_NAME_MAP = load_code_name_map()
-LARGE_CAP_CODES = {
-    '600519', '300750', '000858', '600036', '600030', '300059', '002594', '601318', '601012', '601138',
-    '688981', '688256', '601899', '601888', '000651', '000333', '603259', '002475', '688041', '300308',
-    '000977', '002230', '603019', '600900', '601127', '601919', '601336', '600031', '002241', '002714',
-    '600438', '603501', '002371', '603986', '002463', '600019', '601857', '601088', '000001', '000002'
-}
 HIGH_BETA_PREFIX = ('300', '301')
-SMALLCAP_ACCEPT_PREFIX = ('300', '301', '002', '003', '603', '605')
-SINA_ALL_MARKET_URL = 'https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData?page={page}&num={num}&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=page'
+SMALLCAP_ACCEPT_PREFIX = ('000', '001', '002', '003', '600', '601', '603', '605')
+EXCLUDED_PREFIX = ('688', '689', '4', '8')
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == '':
+            return default
+        return float(value)
+    except Exception:
+        return default
 
 
 def normalize_name(text: str) -> str:
-    if not text:
-        return text
-    try:
-        fixed = mw._decode_possible_garbled(text)
-        return fixed or text
-    except Exception:
-        return text
+    s = str(text or '').strip()
+    return s or ''
 
 
-def fetch_text_direct(url: str, referer: str | None = None, timeout: int = 12) -> str:
-    headers = dict(mw.HEADERS)
-    if referer:
-        headers['Referer'] = referer
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    last_error = None
-    for _ in range(3):
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with opener.open(req, timeout=timeout) as resp:
-                raw = resp.read()
-                charset = 'gbk' if 'sina' in url or 'sinajs' in url else 'utf-8'
-                return raw.decode(charset, errors='replace')
-        except Exception as e:
-            last_error = e
-    raise last_error
+def market_prefix(code: str) -> str:
+    return 'sh' if code.startswith(('60', '68')) else 'sz'
 
 
-def build_live_item(code: str, name: str, current, change_pct, change, volume_lot, amount_yi, total_mv_yi=0.0, circ_mv_yi=0.0, source='', turnover_ratio=0.0) -> dict:
-    market = 'sh' if code.startswith(('60', '68')) else 'sz'
-    return {
-        'symbol': f'{market}{code}',
-        'code': code,
-        'name': normalize_name(name) or CODE_NAME_MAP.get(code, code),
-        'current': round(mw.safe_float(current), 2),
-        'change_pct': round(mw.safe_float(change_pct), 2),
-        'change': round(mw.safe_float(change), 2),
-        'volume_lot': int(mw.safe_float(volume_lot)),
-        'amount_yi': round(mw.safe_float(amount_yi), 2),
-        'total_mv_yi': round(mw.safe_float(total_mv_yi), 2),
-        'circ_mv_yi': round(mw.safe_float(circ_mv_yi), 2),
-        'turnover_ratio': round(mw.safe_float(turnover_ratio), 2),
-        'source': source,
-    }
-
-
-def try_fetch_live_market_from_sina(top_n: int) -> tuple[list, str]:
-    per_page = 80
-    pages = max(1, (top_n + per_page - 1) // per_page)
+def load_universe() -> list[dict]:
+    if not UNIVERSE_PATH.exists():
+        raise FileNotFoundError(f'universe_not_found: {UNIVERSE_PATH}')
+    obj = json.loads(UNIVERSE_PATH.read_text(encoding='utf-8'))
+    selected = obj.get('selected') or []
     out = []
-    for page in range(1, pages + 1):
-        url = SINA_ALL_MARKET_URL.format(page=page, num=per_page)
-        raw = fetch_text_direct(url, referer='https://finance.sina.com.cn')
-        items = json.loads(raw)
-        for item in items:
-            code = str(item.get('code', '')).strip()
-            if not re.fullmatch(r'\d{6}', code):
-                continue
-            out.append(build_live_item(
-                code=code,
-                name=str(item.get('name', '')).strip(),
-                current=item.get('trade', 0),
-                change_pct=item.get('changepercent', 0),
-                change=item.get('pricechange', 0),
-                volume_lot=item.get('volume', 0),
-                amount_yi=mw.safe_float(item.get('amount', 0)) / 1e8,
-                total_mv_yi=mw.safe_float(item.get('mktcap', 0)) / 1e4,
-                circ_mv_yi=mw.safe_float(item.get('nmc', 0)) / 1e4,
-                turnover_ratio=item.get('turnoverratio', 0),
-                source='新浪全市场涨幅榜',
-            ))
-    out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
-    return out[:top_n], 'sina-all-market'
-
-
-def try_fetch_live_market_from_eastmoney(top_n: int) -> tuple[list, str]:
-    urls = [
-        (
-            f'https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={top_n}&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281'
-            '&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f4,f5,f6,f20,f21'
-        ),
-        (
-            f'http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz={top_n}&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281'
-            '&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f4,f5,f6,f20,f21'
-        ),
-    ]
-    for url in urls:
-        try:
-            raw = fetch_text_direct(url, referer='https://quote.eastmoney.com')
-            obj = json.loads(raw)
-            diff = ((obj.get('data') or {}).get('diff') or [])
-            out = []
-            for item in diff:
-                code = str(item.get('f12', '')).strip()
-                if not re.fullmatch(r'\d{6}', code):
-                    continue
-                out.append(build_live_item(
-                    code=code,
-                    name=str(item.get('f14', '')).strip(),
-                    current=item.get('f2', 0),
-                    change_pct=item.get('f3', 0),
-                    change=item.get('f4', 0),
-                    volume_lot=item.get('f5', 0),
-                    amount_yi=mw.safe_float(item.get('f6', 0)) / 1e8,
-                    total_mv_yi=mw.safe_float(item.get('f20', 0)) / 1e8,
-                    circ_mv_yi=mw.safe_float(item.get('f21', 0)) / 1e8,
-                    source='东方财富实时全市场',
-                ))
-            if out:
-                out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
-                return out, 'eastmoney-live'
-        except Exception:
+    for item in selected:
+        code = str(item.get('code') or '').strip()
+        if not code:
             continue
-    return [], 'eastmoney-failed'
-
-
-def fetch_builtin_smallcap_live_pool() -> list:
-    out = []
-    for name, code in v6.CANDIDATE_CODE_MAP.items():
-        try:
-            stock = mw.fetch_stock(code)
-        except Exception:
-            continue
-        if stock.get('error'):
-            continue
-        out.append(build_live_item(
-            code=code,
-            name=name,
-            current=stock.get('current', 0),
-            change_pct=stock.get('change_pct', 0),
-            change=stock.get('change', 0),
-            volume_lot=stock.get('volume_lot', 0),
-            amount_yi=stock.get('amount_yi', 0),
-            source='V6内置中小盘池',
-        ))
-    out.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+        out.append({
+            'code': code,
+            'name': normalize_name(item.get('name')),
+            'market': item.get('market'),
+            'latest_price': safe_float(item.get('latest_price')),
+            'liutongguben': safe_float(item.get('liutongguben')),
+            'estimated_liutong_marketcap': safe_float(item.get('estimated_liutong_marketcap')),
+            'ipo_date': item.get('ipo_date'),
+        })
     return out
 
 
-def merge_unique_by_code(*groups: list) -> list:
-    merged = []
-    seen = set()
-    for group in groups:
-        for item in group:
-            code = str(item.get('code', '')).strip()
-            if not code or code in seen:
-                continue
-            seen.add(code)
-            merged.append(item)
-    return merged
+def chunked(seq, size):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
 
 
-def try_fetch_live_market(top_n: int) -> tuple[list, str]:
-    eastmoney_items, eastmoney_source = try_fetch_live_market_from_eastmoney(top_n)
-    if eastmoney_items:
-        return eastmoney_items[:top_n], eastmoney_source
+def collect_snapshot_rows(symbols: list[str], chunk_size: int = 120) -> tuple[list[dict], list[dict]]:
+    rows = []
+    stats = []
+    for chunk in chunked(symbols, chunk_size):
+        result = fetch_quotes_with_fallback(chunk, primary_batch_size=5)
+        rows.extend(result['rows'])
+        stats.append(result['stats'])
+    return rows, stats
 
-    try:
-        sina_items, sina_source = try_fetch_live_market_from_sina(top_n)
-        if sina_items:
-            return sina_items, sina_source
-    except Exception:
-        pass
 
-    hot_items = []
-    try:
-        for item in mw.fetch_hot_stocks():
-            code = str(item.get('symbol', ''))[-6:]
-            hot_items.append(build_live_item(
-                code=code,
-                name=str(item.get('name', '')).strip(),
-                current=item.get('current', 0),
-                change_pct=item.get('change_pct', 0),
-                change=item.get('change', 0),
-                volume_lot=item.get('volume_lot', 0),
-                amount_yi=item.get('amount_yi', 0),
-                source=item.get('source', '新浪/腾讯候选池fallback'),
-            ))
-    except Exception:
-        hot_items = []
+def reference_price(row: dict) -> float:
+    bid1 = safe_float(row.get('bid1'))
+    ask1 = safe_float(row.get('ask1'))
+    price = safe_float(row.get('price'))
+    if bid1 > 0 and ask1 > 0:
+        return round((bid1 + ask1) / 2, 4)
+    if price > 0:
+        return round(price, 4)
+    if bid1 > 0:
+        return round(bid1, 4)
+    if ask1 > 0:
+        return round(ask1, 4)
+    return 0.0
 
-    builtin_smallcap = fetch_builtin_smallcap_live_pool()
-    merged = merge_unique_by_code(hot_items, builtin_smallcap)
-    merged.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
-    return merged[: max(top_n, 24)], 'fallback-hot-stocks+builtin-smallcap'
+
+def build_live_item(row: dict, universe_meta: dict) -> dict:
+    code = str(row.get('code') or '').strip()
+    current = reference_price(row)
+    last_close = safe_float(row.get('last_close'))
+    if current <= 0:
+        current = last_close
+    change = current - last_close if current > 0 and last_close > 0 else 0.0
+    change_pct = (change / last_close * 100.0) if last_close > 0 else 0.0
+    bid_vol1 = safe_float(row.get('bid_vol1'))
+    ask_vol1 = safe_float(row.get('ask_vol1'))
+    volume_lot = int(max(bid_vol1, 0) + max(ask_vol1, 0))
+    amount_yi = round(current * volume_lot * 100 / 1e8, 2) if current > 0 and volume_lot > 0 else 0.0
+    circ_mv_yi = round(safe_float(universe_meta.get('estimated_liutong_marketcap')) / 1e8, 2)
+    total_mv_yi = circ_mv_yi
+    turnover_ratio = round((amount_yi / circ_mv_yi) * 100.0, 2) if amount_yi > 0 and circ_mv_yi > 0 else 0.0
+    return {
+        'symbol': f"{market_prefix(code)}{code}",
+        'code': code,
+        'name': normalize_name(universe_meta.get('name') or row.get('name') or code),
+        'current': round(current, 2),
+        'change_pct': round(change_pct, 2),
+        'change': round(change, 2),
+        'volume_lot': volume_lot,
+        'amount_yi': amount_yi,
+        'total_mv_yi': total_mv_yi,
+        'circ_mv_yi': circ_mv_yi,
+        'turnover_ratio': turnover_ratio,
+        'source': 'pytdx_snapshot_universe',
+        'last_close': round(last_close, 2) if last_close > 0 else 0.0,
+        'bid1': safe_float(row.get('bid1')),
+        'ask1': safe_float(row.get('ask1')),
+        'bid_vol1': bid_vol1,
+        'ask_vol1': ask_vol1,
+        'servertime': row.get('servertime'),
+        'liutongguben': universe_meta.get('liutongguben'),
+        'estimated_liutong_marketcap': universe_meta.get('estimated_liutong_marketcap'),
+        'ipo_date': universe_meta.get('ipo_date'),
+    }
 
 
 def infer_style(item: dict) -> list[str]:
@@ -254,63 +157,73 @@ def infer_style(item: dict) -> list[str]:
         tags += ['中小盘主板']
     elif code.startswith(('603', '605')):
         tags += ['主板弹性票']
-    elif code.startswith('60'):
+    elif code.startswith(('000', '001', '600', '601')):
         tags += ['主板']
     return tags
 
 
 def classify_cap_bucket(item: dict) -> str:
-    total_mv = mw.safe_float(item.get('total_mv_yi', 0))
-    circ_mv = mw.safe_float(item.get('circ_mv_yi', 0))
-    if total_mv <= 0 and circ_mv <= 0:
+    ref = max(safe_float(item.get('total_mv_yi')), safe_float(item.get('circ_mv_yi')))
+    if ref <= 0:
         return 'unknown'
-    ref = max(total_mv, circ_mv)
+    if ref <= 100:
+        return 'micro'
     if ref <= 300:
         return 'small'
-    if ref <= 1000:
+    if ref <= 800:
         return 'mid'
-    if ref <= 3000:
-        return 'large'
-    return 'mega'
+    return 'upper_smallcap'
 
 
 def is_st_stock(item: dict) -> bool:
     name = str(item.get('name', '') or '').upper().replace(' ', '')
-    return 'ST' in name or '＊ST' in name or '*ST' in name
+    return 'ST' in name or '*ST' in name or '＊ST' in name or '退' in name
 
 
 def is_smallcap_style(item: dict, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool) -> tuple[bool, str]:
     code = item.get('code', '')
-    total_mv = mw.safe_float(item.get('total_mv_yi', 0))
-    circ_mv = mw.safe_float(item.get('circ_mv_yi', 0))
+    total_mv = safe_float(item.get('total_mv_yi', 0))
+    circ_mv = safe_float(item.get('circ_mv_yi', 0))
 
     if is_st_stock(item):
         return False, '排除ST/*ST股票'
-    if code.startswith('688'):
-        return False, '排除科创板股票'
-    if code in LARGE_CAP_CODES:
-        return False, '命中大票/权重黑名单'
+    if code.startswith(EXCLUDED_PREFIX):
+        return False, '排除科创板/北交所'
+    if not code.startswith(SMALLCAP_ACCEPT_PREFIX + HIGH_BETA_PREFIX):
+        return False, '非目标股票池代码段'
     if total_mv > 0 and total_mv > max_total_mv_yi:
         return False, f'总市值过大>{max_total_mv_yi}亿'
     if circ_mv > 0 and circ_mv > max_circ_mv_yi:
         return False, f'流通市值过大>{max_circ_mv_yi}亿'
     if code.startswith(HIGH_BETA_PREFIX):
         return True, '高弹性代码段'
-    if code.startswith(('002', '003', '603', '605')):
-        return True, '中小盘/弹性主板代码段'
+    if code.startswith(('002', '003', '603', '605', '000', '001')):
+        return True, '中小盘主板代码段'
     if code.startswith('60'):
-        if not allow_mainboard_60:
-            return False, '默认排除60主板大票风格'
-        if total_mv > 0 and total_mv <= max_total_mv_yi and circ_mv <= max_circ_mv_yi:
-            return True, '60主板但市值未超阈值'
-        return False, '60主板且不满足小中盘阈值'
-    if total_mv > 0 and total_mv <= max_total_mv_yi and circ_mv <= max_circ_mv_yi:
-        return True, '市值阈值通过'
-    return False, '非中小盘风格'
+        if allow_mainboard_60:
+            return True, '60主板允许纳入'
+        return True, '60主板默认纳入新池'
+    return True, '5亿股+100亿流通市值新池'
 
 
 def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: float, pick_count: int, max_total_mv_yi: float, max_circ_mv_yi: float, allow_mainboard_60: bool, min_turnover_ratio: float, max_change_pct: float = 999.0):
-    live_items, source = try_fetch_live_market(top_n)
+    universe = load_universe()
+    universe_map = {x['code']: x for x in universe}
+    codes = list(universe_map.keys())
+    rows, fetch_stats = collect_snapshot_rows(codes)
+
+    live_items = []
+    for row in rows:
+        code = str(row.get('code') or '').strip()
+        meta = universe_map.get(code)
+        if not meta:
+            continue
+        item = build_live_item(row, meta)
+        live_items.append(item)
+
+    live_items.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0), x.get('turnover_ratio', 0)), reverse=True)
+    live_items = live_items[:top_n] if top_n > 0 else live_items
+
     filtered = []
     rejected_largecap = []
     rejected_live = []
@@ -327,7 +240,7 @@ def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: flo
         if item.get('change_pct', 0) > max_change_pct:
             rejected_live.append({**item, 'reject_reason': f'盘中涨幅过高>{max_change_pct}%'})
             continue
-        if mw.safe_float(item.get('turnover_ratio', 0)) > 0 and mw.safe_float(item.get('turnover_ratio', 0)) < min_turnover_ratio:
+        if safe_float(item.get('turnover_ratio', 0)) > 0 and safe_float(item.get('turnover_ratio', 0)) < min_turnover_ratio:
             rejected_live.append({**item, 'reject_reason': f'换手不足<{min_turnover_ratio}%'})
             continue
         if not ok_style:
@@ -335,7 +248,7 @@ def first_round_candidates(top_n: int, min_change_pct: float, min_amount_yi: flo
             continue
         filtered.append({**item, 'style_reason': style_reason})
     filtered.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0), x.get('turnover_ratio', 0)), reverse=True)
-    return filtered[:pick_count], rejected_largecap, rejected_live, source, live_items
+    return filtered[:pick_count], rejected_largecap, rejected_live, 'pytdx-live-universe', live_items, fetch_stats
 
 
 def second_round_filter(candidates):
@@ -345,10 +258,7 @@ def second_round_filter(candidates):
     for item in candidates:
         code = item['code']
         try:
-            if io is not None and redirect_stdout is not None and redirect_stderr is not None:
-                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-                    df = v6.fetch_daily_df(code)
-            else:
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 df = v6.fetch_daily_df(code)
             last = df.tail(4).copy()
             if len(last) < 4:
@@ -384,36 +294,25 @@ def second_round_filter(candidates):
 
 
 def estimate_turnover_ratio(item: dict) -> float:
-    turnover = mw.safe_float(item.get('turnover_ratio', 0))
+    turnover = safe_float(item.get('turnover_ratio', 0))
     if turnover > 0:
         return round(turnover, 2)
-
-    amount_yi = mw.safe_float(item.get('amount_yi', 0))
-    circ_mv_yi = mw.safe_float(item.get('circ_mv_yi', 0))
-    current = mw.safe_float(item.get('current', 0))
-    change = mw.safe_float(item.get('change', 0))
-    prev_close = current - change if current > 0 else 0.0
-
-    est = 0.0
+    amount_yi = safe_float(item.get('amount_yi', 0))
+    circ_mv_yi = safe_float(item.get('circ_mv_yi', 0))
     if circ_mv_yi > 0 and amount_yi > 0:
-        est = (amount_yi / circ_mv_yi) * 100.0
-    elif prev_close > 0 and amount_yi > 0:
-        est = (amount_yi / (prev_close * 10.0)) * 0.01
-
-    if est <= 0:
-        return 0.0
-    return round(est, 2)
+        return round((amount_yi / circ_mv_yi) * 100.0, 2)
+    return 0.0
 
 
 def compute_intraday_score(item: dict) -> float:
-    change_pct = mw.safe_float(item.get('change_pct', 0))
-    amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    change_pct = safe_float(item.get('change_pct', 0))
+    amount_yi = safe_float(item.get('amount_yi', 0))
     turnover = estimate_turnover_ratio(item)
     code = item.get('code', '')
     bonus = 0.0
     if code.startswith(HIGH_BETA_PREFIX):
         bonus += 0.8
-    elif code.startswith(('002', '003', '603', '605')):
+    elif code.startswith(('002', '003', '603', '605', '000', '001')):
         bonus += 0.4
     if amount_yi >= 15:
         bonus += 1.0
@@ -431,8 +330,8 @@ def compute_intraday_score(item: dict) -> float:
 
 
 def compute_conviction(item: dict) -> str:
-    change_pct = mw.safe_float(item.get('change_pct', 0))
-    amount_yi = mw.safe_float(item.get('amount_yi', 0))
+    change_pct = safe_float(item.get('change_pct', 0))
+    amount_yi = safe_float(item.get('amount_yi', 0))
     turnover = estimate_turnover_ratio(item)
     if change_pct >= 8 and amount_yi >= 8 and turnover >= 5:
         return '高'
@@ -456,61 +355,6 @@ def attach_intraday_metrics(items: list) -> list:
     return out
 
 
-def build_role_board(true_leaders: list, strong_followers: list, pseudo_strong: list) -> dict:
-    dragon_one = true_leaders[0] if len(true_leaders) >= 1 else None
-    dragon_two = true_leaders[1] if len(true_leaders) >= 2 else None
-    followers = strong_followers[:3]
-    if len(followers) < 3:
-        need = 3 - len(followers)
-        extra = true_leaders[2:2 + need]
-        followers = followers + extra
-    observe = pseudo_strong[:5]
-
-    def brief(item):
-        if not item:
-            return None
-        return {
-            'name': item.get('name'),
-            'code': item.get('code'),
-            'change_pct': item.get('change_pct'),
-            'amount_yi': item.get('amount_yi'),
-            'turnover': format_turnover_display(item),
-            'conviction': item.get('conviction'),
-        }
-
-    return {
-        'dragon_one': brief(dragon_one),
-        'dragon_two': brief(dragon_two),
-        'followers': [brief(x) for x in followers if x],
-        'observe': [brief(x) for x in observe if x],
-    }
-
-
-def build_chinese_summary(true_leaders: list, strong_followers: list, pseudo_strong: list, watchlist: list) -> dict:
-    def pack(items):
-        return [f"{x['name']} {x['code']}" for x in items[:3]]
-
-    leader_names = pack(true_leaders)
-    follower_names = pack(strong_followers)
-    pseudo_names = pack(pseudo_strong)
-    watch_names = pack(watchlist)
-
-    if leader_names:
-        overall = f"盘中中小盘强势股里，最强的是 {'、'.join(leader_names)}。"
-    elif watch_names:
-        overall = f"盘中中小盘候选偏少，当前先看 {'、'.join(watch_names)}。"
-    else:
-        overall = '这会儿中小盘真正走出来的票不多，先别硬做。'
-
-    return {
-        'overall': overall,
-        'true_leaders': leader_names,
-        'strong_followers': follower_names,
-        'pseudo_strong': pseudo_names,
-        'watchlist': watch_names,
-    }
-
-
 def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[list, list, list]:
     passed = attach_intraday_metrics(passed)
     partial = attach_intraday_metrics(partial)
@@ -518,8 +362,6 @@ def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[l
 
     true_leaders = []
     strong_followers = []
-    pseudo_strong = []
-
     for idx, item in enumerate(passed):
         code = item.get('code', '')
         change_pct = item.get('change_pct', 0)
@@ -537,39 +379,72 @@ def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[l
 
 
 def build_watchlist(true_leaders: list, strong_followers: list) -> list:
-    merged = true_leaders + strong_followers
-    return merged[:5]
+    return (true_leaders + strong_followers)[:5]
 
 
 def format_turnover_display(item: dict) -> str:
-    raw = mw.safe_float(item.get('turnover_ratio', 0))
-    effective = mw.safe_float(item.get('turnover_ratio_effective', 0))
-    estimated = mw.safe_float(item.get('turnover_ratio_est', 0))
+    raw = safe_float(item.get('turnover_ratio', 0))
+    effective = safe_float(item.get('turnover_ratio_effective', 0))
+    estimated = safe_float(item.get('turnover_ratio_est', 0))
     if raw > 0:
-        return f"{raw}%"
+        return f'{raw}%'
     if estimated > 0:
-        return f"≈{effective}%"
-    return "0.0%"
+        return f'≈{effective}%'
+    return '0.0%'
+
+
+def build_role_board(true_leaders: list, strong_followers: list, pseudo_strong: list) -> dict:
+    def brief(item):
+        if not item:
+            return None
+        return {
+            'name': item.get('name'),
+            'code': item.get('code'),
+            'change_pct': item.get('change_pct'),
+            'amount_yi': item.get('amount_yi'),
+            'turnover': format_turnover_display(item),
+            'conviction': item.get('conviction'),
+        }
+    return {
+        'dragon_one': brief(true_leaders[0]) if len(true_leaders) >= 1 else None,
+        'dragon_two': brief(true_leaders[1]) if len(true_leaders) >= 2 else None,
+        'followers': [brief(x) for x in strong_followers[:3]],
+        'observe': [brief(x) for x in pseudo_strong[:5]],
+    }
+
+
+def build_chinese_summary(true_leaders: list, strong_followers: list, pseudo_strong: list, watchlist: list) -> dict:
+    def pack(items):
+        return [f"{x['name']} {x['code']}" for x in items[:3]]
+    leader_names = pack(true_leaders)
+    follower_names = pack(strong_followers)
+    pseudo_names = pack(pseudo_strong)
+    watch_names = pack(watchlist)
+    if leader_names:
+        overall = f"盘中中小盘强势股里，最强的是 {'、'.join(leader_names)}。"
+    elif watch_names:
+        overall = f"盘中中小盘候选偏少，当前先看 {'、'.join(watch_names)}。"
+    else:
+        overall = '这会儿中小盘真正走出来的票不多，先别硬做。'
+    return {
+        'overall': overall,
+        'true_leaders': leader_names,
+        'strong_followers': follower_names,
+        'pseudo_strong': pseudo_names,
+        'watchlist': watch_names,
+    }
 
 
 def main():
-    try:
-        if hasattr(sys.stdout, 'reconfigure'):
-            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        if hasattr(sys.stderr, 'reconfigure'):
-            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
-
     parser = argparse.ArgumentParser(description=PLUGIN_NAME)
     parser.add_argument('--date', default='today', help='交易日')
     parser.add_argument('--top-n', type=int, default=120, help='实时市场初始抓取范围')
     parser.add_argument('--pick-count', type=int, default=24, help='中小盘候选池上限')
     parser.add_argument('--min-change-pct', type=float, default=1.5, help='最小涨幅过滤')
-    parser.add_argument('--min-amount-yi', type=float, default=2.0, help='最小成交额(亿)过滤')
-    parser.add_argument('--min-turnover-ratio', type=float, default=0.0, help='最小换手率过滤(%%)')
-    parser.add_argument('--max-total-mv-yi', type=float, default=1200, help='总市值上限(亿)')
-    parser.add_argument('--max-circ-mv-yi', type=float, default=800, help='流通市值上限(亿)')
+    parser.add_argument('--min-amount-yi', type=float, default=0.03, help='最小成交额(亿)过滤')
+    parser.add_argument('--min-turnover-ratio', type=float, default=0.0, help='最小换手率过滤(%)')
+    parser.add_argument('--max-total-mv-yi', type=float, default=100.0, help='总市值上限(亿)')
+    parser.add_argument('--max-circ-mv-yi', type=float, default=100.0, help='流通市值上限(亿)')
     parser.add_argument('--allow-mainboard-60', action='store_true', help='允许60主板在满足阈值时入选')
     parser.add_argument('--max-change-pct', type=float, default=999.0, help='盘中最大涨幅过滤')
     parser.add_argument('--under-five-mode', action='store_true', help='盘中只保留涨幅不超过5%的票')
@@ -580,7 +455,7 @@ def main():
 
     effective_max_change_pct = 5.0 if args.under_five_mode else args.max_change_pct
 
-    candidates, rejected_largecap, rejected_live, source, live_items = first_round_candidates(
+    candidates, rejected_largecap, rejected_live, source, live_items, fetch_stats = first_round_candidates(
         top_n=args.top_n,
         min_change_pct=args.min_change_pct,
         min_amount_yi=args.min_amount_yi,
@@ -599,10 +474,10 @@ def main():
 
     payload = {
         'plugin': PLUGIN_NAME,
-        'version': 'v4',
+        'version': 'v5-pytdx',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'date': args.date,
-        'strategy': '优先东方财富实时全市场 -> 再用新浪全市场涨幅榜 -> 剔除大票/权重 -> 保留中小盘/创业板/次新/弹性票 -> 近3日量价 + 5日线过滤',
+        'strategy': '停用东财/新浪实时入口，改用pytdx快照+5亿股100亿流通市值新股票池，再叠加近3日量价+5日线过滤',
         'market_scan_source': source,
         'top_n': args.top_n,
         'pick_count': args.pick_count,
@@ -627,12 +502,16 @@ def main():
         'chinese_summary': chinese_summary,
         'rejected_largecap': rejected_largecap,
         'rejected_live': rejected_live,
+        'fetch_stats': fetch_stats,
         'data_sources': {
             'realtime_scan': source,
-            'primary': '东方财富实时全市场',
-            'secondary': '新浪全市场涨幅榜',
+            'primary': 'pytdx.hq.TdxHq_API',
+            'secondary': 'disabled',
             'daily_filter': '腾讯历史K线(akshare)',
-            'fallback': '新浪/腾讯候选池fallback + V6内置中小盘池',
+            'fallback': 'pytdx多服务器fallback + 单批失败降级补拉',
+            'universe': str(UNIVERSE_PATH),
+            'legacy_eastmoney': 'disabled',
+            'legacy_sina': 'disabled',
         },
     }
 
@@ -656,11 +535,11 @@ def main():
         x = role_board['dragon_two']
         print(f"龙二: {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
     if role_board.get('followers'):
-        print("跟随:")
+        print('跟随:')
         for x in role_board['followers']:
             print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
     if role_board.get('observe'):
-        print("观察:")
+        print('观察:')
         for x in role_board['observe']:
             print(f"- {x['name']} {x['code']}  {x['change_pct']}%  成交额{x['amount_yi']}亿  换手{x['turnover']}  信号{x['conviction']}")
 
