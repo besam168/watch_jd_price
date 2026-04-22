@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 多时点多轮采样版中小盘扫描任务（含板块正式版）
-支持时点：09:35 / 09:45 / 10:04 / 13:01 / 13:03 / 14:21 / 14:23
+支持时点：09:24 / 09:35 / 09:45 / 10:04 / 13:01 / 13:03 / 14:21 / 14:23
 """
 import os
 os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -27,6 +27,7 @@ REPORT_DIR = os.path.join(SCRIPT_DIR, '../../../../reports/smallcap')
 os.makedirs(REPORT_DIR, exist_ok=True)
 
 CONFIGS = {
+    '0924': {'sample_label': '0924', 'min_change_pct': 0.0, 'max_change_pct': 6, 'min_amount_yi': 0.001, 'rounds': 3, 'interval_seconds': 6, 'pick_count': 24, 'role': '竞价尾声观察池', 'desc': '09:24 用来盯集合竞价尾声和临近开盘前的异动小票。'},
     '0935': {'sample_label': '0935', 'min_change_pct': 0.5, 'max_change_pct': 7, 'min_amount_yi': 0.005, 'rounds': 3, 'interval_seconds': 8, 'pick_count': 24, 'role': '先手苗子池', 'desc': '09:35 偏放宽，优先抓早盘先手苗子和板块刚冒头的小票。'},
     '0945': {'sample_label': '0945', 'min_change_pct': 0.6, 'max_change_pct': 8, 'min_amount_yi': 0.005, 'rounds': 4, 'interval_seconds': 8, 'pick_count': 24, 'role': '留强确认池', 'desc': '09:45 偏确认，优先保留已经走出来、强度还在延续的票。'},
     '1004': {'sample_label': '1004', 'min_change_pct': 1.0, 'max_change_pct': 10, 'min_amount_yi': 0.01, 'rounds': 4, 'interval_seconds': 8, 'pick_count': 24, 'role': '热点定型池', 'desc': '10:04 看上午热点是否开始定型，优先看板块成团。'},

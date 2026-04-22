@@ -63,6 +63,7 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
 ## 推荐执行入口
 - 主扫描：`python {baseDir}/scripts/live_smallcap.py --json`
 - 多时点任务：
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0924`
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0935`
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0945`
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1004`
@@ -72,6 +73,7 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1423`
 
 ## 多时点分工
+- **09:24 = 竞价尾声观察池**
 - **09:35 = 先手苗子池**
 - **09:45 = 留强确认池**
 - **10:04 = 热点定型池**
