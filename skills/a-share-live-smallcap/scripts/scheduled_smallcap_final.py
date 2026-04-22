@@ -7,6 +7,7 @@ import json
 import smtplib
 import subprocess
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 MIN_CHANGE = 3
@@ -93,10 +94,11 @@ def generate_text_report(data):
 
 def send_email(report_text):
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
-    msg = MIMEText(report_text, 'plain', 'utf-8')
+    msg = MIMEMultipart()
     msg['Subject'] = f'【盘中扫描】A股中小盘强势股报告（pytdx版） {now}'
-    msg['From'] = f'沈万三 <{SENDER}>'
+    msg['From'] = SENDER
     msg['To'] = ', '.join(RECEIVERS)
+    msg.attach(MIMEText(report_text, 'plain', 'utf-8'))
     try:
         server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
         server.login(SENDER, PASSWORD)
