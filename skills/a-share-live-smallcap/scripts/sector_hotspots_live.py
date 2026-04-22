@@ -2,9 +2,15 @@
 # -*- coding: utf-8 -*-
 import argparse
 import json
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE = Path(__file__).resolve().parents[3]
+HOT_SPOTS_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts' / 'market_watch.py'
 
 MANUAL_SECTOR_MAP = {
     '603318': ['燃气', '公用事业'],
@@ -85,6 +91,27 @@ def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def fetch_auto_sector_payload():
+    cmd = [sys.executable, str(HOT_SPOTS_SCRIPT), '--hot-sectors', '--industry-sectors', '--json']
+    r = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', timeout=120)
+    if r.returncode != 0 or not r.stdout:
+        return {}
+    try:
+        return json.loads(r.stdout)
+    except Exception:
+        return {}
+
+
+def build_auto_sector_index(payload: dict):
+    sector_names = set()
+    for key in ['hot_sectors', 'industry_sectors']:
+        for item in payload.get(key, []) or []:
+            name = str(item.get('name') or '').strip()
+            if name:
+                sector_names.add(name)
+    return sector_names
+
+
 def get_pool(data: dict):
     merged = {}
     for key in ['true_leaders', 'strong_followers', 'watchlist']:
@@ -95,17 +122,22 @@ def get_pool(data: dict):
     return list(merged.values())
 
 
-def classify(code: str):
-    return MANUAL_SECTOR_MAP.get(code, ['未分类'])
+def classify(code: str, auto_sector_names=None):
+    tags = MANUAL_SECTOR_MAP.get(code, ['未分类'])
+    if auto_sector_names:
+        matched = [x for x in tags if x in auto_sector_names]
+        if matched:
+            return matched + [x for x in tags if x not in matched]
+    return tags
 
 
-def summarize(items: list[dict]):
+def summarize(items: list[dict], auto_sector_names=None):
     counter = Counter()
     grouped = defaultdict(list)
     for item in items:
         code = str(item.get('code') or '')
         name = item.get('name') or code
-        tags = classify(code)
+        tags = classify(code, auto_sector_names=auto_sector_names)
         item['sector_tags'] = tags
         item['primary_sector'] = tags[0]
         for sec in tags[:2]:
@@ -152,11 +184,15 @@ def main():
 
     data = load_json(Path(args.input))
     pool = get_pool(data)
-    hot_sectors, enriched = summarize(pool)
+    auto_payload = fetch_auto_sector_payload()
+    auto_sector_names = build_auto_sector_index(auto_payload)
+    hot_sectors, enriched = summarize(pool, auto_sector_names=auto_sector_names)
     payload = {
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'slot': args.slot,
         'pool_size': len(pool),
+        'auto_sector_names': sorted(auto_sector_names),
+        'auto_sector_source': 'a-share-hot-spots/market_watch.py',
         'hot_sectors': hot_sectors,
         'items': enriched,
     }
