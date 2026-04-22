@@ -45,6 +45,21 @@ MANUAL_SECTOR_MAP = {
     '002887': ['机械设备', '高端装备'],
     '003027': ['消费电子', '面板链'],
     '002935': ['军工电子'],
+    '603926': ['汽车零部件'],
+    '603038': ['汽车零部件'],
+    '603266': ['汽车零部件'],
+    '601007': ['酒店旅游', '消费'],
+    '002846': ['金属包装', '消费包装'],
+    '600969': ['电力'],
+    '603991': ['化工', '新材料'],
+    '002395': ['化工', '新材料'],
+    '603587': ['汽车零部件'],
+    '603331': ['消费电子', 'AI硬件'],
+    '603667': ['消费电子', '精密制造'],
+    '603887': ['消费电子', 'AI硬件'],
+    '603327': ['医药', '创新药'],
+    '600589': ['有色金属', '资源品'],
+    '600281': ['电力设备', '绿色能源'],
 }
 
 
@@ -68,7 +83,7 @@ def classify(code: str):
 
 def summarize(items: list[dict]):
     counter = Counter()
-    examples = defaultdict(list)
+    grouped = defaultdict(list)
     for item in items:
         code = str(item.get('code') or '')
         name = item.get('name') or code
@@ -77,11 +92,36 @@ def summarize(items: list[dict]):
         item['primary_sector'] = tags[0]
         for sec in tags[:2]:
             counter[sec] += 1
-            if len(examples[sec]) < 3:
-                examples[sec].append(f"{name} {code}")
+            grouped[sec].append(item)
+
     out = []
     for sec, cnt in counter.most_common():
-        out.append({'sector': sec, 'count': cnt, 'examples': examples[sec]})
+        sector_items = grouped[sec]
+        sector_items_sorted = sorted(
+            sector_items,
+            key=lambda x: (float(x.get('change_pct', 0) or 0), float(x.get('track_score', 0) or 0), float(x.get('intraday_score', 0) or 0)),
+            reverse=True,
+        )
+        leader = sector_items_sorted[0] if sector_items_sorted else None
+        followers = sector_items_sorted[1:4] if len(sector_items_sorted) > 1 else []
+        out.append({
+            'sector': sec,
+            'count': cnt,
+            'leader': {
+                'name': leader.get('name'),
+                'code': leader.get('code'),
+                'change_pct': leader.get('change_pct'),
+            } if leader else None,
+            'followers': [
+                {
+                    'name': x.get('name'),
+                    'code': x.get('code'),
+                    'change_pct': x.get('change_pct'),
+                }
+                for x in followers
+            ],
+            'examples': [f"{x.get('name')} {x.get('code')}" for x in sector_items_sorted[:3]],
+        })
     return out, items
 
 

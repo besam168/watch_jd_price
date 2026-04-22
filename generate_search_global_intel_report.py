@@ -38,7 +38,8 @@ NOISE_PATTERNS = [
     "k-pop", "bts", "psychologist", "public speaking expert"
 ]
 TECH_NEGATIVE_KEYWORDS = [
-    "iran", "hormuz", "ceasefire", "war", "oil", "vessels", "ship", "tehran", "saudi", "gaza", "lebanon"
+    "iran", "hormuz", "ceasefire", "war", "oil", "vessels", "ship", "tehran", "saudi", "gaza", "lebanon",
+    "police", "proxy", "proxies", "arson", "jewish sites", "foreign minister", "trump"
 ]
 SITE_TITLE_PATTERNS = [
     "techcrunch | startup and technology news",
@@ -142,6 +143,8 @@ def looks_like_noise(title: str) -> bool:
     if "send us information securely" in t:
         return True
     if t.endswith("startup and technology news"):
+        return True
+    if t in {"government & policy", "events", "podcasts", "startups", "venture", "apps"}:
         return True
     return False
 
@@ -269,37 +272,42 @@ def extract_titles_from_html(path: Path, limit: int = 8, source_name: str = "") 
         return []
 
     candidates = []
-    patterns = [
-        r"<title[^>]*>(.*?)</title>",
-        r"<h1[^>]*>(.*?)</h1>",
-        r"<h2[^>]*>(.*?)</h2>",
-        r"<h3[^>]*>(.*?)</h3>",
-        r">([^<>]{20,160})<",
-    ]
     if source_name.lower() == "techcrunch":
-        patterns = [
+        article_patterns = [
+            r'title="([^"]{25,180})"',
+            r'data-post-title="([^"]{25,180})"',
+            r'<a[^>]+href="https://techcrunch.com/[^\"]+"[^>]*>(.*?)</a>',
+            r'<h2[^>]*>(.*?)</h2>',
+            r'<h3[^>]*>(.*?)</h3>',
+        ]
+        for pattern in article_patterns:
+            for match in re.findall(pattern, text, flags=re.I):
+                line = clean_title(strip_html(match))
+                low = line.lower()
+                if 25 <= len(line) <= 180 and not looks_like_noise(line):
+                    if any(bad in low for bad in ["strictlyvc", "download", "government & policy", "events", "podcast", "newsletter"]):
+                        continue
+                    if low in SITE_TITLE_PATTERNS or line.count("|") > 0:
+                        continue
+                    candidates.append(line)
+    else:
+        for pattern in [
+            r"<title[^>]*>(.*?)</title>",
+            r"<h1[^>]*>(.*?)</h1>",
             r"<h2[^>]*>(.*?)</h2>",
             r"<h3[^>]*>(.*?)</h3>",
-            r"<a[^>]*>([^<>]{25,160})</a>",
-        ]
-
-    for pattern in patterns:
-        for match in re.findall(pattern, text, flags=re.I):
-            line = clean_title(strip_html(match))
-            if 15 <= len(line) <= 160 and not looks_like_noise(line):
-                if source_name.lower() == "techcrunch":
-                    low = line.lower()
-                    if low in SITE_TITLE_PATTERNS or "strictlyvc" in low or "download" == low.strip():
-                        continue
-                    if line.count("|") > 0:
-                        continue
-                candidates.append(line)
+            r">([^<>]{20,160})<",
+        ]:
+            for match in re.findall(pattern, text, flags=re.I):
+                line = clean_title(strip_html(match))
+                if 15 <= len(line) <= 160 and not looks_like_noise(line):
+                    candidates.append(line)
 
     out = []
     seen = set()
     bad_tokens = ["privacy", "cookie", "subscribe", "sign in", "login", "newsletter", "advertisement"]
     if source_name.lower() == "techcrunch":
-        bad_tokens.extend(["strictlyvc", "download", "events", "podcast"])
+        bad_tokens.extend(["strictlyvc", "download", "events", "podcast", "government & policy"])
     for line in candidates:
         low = line.lower()
         if any(token in low for token in bad_tokens):

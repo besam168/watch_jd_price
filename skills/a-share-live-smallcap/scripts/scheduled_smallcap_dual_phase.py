@@ -92,7 +92,11 @@ def html_sector_block(sector_payload):
     leaders = sector_payload.get('hot_sectors', []) if isinstance(sector_payload, dict) else []
     rows = []
     for i, x in enumerate(leaders[:8], 1):
-        rows.append(f"<div>{i}. {x.get('sector')}｜出现{x.get('count')}只｜代表：{', '.join(x.get('examples', []))}</div>")
+        leader = x.get('leader') or {}
+        followers = x.get('followers') or []
+        leader_text = f"龙头：{leader.get('name')} {leader.get('code')} {leader.get('change_pct')}%" if leader else '龙头：无'
+        follower_text = '；跟风：' + '、'.join([f"{f.get('name')} {f.get('code')} {f.get('change_pct')}%" for f in followers]) if followers else ''
+        rows.append(f"<div>{i}. {x.get('sector')}｜出现{x.get('count')}只｜{leader_text}{follower_text}</div>")
     return f"<h2>热点板块</h2>{''.join(rows) or '<div>暂无板块聚集</div>'}"
 
 
