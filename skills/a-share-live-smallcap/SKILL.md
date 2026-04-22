@@ -66,6 +66,16 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0935`
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0945`
 
+## 双时点分工
+- **09:35 = 先手苗子池**
+  - 偏放宽
+  - 重点抓早盘刚冒头、刚放量、刚有轨迹的小票
+  - 更适合做“先看谁冒出来”
+- **09:45 = 留强确认池**
+  - 偏确认
+  - 重点保留已经走出来、强度还在延续、没有明显掉队的票
+  - 更适合做“谁值得继续盯”
+
 ## 注意
 - 当前版本已按要求**停掉东财 / 新浪旧主流程入口**，不再用于实时候选获取。
 - 定时脚本 `scheduled_smallcap_scan.py` / `scheduled_smallcap_final.py` 也已切到 **pytdx + 5亿股/100亿新池**，不再走旧口。

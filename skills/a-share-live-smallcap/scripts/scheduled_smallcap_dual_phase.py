@@ -34,6 +34,8 @@ CONFIGS = {
         'rounds': 3,
         'interval_seconds': 8,
         'pick_count': 24,
+        'role': '先手苗子池',
+        'desc': '09:35 偏放宽，优先抓早盘先手苗子和板块刚冒头的小票。',
     },
     '0945': {
         'sample_label': '0945',
@@ -43,6 +45,8 @@ CONFIGS = {
         'rounds': 4,
         'interval_seconds': 8,
         'pick_count': 24,
+        'role': '留强确认池',
+        'desc': '09:45 偏确认，优先保留已经走出来、强度还在延续的票。',
     }
 }
 
@@ -77,10 +81,13 @@ def summary_text(summary):
 
 
 def build_html(payload: dict, slot: str) -> str:
+    cfg = CONFIGS[slot]
     return f"""
     <html><head><meta charset='UTF-8'><title>中小盘双时点扫描 {slot}</title></head>
     <body style='font-family:微软雅黑,Arial;padding:20px;line-height:1.6;'>
     <h1>A股中小盘双时点多轮采样报告 - {slot}</h1>
+    <p><b>角色定位：</b>{cfg['role']}</p>
+    <p><b>说明：</b>{cfg['desc']}</p>
     <p><b>生成时间：</b>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
     <p><b>策略：</b>{payload.get('strategy')}</p>
     <p><b>总结：</b>{summary_text(payload.get('chinese_summary'))}</p>
@@ -113,13 +120,15 @@ def main():
     if slot not in CONFIGS:
         raise SystemExit('slot must be 0935 or 0945')
     payload = run_scan(slot)
+    payload['slot_role'] = CONFIGS[slot]['role']
+    payload['slot_desc'] = CONFIGS[slot]['desc']
     html = build_html(payload, slot)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
     out_path = os.path.join(REPORT_DIR, f'smallcap_dual_slot_{slot}_{ts}.html')
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write(html)
-    send_email(f'【{slot}】A股中小盘双时点多轮采样报告', html)
-    print(json.dumps({'slot': slot, 'report': out_path, 'true_leaders': len(payload.get('true_leaders', [])), 'strong_followers': len(payload.get('strong_followers', [])), 'watchlist': len(payload.get('watchlist', []))}, ensure_ascii=False))
+    send_email(f'【{slot}｜{CONFIGS[slot]["role"]}】A股中小盘双时点多轮采样报告', html)
+    print(json.dumps({'slot': slot, 'role': CONFIGS[slot]['role'], 'report': out_path, 'true_leaders': len(payload.get('true_leaders', [])), 'strong_followers': len(payload.get('strong_followers', [])), 'watchlist': len(payload.get('watchlist', []))}, ensure_ascii=False))
 
 
 if __name__ == '__main__':
