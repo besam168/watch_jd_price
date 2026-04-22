@@ -62,19 +62,30 @@ python {baseDir}/scripts/live_smallcap.py --allow-mainboard-60 --json
 
 ## 推荐执行入口
 - 主扫描：`python {baseDir}/scripts/live_smallcap.py --json`
-- 双时点任务：
+- 多时点任务：
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0935`
   - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 0945`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1004`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1301`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1303`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1421`
+  - `python {baseDir}/scripts/scheduled_smallcap_dual_phase.py 1423`
 
-## 双时点分工
+## 多时点分工
 - **09:35 = 先手苗子池**
-  - 偏放宽
-  - 重点抓早盘刚冒头、刚放量、刚有轨迹的小票
-  - 更适合做“先看谁冒出来”
 - **09:45 = 留强确认池**
-  - 偏确认
-  - 重点保留已经走出来、强度还在延续、没有明显掉队的票
-  - 更适合做“谁值得继续盯”
+- **10:04 = 热点定型池**
+- **13:01 = 午后回流观察池**
+- **13:03 = 午后回流确认池**
+- **14:21 = 尾盘异动观察池**
+- **14:23 = 尾盘留强池**
+
+## 板块正式版
+- 每个时点的结果现在默认包含：
+  - 热点板块排行
+  - 板块代表股
+  - 真龙头 / 强跟风 / 观察池
+- 额外板块脚本：`python {baseDir}/scripts/sector_hotspots_live.py --input <json> --json`
 
 ## 注意
 - 当前版本已按要求**停掉东财 / 新浪旧主流程入口**，不再用于实时候选获取。
