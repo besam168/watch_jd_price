@@ -355,7 +355,7 @@ def second_round_filter(candidates):
             volume_up = vnow > v3ago
             price_up = cnow > c3ago
             ma5_ok = (ma5 is not None and cnow >= ma5 * 0.98)
-            track_bonus = item.get('track_score', 0) >= 1.0 and item.get('track_ok', False)
+            track_bonus = item.get('track_score', 0) >= 0.4 or item.get('track_ok', False)
             score = sum([volume_up, price_up, ma5_ok]) + (1 if track_bonus else 0)
             row = {
                 **item,
@@ -365,14 +365,19 @@ def second_round_filter(candidates):
                 'track_bonus': track_bonus,
                 'score': score,
             }
-            if score >= 4:
+            if score >= 3:
                 passed.append(row)
-            elif score >= 2:
+            elif score >= 1:
                 partial.append(row)
             else:
                 failed.append(row)
         except Exception as e:
-            failed.append({**item, 'error': str(e), 'score': -1})
+            fallback_score = 1 if item.get('track_score', 0) >= 0.8 or item.get('change_pct', 0) >= 1.0 else 0
+            row = {**item, 'error': str(e), 'score': fallback_score}
+            if fallback_score >= 1:
+                partial.append(row)
+            else:
+                failed.append(row)
     passed.sort(key=lambda x: (x.get('track_score', 0), x.get('change_pct', 0)), reverse=True)
     partial.sort(key=lambda x: (x.get('track_score', 0), x.get('change_pct', 0)), reverse=True)
     failed.sort(key=lambda x: (x.get('track_score', 0), x.get('change_pct', -999)), reverse=True)
@@ -457,8 +462,13 @@ def classify_trading_roles(passed: list, partial: list, failed: list) -> tuple[l
     return true_leaders, strong_followers, pseudo_pool
 
 
-def build_watchlist(true_leaders: list, strong_followers: list) -> list:
-    return (true_leaders + strong_followers)[:5]
+def build_watchlist(true_leaders: list, strong_followers: list, pseudo_strong: list | None = None) -> list:
+    base = (true_leaders + strong_followers)
+    if base:
+        return base[:5]
+    if pseudo_strong:
+        return pseudo_strong[:5]
+    return []
 
 
 def format_turnover_display(item: dict) -> str:
@@ -545,7 +555,7 @@ def main():
     )
     passed, partial, failed = second_round_filter(candidates)
     true_leaders, strong_followers, pseudo_strong = classify_trading_roles(passed, partial, failed)
-    watchlist = build_watchlist(true_leaders, strong_followers)
+    watchlist = build_watchlist(true_leaders, strong_followers, pseudo_strong)
     role_board = build_role_board(true_leaders, strong_followers, pseudo_strong)
     chinese_summary = build_chinese_summary(true_leaders, strong_followers, pseudo_strong, watchlist)
 

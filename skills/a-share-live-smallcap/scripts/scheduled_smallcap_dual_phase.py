@@ -37,9 +37,9 @@ CONFIGS = {
     },
     '0945': {
         'sample_label': '0945',
-        'min_change_pct': 1.2,
+        'min_change_pct': 0.6,
         'max_change_pct': 8,
-        'min_amount_yi': 0.03,
+        'min_amount_yi': 0.005,
         'rounds': 4,
         'interval_seconds': 8,
         'pick_count': 24,
