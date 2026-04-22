@@ -18,21 +18,27 @@ TECH_TARGET = 5
 TECH_KEYWORDS = [
     "ai", "openai", "anthropic", "nvidia", "chip", "chips", "semiconductor", "data center",
     "robot", "robotics", "drone", "moon", "nasa", "space", "satellite", "cerebras",
-    "apple ceo", "google", "amazon", "microsoft", "tesla", "biotech", "biology", "quantum"
+    "apple ceo", "google", "amazon", "microsoft", "tesla", "biotech", "biology", "quantum",
+    "blue origin", "marvell", "broadcom", "model", "llm"
 ]
 FINANCE_KEYWORDS = [
     "market", "markets", "stocks", "stock", "bitcoin", "oil", "etf", "ipo", "economy", "index",
     "aluminum", "price", "prices", "msci", "bond", "bonds", "yield", "yields", "inflation",
-    "trade", "tariff", "shipping", "commodity", "commodities", "earnings", "investor", "investors"
+    "trade", "tariff", "shipping", "commodity", "commodities", "earnings", "investor", "investors",
+    "portfolio", "cash", "fund", "rare earth"
 ]
 POLITICS_KEYWORDS = [
     "iran", "israel", "lebanon", "gaza", "ukraine", "russia", "trump", "ceasefire", "war",
     "military", "defense", "defence", "diplom", "sanction", "president", "prime minister",
-    "foreign minister", "supreme court", "arrest", "police", "saudi", "china", "pakistan", "middle east"
+    "foreign minister", "supreme court", "arrest", "police", "saudi", "china", "pakistan", "middle east",
+    "hezbollah", "tehran", "proxy", "ship", "strait of hormuz", "vessels"
 ]
 NOISE_PATTERNS = [
     "how was your weekend", "attention span", "menopause", "couples", "sundays",
     "k-pop", "bts", "psychologist", "public speaking expert"
+]
+TECH_NEGATIVE_KEYWORDS = [
+    "iran", "hormuz", "ceasefire", "war", "oil", "vessels", "ship", "tehran", "saudi", "gaza", "lebanon"
 ]
 
 
@@ -69,14 +75,31 @@ def fix_mojibake(text: str) -> str:
     return text
 
 
+def shorten_summary_like_title(title: str) -> str:
+    title = title.strip()
+    if len(title) <= 110:
+        return title
+    for sep in [". ", "; ", ": ", " — ", " - "]:
+        if sep in title:
+            first = title.split(sep)[0].strip()
+            if 25 <= len(first) <= 110:
+                return first
+    words = title.split()
+    if len(words) > 16:
+        return " ".join(words[:16]).rstrip(",.:;") + "..."
+    return title[:107].rstrip() + "..."
+
+
 def clean_title(title: str) -> str:
     title = fix_mojibake(title)
     title = re.sub(r"\s+", " ", title).strip(" -*•\t\r\n|")
     title = re.sub(r"^(April\s+\d{1,2},\s+\d{4})\s*[·•-]?\s*", "", title, flags=re.I)
     title = re.sub(r"^(Listen\s*[:\-]?\s*)", "", title, flags=re.I)
     title = re.sub(r"^(Watch\s*[:\-]?\s*)", "", title, flags=re.I)
-    if len(title) > 180:
-        title = title[:177].rstrip() + "..."
+    title = re.sub(r"^In this episode we learn about\s*", "", title, flags=re.I)
+    title = shorten_summary_like_title(title)
+    if len(title) > 140:
+        title = title[:137].rstrip() + "..."
     return title.strip()
 
 
@@ -128,6 +151,9 @@ def classify(title: str) -> str:
     finance_score = sum(1 for k in FINANCE_KEYWORDS if k in t)
     politics_score = sum(1 for k in POLITICS_KEYWORDS if k in t)
 
+    if any(k in t for k in TECH_NEGATIVE_KEYWORDS):
+        tech_score = 0
+
     if politics_score >= max(tech_score, finance_score) and politics_score > 0:
         return "politics"
     if finance_score >= max(tech_score, politics_score) and finance_score > 0:
@@ -139,28 +165,28 @@ def classify(title: str) -> str:
 
 def summarize_content(title: str) -> str:
     t = title.lower()
-    if any(k in t for k in ["iran", "hormuz", "israel", "lebanon", "middle east", "gaza"]):
+    if any(k in t for k in ["iran", "hormuz", "israel", "lebanon", "middle east", "gaza", "tehran"]):
         return "中东、航运与能源安全仍在反复影响国际局势和市场风险偏好。"
     if any(k in t for k in ["russia", "ukraine"]):
         return "俄乌线索仍在持续，地缘博弈与制裁预期继续影响欧洲安全与市场。"
     if any(k in t for k in ["china", "tariff", "trade", "saudi", "pakistan"]):
         return "大国协调、资源通道与贸易政策仍在共同影响全球供应链预期。"
-    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "bond", "yield", "inflation"]):
+    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "bond", "yield", "inflation", "cash", "portfolio"]):
         return "市场价格与资金流继续围绕风险偏好、政策预期和地缘变化波动。"
-    if any(k in t for k in ["oil", "aluminum", "commodity", "shipping"]):
+    if any(k in t for k in ["oil", "aluminum", "commodity", "shipping", "rare earth"]):
         return "大宗商品与工业链条正在对地缘冲突和运输风险进行重新定价。"
-    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "drone", "nasa", "moon", "cerebras", "robot"]):
+    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "drone", "nasa", "moon", "cerebras", "robot", "satellite", "blue origin"]):
         return "AI 与科技产业链继续扩展到算力、模型、军工与太空等关键方向。"
     return "这条新闻反映出全球政治、市场或科技主线仍在继续演变。"
 
 
 def summarize_comment(title: str) -> str:
     t = title.lower()
-    if any(k in t for k in ["iran", "hormuz", "oil", "ceasefire"]):
+    if any(k in t for k in ["iran", "hormuz", "oil", "ceasefire", "war"]):
         return "未来24至48小时需看事件与价格信号是否继续强化。"
-    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "yield"]):
+    if any(k in t for k in ["market", "stocks", "bitcoin", "msci", "etf", "yield", "cash"]):
         return "重点观察资金流和风险偏好是否继续扩散。"
-    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "cerebras", "robot"]):
+    if any(k in t for k in ["ai", "openai", "anthropic", "chip", "data center", "cerebras", "robot", "satellite"]):
         return "科技主线仍强，后续重点看商业化与估值延续性。"
     return "后续重点看是否出现政策、事件或价格的新确认信号。"
 
@@ -210,7 +236,7 @@ def extract_titles_from_html(path: Path, limit: int = 8) -> list[str]:
     ]:
         for match in re.findall(pattern, text, flags=re.I):
             line = clean_title(strip_html(match))
-            if 15 <= len(line) <= 180 and not looks_like_noise(line):
+            if 15 <= len(line) <= 160 and not looks_like_noise(line):
                 candidates.append(line)
 
     out = []
@@ -234,6 +260,8 @@ def add_source_items(container: list, titles: list[str], source: str, forced_cat
         if not title or looks_like_noise(title):
             continue
         category = forced_category or classify(title)
+        if forced_category == "tech" and any(k in title.lower() for k in TECH_NEGATIVE_KEYWORDS):
+            category = classify(title)
         container.append((title, source, category))
 
 
@@ -264,8 +292,8 @@ def main() -> int:
 
     for key, source in tech_mapping.items():
         path = SCRAPLING_OUTPUT / f"{key}_latest.json"
-        payload = load_json(path)
         titles = []
+        payload = load_json(path)
         if payload is not None:
             titles.extend(take_titles(payload, limit=8))
             if isinstance(payload, dict):
@@ -293,12 +321,13 @@ def main() -> int:
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
+        item = (title, source)
         if category == "politics" and len(politics) < POLITICS_TARGET:
-            politics.append((title, source))
+            politics.append(item)
         elif category == "finance" and len(finance) < FINANCE_TARGET:
-            finance.append((title, source))
+            finance.append(item)
         elif category == "tech" and len(tech) < TECH_TARGET:
-            tech.append((title, source))
+            tech.append(item)
 
     for title, source, category in sources:
         item = (title, source)
@@ -306,7 +335,7 @@ def main() -> int:
             politics.append(item)
         if len(finance) < FINANCE_TARGET and item not in finance and category != "politics":
             finance.append(item)
-        if len(tech) < TECH_TARGET and item not in tech:
+        if len(tech) < TECH_TARGET and item not in tech and category == "tech":
             tech.append(item)
 
     report = [
