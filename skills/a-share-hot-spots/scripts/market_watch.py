@@ -723,6 +723,193 @@ def fmt_sector_brief(sectors: list, industries: list) -> str:
     return "\n".join(lines)
 
 
+def analyze_strategy_batch(limit: int = 100, min_score: int = 2) -> dict:
+    universe, shared_name_map = load_shared_pool(limit=limit)
+    selected = universe.get('selected', [])
+    results = []
+    errors = []
+    for item in selected:
+        code = str(item.get('code') or '').strip()
+        if not code:
+            continue
+        result = analyze_strategy(code)
+        if result.get('error'):
+            errors.append({
+                'code': code,
+                'name': shared_name_map.get(code, str(item.get('name') or code)),
+                'error': result.get('error'),
+            })
+            continue
+        result['code'] = code
+        result['name'] = shared_name_map.get(code, result.get('name') or str(item.get('name') or code))
+        results.append(result)
+
+    passed = [x for x in results if int(x.get('score', 0)) >= min_score]
+    partial = [x for x in results if int(x.get('score', 0)) == max(0, min_score - 1)]
+    failed = [x for x in results if int(x.get('score', 0)) < max(0, min_score - 1)]
+
+    results.sort(key=lambda x: (-int(x.get('score', 0)), -float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+    passed.sort(key=lambda x: (-int(x.get('score', 0)), float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+    partial.sort(key=lambda x: (-int(x.get('score', 0)), float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+
+    return {
+        'scan_scope': 'shared_a_share_pool',
+        'source_path': universe.get('source_path', ''),
+        'filters': universe.get('filters', {}),
+        'selected_count': universe.get('selected_count', 0),
+        'scanned_count': len(results) + len(errors),
+        'passed_count': len(passed),
+        'partial_count': len(partial),
+        'failed_count': len(failed),
+        'error_count': len(errors),
+        'passed': passed,
+        'partial': partial,
+        'failed_top10': failed[:10],
+        'top10': results[:10],
+        'errors_top20': errors[:20],
+    }
+
+
+def fmt_strategy_batch(result: dict) -> str:
+    lines = [
+        '月线整池扫描结果',
+        f"股票池来源：{result.get('source_path', '')}",
+        f"股票池数量：{result.get('selected_count', 0)}",
+        f"实际扫描：{result.get('scanned_count', 0)}",
+        f"符合：{result.get('passed_count', 0)}｜部分符合：{result.get('partial_count', 0)}｜错误：{result.get('error_count', 0)}",
+        '',
+        '前10候选：',
+    ]
+    top10 = result.get('top10', [])
+    if not top10:
+        lines.append('无候选')
+    else:
+        for i, item in enumerate(top10, 1):
+            lines.append(f"{i}. {item.get('name')} {item.get('code')}｜{item.get('verdict')}｜评分 {item.get('score')}/4｜区间位置 {item.get('metrics', {}).get('position_in_4y_range')}")
+    if result.get('passed'):
+        lines.append('')
+        lines.append('符合名单：')
+        for item in result['passed'][:20]:
+            lines.append(f"- {item.get('name')} {item.get('code')}｜评分 {item.get('score')}/4")
+    if result.get('partial'):
+        lines.append('')
+        lines.append('部分符合名单：')
+        for item in result['partial'][:20]:
+            lines.append(f"- {item.get('name')} {item.get('code')}｜评分 {item.get('score')}/4")
+    return '\n'.join(lines)
+
+    parser = argparse.ArgumentParser(description="A股实时盯盘")
+    parser.add_argument("--code", nargs="+", help="股票代码，可多个")
+    parser.add_argument("--name", nargs="+", help="中文股票名，可多个")
+    parser.add_argument("--index", action="store_true", help="查主要指数")
+    parser.add_argument("--hot-sectors", action="store_true", help="查热点板块")
+    parser.add_argument("--hot-stocks", action="store_true", help="查热门股")
+    parser.add_argument("--industry-sectors", action="store_true", help="查行业板块")
+    parser.add_argument("--limit-up", action="store_true", help="查涨停/强势股")
+    parser.add_argument("--summary", action="store_true", help="查盘面摘要")
+    parser.add_argument("--brief", action="store_true", help="查短播报")
+    parser.add_argument("--sector-brief", action="store_true", help="查板块联动摘要")
+    parser.add_argument("--strategy-check", help="按 V5 策略检测单只股票代码")
+    parser.add_argument("--strategy-name", help="按 V5 策略检测单只中文股票名")
+    parser.add_argument("--strategy-batch", action="store_true", help="按新股票池批量跑月线策略")
+    parser.add_argument("--strategy-limit", type=int, default=100, help="批量月线策略最大扫描数量")
+    parser.add_argument("--strategy-min-score", type=int, default=2, help="批量月线策略最小入选分数")
+    parser.add_argument("--json", action="store_true", help="输出 JSON")
+    args = parser.parse_args()
+
+    if args.summary:
+        indexes = fetch_index()
+        sectors = fetch_hot_sectors()
+        stocks = fetch_hot_stocks()
+        if args.json:
+            print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3], "hot_stocks": stocks[:3]}, ensure_ascii=False, indent=2))
+        else:
+            print(fmt_summary(indexes, sectors, stocks))
+        return
+
+    if args.strategy_batch:
+        result = analyze_strategy_batch(limit=args.strategy_limit, min_score=args.strategy_min_score)
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy_batch(result))
+        return
+
+    if args.strategy_check:
+        result = analyze_strategy(args.strategy_check)
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy(result))
+        return
+
+    if args.strategy_name:
+        resolved = resolve_names([args.strategy_name])
+        result = analyze_strategy(resolved[0])
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy(result))
+        return
+
+    if args.brief:
+        indexes = fetch_index()
+        sectors = fetch_hot_sectors()
+        stocks = fetch_hot_stocks()
+        if args.json:
+            print(json.dumps({"indexes": indexes[:1], "hot_sectors": sectors[:1], "hot_stocks": stocks[:1]}, ensure_ascii=False, indent=2))
+        else:
+            print(fmt_brief(indexes, sectors, stocks))
+        return
+
+    if args.sector_brief:
+        sectors = fetch_hot_sectors()
+        industries = fetch_industry_sectors()
+        if args.json:
+            print(json.dumps({"concept_sectors": sectors[:5], "industry_sectors": industries[:5]}, ensure_ascii=False, indent=2))
+        else:
+            print(fmt_sector_brief(sectors, industries))
+        return
+
+    if args.index:
+        data = fetch_index()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_index(data))
+        return
+
+    if args.hot_sectors:
+        data = fetch_hot_sectors()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_sectors(data))
+        return
+
+    if args.hot_stocks:
+        data = fetch_hot_stocks()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_hot_stocks(data))
+        return
+
+    if args.industry_sectors:
+        data = fetch_industry_sectors()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_industry_sectors(data))
+        return
+
+    if args.limit_up:
+        data = fetch_limit_up()
+        print(json.dumps(data, ensure_ascii=False, indent=2) if args.json else fmt_limit_up(data))
+        return
+
+    if args.name:
+        resolved = resolve_names(args.name)
+        data = [fetch_stock(c) for c in resolved]
+        if args.json:
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        else:
+            for item in data:
+                print(fmt_stock(item))
+                print()
+        return
+
+    if args.code:
+        data = [fetch_stock(c) for c in args.code]
+        if args.json:
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+        else:
+            for item in data:
+                print(fmt_stock(item))
+                print()
+        return
+
+    parser.print_help()
+
 def fmt_strategy(result: dict) -> str:
     if result.get("error"):
         return f"策略检测失败：{result['error']}"
@@ -742,6 +929,82 @@ def fmt_strategy(result: dict) -> str:
     return '\n'.join(lines)
 
 
+def analyze_strategy_batch(limit: int = 100, min_score: int = 2) -> dict:
+    universe, shared_name_map = load_shared_pool(limit=limit)
+    selected = universe.get('selected', [])
+    results = []
+    errors = []
+    for item in selected:
+        code = str(item.get('code') or '').strip()
+        if not code:
+            continue
+        result = analyze_strategy(code)
+        if result.get('error'):
+            errors.append({
+                'code': code,
+                'name': shared_name_map.get(code, str(item.get('name') or code)),
+                'error': result.get('error'),
+            })
+            continue
+        result['code'] = code
+        result['name'] = shared_name_map.get(code, result.get('name') or str(item.get('name') or code))
+        results.append(result)
+
+    passed = [x for x in results if int(x.get('score', 0)) >= min_score]
+    partial = [x for x in results if int(x.get('score', 0)) == max(0, min_score - 1)]
+    failed = [x for x in results if int(x.get('score', 0)) < max(0, min_score - 1)]
+
+    results.sort(key=lambda x: (-int(x.get('score', 0)), float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+    passed.sort(key=lambda x: (-int(x.get('score', 0)), float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+    partial.sort(key=lambda x: (-int(x.get('score', 0)), float(x.get('metrics', {}).get('position_in_4y_range', 1.0)), x.get('code', '')))
+
+    return {
+        'scan_scope': 'shared_a_share_pool',
+        'source_path': universe.get('source_path', ''),
+        'filters': universe.get('filters', {}),
+        'selected_count': universe.get('selected_count', 0),
+        'scanned_count': len(results) + len(errors),
+        'passed_count': len(passed),
+        'partial_count': len(partial),
+        'failed_count': len(failed),
+        'error_count': len(errors),
+        'passed': passed,
+        'partial': partial,
+        'failed_top10': failed[:10],
+        'top10': results[:10],
+        'errors_top20': errors[:20],
+    }
+
+
+def fmt_strategy_batch(result: dict) -> str:
+    lines = [
+        '月线整池扫描结果',
+        f"股票池来源：{result.get('source_path', '')}",
+        f"股票池数量：{result.get('selected_count', 0)}",
+        f"实际扫描：{result.get('scanned_count', 0)}",
+        f"符合：{result.get('passed_count', 0)}｜部分符合：{result.get('partial_count', 0)}｜错误：{result.get('error_count', 0)}",
+        '',
+        '前10候选：',
+    ]
+    top10 = result.get('top10', [])
+    if not top10:
+        lines.append('无候选')
+    else:
+        for i, item in enumerate(top10, 1):
+            lines.append(f"{i}. {item.get('name')} {item.get('code')}｜{item.get('verdict')}｜评分 {item.get('score')}/4｜区间位置 {item.get('metrics', {}).get('position_in_4y_range')}")
+    if result.get('passed'):
+        lines.append('')
+        lines.append('符合名单：')
+        for item in result['passed'][:20]:
+            lines.append(f"- {item.get('name')} {item.get('code')}｜评分 {item.get('score')}/4")
+    if result.get('partial'):
+        lines.append('')
+        lines.append('部分符合名单：')
+        for item in result['partial'][:20]:
+            lines.append(f"- {item.get('name')} {item.get('code')}｜评分 {item.get('score')}/4")
+    return '\n'.join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description="A股实时盯盘")
     parser.add_argument("--code", nargs="+", help="股票代码，可多个")
@@ -756,6 +1019,9 @@ def main():
     parser.add_argument("--sector-brief", action="store_true", help="查板块联动摘要")
     parser.add_argument("--strategy-check", help="按 V5 策略检测单只股票代码")
     parser.add_argument("--strategy-name", help="按 V5 策略检测单只中文股票名")
+    parser.add_argument("--strategy-batch", action="store_true", help="按新股票池批量跑月线策略")
+    parser.add_argument("--strategy-limit", type=int, default=100, help="批量月线策略最大扫描数量")
+    parser.add_argument("--strategy-min-score", type=int, default=2, help="批量月线策略最小入选分数")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
 
@@ -767,6 +1033,11 @@ def main():
             print(json.dumps({"indexes": indexes, "hot_sectors": sectors[:3], "hot_stocks": stocks[:3]}, ensure_ascii=False, indent=2))
         else:
             print(fmt_summary(indexes, sectors, stocks))
+        return
+
+    if args.strategy_batch:
+        result = analyze_strategy_batch(limit=args.strategy_limit, min_score=args.strategy_min_score)
+        print(json.dumps(result, ensure_ascii=False, indent=2) if args.json else fmt_strategy_batch(result))
         return
 
     if args.strategy_check:
