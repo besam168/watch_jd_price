@@ -4,7 +4,6 @@ import json
 import sys
 from pathlib import Path
 
-import akshare as ak
 import pandas as pd
 
 PLUGIN_NAME = 'A股开盘风向与实时盯盘插件 V6（测试版）'
@@ -37,25 +36,20 @@ def symbol_of(code: str) -> str:
 
 
 def fetch_daily_df(code: str):
-    symbol = symbol_of(code)
-    df = ak.stock_zh_a_hist_tx(symbol=symbol, start_date='20260101', end_date='20500101', adjust='')
+    df = mw.fetch_daily_df_tdx(code, bars=30).copy()
     if df is None or df.empty:
         raise RuntimeError('empty dataframe')
-    rename_map = {}
-    for col in df.columns:
-        c = str(col).strip()
-        if c in ['date', '日期']:
-            rename_map[col] = 'date'
-        elif c in ['close', '收盘']:
-            rename_map[col] = 'close'
-        elif c in ['amount', '成交量', 'volume']:
-            rename_map[col] = 'volume'
-    df = df.rename(columns=rename_map)
+    if 'date' not in df.columns:
+        raise RuntimeError(f'bad columns: {list(df.columns)}')
+    if 'close' not in df.columns:
+        raise RuntimeError(f'bad columns: {list(df.columns)}')
+    if 'volume' not in df.columns and 'amount' in df.columns:
+        df['volume'] = df['amount']
     need = ['date', 'close', 'volume']
     if not all(x in df.columns for x in need):
         raise RuntimeError(f'bad columns: {list(df.columns)}')
     df = df[need].copy()
-    df['date'] = pd.to_datetime(df['date'])
+    df['date'] = pd.to_datetime(df['date'], errors='coerce')
     df['close'] = pd.to_numeric(df['close'], errors='coerce')
     df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
     df = df.dropna().sort_values('date').reset_index(drop=True)
@@ -178,9 +172,9 @@ def main():
         'resonance_follow': follow,
         'data_sources': {
             'eastmoney_enabled': False,
-            'realtime_candidates': '新浪/腾讯fallback',
-            'daily_filter': '腾讯历史K线(akshare)',
-            'sector_source': '新浪/腾讯分组fallback',
+            'realtime_candidates': 'pytdx/通达信协议',
+            'daily_filter': 'pytdx日线K线/通达信协议',
+            'sector_source': 'pytdx快照聚合/通达信协议',
         },
     }
 

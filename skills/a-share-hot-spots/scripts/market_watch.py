@@ -2,23 +2,25 @@
 import argparse
 import csv
 import json
-import re
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-import akshare as ak
+import pandas as pd
+from pytdx.hq import TdxHq_API
+
 ENABLE_EASTMONEY = False
-
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Referer": "https://finance.sina.com.cn",
-    "Accept-Language": "zh-CN,zh;q=0.9",
-}
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 NAME_MAP_PATH = BASE_DIR / "references" / "name_map.csv"
+AUCTION_SCANNER_DIR = BASE_DIR.parent / "auction_915_925_smooth_scanner"
+AUCTION_UNIVERSE_PATH = AUCTION_SCANNER_DIR / "outputs" / "sz_mainboard_00_universe.json"
+AUCTION_SOURCE_NAME = "pytdx_snapshot"
+
+DEFAULT_TDX_SERVERS = [
+    ("183.60.224.178", 7709),
+    ("39.108.28.120", 7709),
+    ("119.147.212.81", 7709),
+]
 
 
 def load_name_map() -> dict:
@@ -39,23 +41,6 @@ def load_code_name_map() -> dict:
     return reverse
 
 
-def fetch_text(url: str, referer: str | None = None, timeout: int = 10) -> str:
-    headers = dict(HEADERS)
-    if referer:
-        headers["Referer"] = referer
-    last_error = None
-    for _ in range(3):
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw = resp.read()
-                charset = "gbk" if "sina" in url or "sinajs" in url else "utf-8"
-                return raw.decode(charset, errors="replace")
-        except Exception as e:
-            last_error = e
-    raise last_error
-
-
 def safe_float(value, default: float = 0.0) -> float:
     if value is None:
         return default
@@ -71,10 +56,10 @@ def safe_float(value, default: float = 0.0) -> float:
 
 
 def normalize_code(code: str):
-    code = code.strip().upper()
+    code = str(code).strip().upper()
     if code.startswith("SH") or code.startswith("SZ"):
-        return code[:2].lower(), re.sub(r"\D", "", code[2:])
-    digits = re.sub(r"\D", "", code)
+        return code[:2].lower(), ''.join(ch for ch in code[2:] if ch.isdigit())
+    digits = ''.join(ch for ch in code if ch.isdigit())
     if digits.startswith(("60", "68", "51", "58", "11")):
         return "sh", digits
     if digits.startswith(("00", "30", "12", "13", "15", "16")):
@@ -82,130 +67,146 @@ def normalize_code(code: str):
     return "sh", digits
 
 
-def resolve_names(names: list[str]) -> list[str]:
-    mapping = load_name_map()
-    resolved = []
-    for name in names:
-        code = mapping.get(name.strip())
-        if code:
-            resolved.append(code)
-        else:
-            resolved.append(f"UNKNOWN:{name}")
-    return resolved
+def market_for_code(code: str) -> int:
+    _, digits = normalize_code(code)
+    if digits.startswith(("00", "001", "002", "003", "30", "12", "13", "15", "16")):
+        return 0
+    return 1
 
 
-def _decode_possible_garbled(text: str) -> str:
-    if not text:
-        return text
+def _connect_tdx() -> tuple[TdxHq_API, tuple[str, int]]:
+    last_error = None
+    for host, port in DEFAULT_TDX_SERVERS:
+        api = TdxHq_API()
+        try:
+            if api.connect(host, port, time_out=1):
+                return api, (host, port)
+        except Exception as e:
+            last_error = e
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+    raise RuntimeError(f"pytdx connect failed: {last_error}")
+
+
+def _fetch_quotes(symbols: list[str]) -> list[dict]:
+    api, _server = _connect_tdx()
     try:
-        if '�' in text or any(ch in text for ch in ['����', '��', '�']):
-            return text.encode('latin1', errors='ignore').decode('gbk', errors='ignore') or text
-    except Exception:
-        pass
-    return text
+        req = [(market_for_code(code), normalize_code(code)[1]) for code in symbols]
+        rows = api.get_security_quotes(req) or []
+        return [dict(x) for x in rows]
+    finally:
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+
+
+def _bars_to_df(rows: list[dict]) -> pd.DataFrame:
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    if 'datetime' in df.columns:
+        df['date'] = pd.to_datetime(df['datetime'], errors='coerce')
+    elif {'year', 'month', 'day'}.issubset(df.columns):
+        year_series = pd.to_numeric(df['year'], errors='coerce').fillna(datetime.now().year).astype(int)
+        month_series = pd.to_numeric(df['month'], errors='coerce').fillna(1).astype(int)
+        day_series = pd.to_numeric(df['day'], errors='coerce').fillna(1).astype(int)
+        df['date'] = pd.to_datetime({
+            'year': year_series,
+            'month': month_series,
+            'day': day_series,
+        }, errors='coerce')
+    else:
+        raise RuntimeError(f'pytdx bars missing date columns: {list(df.columns)}')
+    if 'vol' in df.columns and 'volume' not in df.columns:
+        df['volume'] = df['vol']
+    return df
+
+
+def fetch_daily_df_tdx(code: str, bars: int = 30) -> pd.DataFrame:
+    market = market_for_code(code)
+    _, digits = normalize_code(code)
+    api, _server = _connect_tdx()
+    try:
+        rows = api.get_security_bars(9, market, digits, 0, bars) or []
+    finally:
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+    df = _bars_to_df([dict(x) for x in rows])
+    if df.empty:
+        raise RuntimeError('pytdx daily bars empty')
+    for col in ['open', 'close', 'high', 'low', 'volume']:
+        if col not in df.columns:
+            raise RuntimeError(f'pytdx daily bars missing {col}')
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = df.dropna(subset=['date', 'close', 'volume']).sort_values('date').reset_index(drop=True)
+    df['ma5'] = df['close'].rolling(5).mean()
+    return df
 
 
 def fetch_stock(code: str) -> dict:
-    if code.startswith("UNKNOWN:"):
-        return {"error": f"暂不认识这个股票名：{code.split(':', 1)[1]}", "symbol": code}
     prefix, digits = normalize_code(code)
-    symbol = f"{prefix}{digits}"
-    raw = fetch_text(f"http://hq.sinajs.cn/list={symbol}")
-    m = re.search(r'"([^"]*)"', raw)
-    if not m:
-        return {"error": f"未拿到 {code} 行情", "symbol": symbol}
-    parts = m.group(1).split(",")
-    if len(parts) < 32 or not parts[0]:
-        return {"error": f"未拿到 {code} 行情", "symbol": symbol}
-    prev_close = float(parts[2] or 0)
-    current = float(parts[3] or 0)
+    rows = _fetch_quotes([digits])
+    if not rows:
+        return {"error": f"未拿到 {code} 行情", "symbol": f"{prefix}{digits}"}
+    row = rows[0]
+    code_name_map = load_code_name_map()
+    prev_close = safe_float(row.get('last_close'))
+    current = safe_float(row.get('price'))
     change = current - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0
-    code_name_map = load_code_name_map()
-    preferred_name = code_name_map.get(digits) or _decode_possible_garbled(parts[0])
     return {
-        "symbol": symbol,
+        "symbol": f"{prefix}{digits}",
         "code": digits,
-        "name": preferred_name,
+        "name": code_name_map.get(digits, digits),
         "current": round(current, 2),
         "change": round(change, 2),
         "change_pct": round(change_pct, 2),
-        "open": round(float(parts[1] or 0), 2),
-        "high": round(float(parts[4] or 0), 2),
-        "low": round(float(parts[5] or 0), 2),
+        "open": round(safe_float(row.get('open')), 2),
+        "high": round(safe_float(row.get('high')), 2),
+        "low": round(safe_float(row.get('low')), 2),
         "prev_close": round(prev_close, 2),
-        "volume_lot": int(float(parts[8] or 0)),
-        "amount_yi": round(float(parts[9] or 0) / 1e8, 2),
-        "date": parts[30],
-        "time": parts[31],
-        "source": "新浪财经",
+        "volume_lot": int(safe_float(row.get('vol'))),
+        "amount_yi": round(safe_float(row.get('amount')) / 1e8, 2),
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "time": str(row.get('servertime', '')),
+        "source": "pytdx/通达信协议",
         "fetch_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
 def fetch_monthly_klines(code: str, months: int = 48) -> list:
-    prefix, digits = normalize_code(code)
-    symbol = f"{prefix}{digits}"
+    market = market_for_code(code)
+    _, digits = normalize_code(code)
+    api, _server = _connect_tdx()
     try:
-        df = ak.stock_zh_a_hist_tx(symbol=symbol, start_date="20190101", end_date="20500101", adjust="")
-    except Exception as e:
-        raise RuntimeError(f"腾讯历史接口失败: {e}")
-
-    if df is None or df.empty:
-        return []
-
-    rename_map = {}
-    for col in df.columns:
-        c = str(col).strip()
-        if c in ["date", "日期"]:
-            rename_map[col] = "date"
-        elif c in ["open", "开盘"]:
-            rename_map[col] = "open"
-        elif c in ["close", "收盘"]:
-            rename_map[col] = "close"
-        elif c in ["high", "最高"]:
-            rename_map[col] = "high"
-        elif c in ["low", "最低"]:
-            rename_map[col] = "low"
-        elif c in ["amount", "成交量", "volume"]:
-            rename_map[col] = "amount"
-    df = df.rename(columns=rename_map)
-
-    required = ["date", "open", "close", "high", "low", "amount"]
-    if not all(col in df.columns for col in required):
-        raise RuntimeError(f"腾讯历史接口字段异常: {list(df.columns)}")
-
-    df = df[required].copy()
-    df["date"] = pd.to_datetime(df["date"])
-    for col in ["open", "close", "high", "low", "amount"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    df = df.dropna().sort_values("date")
+        rows = api.get_security_bars(6, market, digits, 0, months) or []
+    finally:
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+    df = _bars_to_df([dict(x) for x in rows])
     if df.empty:
         return []
-
-    monthly_df = (
-        df.set_index("date")
-          .resample("ME")
-          .agg({
-              "open": "first",
-              "close": "last",
-              "high": "max",
-              "low": "min",
-              "amount": "sum",
-          })
-          .dropna()
-          .reset_index()
-    )
-
+    for col in ['open', 'close', 'high', 'low']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    vol_col = 'volume' if 'volume' in df.columns else 'vol'
+    df[vol_col] = pd.to_numeric(df[vol_col], errors='coerce')
+    df = df.dropna(subset=['date', 'open', 'close', 'high', 'low', vol_col]).sort_values('date')
     out = []
-    for _, row in monthly_df.tail(months).iterrows():
+    for _, row in df.tail(months).iterrows():
         out.append({
             "date": row["date"].strftime("%Y-%m-%d"),
             "open": float(row["open"]),
             "close": float(row["close"]),
             "high": float(row["high"]),
             "low": float(row["low"]),
-            "volume": float(row["amount"]),
+            "volume": float(row[vol_col]),
         })
     return out
 
@@ -299,6 +300,140 @@ def fetch_index() -> list:
     return out
 
 
+def load_auction_universe() -> list[dict]:
+    if not AUCTION_UNIVERSE_PATH.exists():
+        return []
+    try:
+        obj = json.loads(AUCTION_UNIVERSE_PATH.read_text(encoding="utf-8"))
+        selected = obj.get("selected") or []
+        if isinstance(selected, list):
+            return selected
+    except Exception:
+        return []
+    return []
+
+
+def auction_candidates(limit: int = 30) -> list[dict]:
+    universe = load_auction_universe()
+    if not universe:
+        return []
+    out = []
+    for item in universe[:limit]:
+        code = str(item.get("code") or "").strip()
+        name = str(item.get("name") or code).strip() or code
+        if not code:
+            continue
+        symbol = f"sz{code}" if not code.startswith(("sh", "sz")) else code.lower()
+        out.append({
+            "symbol": symbol,
+            "code": code.replace("sh", "").replace("sz", ""),
+            "name": name,
+        })
+    return out
+
+
+def fetch_auction_preopen_snapshot(limit: int = 30) -> list[dict]:
+    candidates = auction_candidates(limit=limit)
+    out = []
+    for item in candidates:
+        code = item["code"]
+        try:
+            df = ak.stock_zh_a_hist_pre_min_em(
+                symbol=code,
+                start_time="09:15:00",
+                end_time="09:25:00",
+            )
+        except Exception:
+            continue
+        if df is None or getattr(df, "empty", True):
+            continue
+
+        rename_map = {
+            "时间": "time",
+            "日期时间": "time",
+            "成交价": "price",
+            "价格": "price",
+            "开盘": "price",
+            "成交量": "volume",
+            "成交额": "amount",
+        }
+        df = df.copy()
+        df.columns = [rename_map.get(str(c), str(c)) for c in list(df.columns)]
+        if "price" not in df.columns:
+            continue
+
+        prices = []
+        amounts = []
+        for _, row in df.iterrows():
+            try:
+                prices.append(float(row.get("price")))
+            except Exception:
+                continue
+            try:
+                amounts.append(float(row.get("amount") or 0))
+            except Exception:
+                amounts.append(0.0)
+        if len(prices) < 2:
+            continue
+
+        first_price = prices[0]
+        last_price = prices[-1]
+        change = last_price - first_price
+        change_pct = (change / first_price * 100) if first_price else 0.0
+        amount_yi = round(sum(amounts) / 1e8, 2)
+        out.append({
+            "symbol": item["symbol"],
+            "code": code,
+            "name": item["name"],
+            "current": round(last_price, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "volume_lot": 0,
+            "amount_yi": amount_yi,
+            "source": AUCTION_SOURCE_NAME,
+            "data_granularity": "minute_agg",
+        })
+    out.sort(key=lambda x: (x.get("change_pct", 0), x.get("amount_yi", 0)), reverse=True)
+    return out
+
+
+def infer_auction_hot_sectors(items: list[dict]) -> list[dict]:
+    if not items:
+        return []
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for row in items:
+        code = str(row.get("code") or "")
+        if code.startswith("000"):
+            sector = "深市主板00竞价强势"
+        elif code.startswith("001"):
+            sector = "深市主板001竞价强势"
+        elif code.startswith("002"):
+            sector = "中小盘竞价强势"
+        else:
+            sector = "竞价强势观察"
+        groups[sector].append(row)
+
+    out = []
+    for sector, rows in groups.items():
+        rows = sorted(rows, key=lambda x: (x.get("change_pct", 0), x.get("amount_yi", 0)), reverse=True)
+        leader = rows[0]
+        avg_change = sum(x.get("change_pct", 0) for x in rows) / len(rows)
+        out.append({
+            "name": sector,
+            "change_pct": round(avg_change, 2),
+            "leading_stock": leader.get("name", ""),
+            "leading_change_pct": round(leader.get("change_pct", 0), 2),
+            "amount_yi": round(sum(x.get("amount_yi", 0) for x in rows), 2),
+            "source": f"{AUCTION_SOURCE_NAME}/sector_infer",
+        })
+    out.sort(key=lambda x: (x.get("change_pct", 0), x.get("amount_yi", 0)), reverse=True)
+    return out[:5]
+
+
+def infer_auction_industry_sectors(items: list[dict]) -> list[dict]:
+    return infer_auction_hot_sectors(items)
+
+
 def fetch_hot_sectors_tx_fallback() -> list:
     candidates = fetch_hot_stocks_tx_fallback()
     groups = {
@@ -329,6 +464,12 @@ def fetch_hot_sectors_tx_fallback() -> list:
 
 
 def fetch_hot_sectors() -> list:
+    auction_items = fetch_auction_preopen_snapshot(limit=30)
+    if auction_items:
+        inferred = infer_auction_hot_sectors(auction_items)
+        if inferred:
+            return inferred
+
     url = (
         "http://push2.eastmoney.com/api/qt/clist/get"
         "?pn=1&pz=20&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
@@ -386,6 +527,10 @@ def fetch_hot_stocks_tx_fallback() -> list:
 
 
 def fetch_hot_stocks() -> list:
+    auction_items = fetch_auction_preopen_snapshot(limit=30)
+    if auction_items:
+        return auction_items[:15]
+
     url = (
         "http://push2.eastmoney.com/api/qt/clist/get"
         "?pn=1&pz=15&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
@@ -419,6 +564,12 @@ def fetch_hot_stocks() -> list:
 
 
 def fetch_industry_sectors() -> list:
+    auction_items = fetch_auction_preopen_snapshot(limit=30)
+    if auction_items:
+        inferred = infer_auction_industry_sectors(auction_items)
+        if inferred:
+            return inferred
+
     url = (
         "http://push2.eastmoney.com/api/qt/clist/get"
         "?pn=1&pz=20&po=1&np=1&ut=bd1d9ddb04089700cf9c27f6f7426281"
