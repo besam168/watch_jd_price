@@ -1,0 +1,21 @@
+Obtaining file:///C:/Users/besam/.openclaw/workspace/projects/tradingagents-a/repo
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Building wheels for collected packages: tradingagents
+  Building editable for tradingagents (pyproject.toml): started
+  Building editable for tradingagents (pyproject.toml): finished with status 'done'
+  Created wheel for tradingagents: filename=tradingagents-0.2.3-0.editable-py3-none-any.whl size=11947 sha256=f6aae48970ab6e3973512a55f0c9e2ff6e6170884bb03a651b8a1a48581e5f57
+  Stored in directory: C:\Users\besam\AppData\Local\Temp\pip-ephem-wheel-cache-d091bgxj\wheels\25\e7\98\d8e31d0e5434cade7702df4768fe9a408cdd28d5a0ee653bc2
+Successfully built tradingagents
+Installing collected packages: tradingagents
+  Attempting uninstall: tradingagents
+    Found existing installation: tradingagents 0.2.3
+    Uninstalling tradingagents-0.2.3:
+      Successfully uninstalled tradingagents-0.2.3
+Successfully installed tradingagents-0.2.3

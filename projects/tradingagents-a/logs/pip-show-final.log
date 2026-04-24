@@ -1,0 +1,11 @@
+Name: tradingagents
+Version: 0.2.3
+Summary: TradingAgents: Multi-Agents LLM Financial Trading Framework
+Home-page: 
+Author: 
+Author-email: 
+License: 
+Location: C:\Users\besam\.openclaw\workspace\projects\tradingagents-a\.venv\Lib\site-packages
+Editable project location: C:\Users\besam\.openclaw\workspace\projects\tradingagents-a\repo
+Requires: backtrader, langchain-anthropic, langchain-core, langchain-experimental, langchain-google-genai, langchain-openai, langgraph, pandas, parsel, pytz, questionary, rank-bm25, redis, requests, rich, setuptools, stockstats, tqdm, typer, typing-extensions, yfinance
+Required-by: 
