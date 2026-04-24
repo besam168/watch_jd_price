@@ -15,9 +15,12 @@ import pandas as pd
 PLUGIN_NAME = 'A股开盘风向与实时盯盘插件 V6（正式版）'
 WORKSPACE = Path(__file__).resolve().parents[3]
 HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
+SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
 NAME_MAP_CSV = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'references' / 'name_map.csv'
 sys.path.insert(0, str(HOT_SCRIPT))
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
 import market_watch as mw  # type: ignore
+from shared_a_share_pool import UniverseFilters, load_shared_universe, names_from_universe
 
 
 def load_code_name_map() -> dict:
@@ -71,6 +74,20 @@ def fetch_daily_df(code: str):
     return df
 
 
+def load_shared_pool(limit: int | None = None):
+    filters = UniverseFilters(
+        allow_markets=('sz',),
+        include_prefixes=('00',),
+        exclude_prefixes=('300', '301', '688', '689', '8', '4'),
+        exclude_st=True,
+        exclude_delisting=True,
+        min_listed_days=60,
+        limit=limit,
+    )
+    universe = load_shared_universe(filters=filters)
+    return universe, names_from_universe(universe)
+
+
 def first_round_candidates():
     sectors = []
     hot = []
@@ -83,17 +100,22 @@ def first_round_candidates():
     except Exception:
         sectors = []
 
+    shared_universe, shared_name_map = load_shared_pool(limit=2000)
+    allowed_codes = set(shared_name_map.keys())
+
     picked = []
-    for item in hot[:15]:
+    for item in hot:
         code = str(item.get('symbol', ''))[-6:]
-        if not code:
+        if not code or code not in allowed_codes:
             continue
         picked.append({
-            'name': CODE_NAME_MAP.get(code, item.get('name', '')),
+            'name': shared_name_map.get(code, CODE_NAME_MAP.get(code, item.get('name', ''))),
             'code': code,
             'change_pct': item.get('change_pct', 0),
             'amount_yi': item.get('amount_yi', 0),
         })
+        if len(picked) >= 15:
+            break
 
     clean_sectors = []
     for sec in sectors[:5]:
@@ -105,7 +127,8 @@ def first_round_candidates():
             'amount_yi': sec.get('amount_yi', 0),
             'source': SECTOR_NAME_MAP.get(sec.get('source', ''), sec.get('source', '')),
         })
-    return picked, clean_sectors
+    return picked, clean_sectors, shared_universe
+
 
 
 def second_round_filter(candidates):
@@ -227,7 +250,7 @@ def main():
     parser.add_argument('--json', action='store_true', help='输出 JSON')
     args = parser.parse_args()
 
-    candidates, sectors = first_round_candidates()
+    candidates, sectors, shared_universe = first_round_candidates()
     passed, partial, failed = second_round_filter(candidates)
     core, follow = split_resonance(passed)
 
@@ -243,11 +266,11 @@ def main():
         'failed': failed,
         'resonance_core': core,
         'resonance_follow': follow,
-        'data_sources': {
-            'eastmoney_enabled': False,
-            'realtime_candidates': 'pytdx/通达信协议',
-            'daily_filter': 'pytdx日线K线/通达信协议',
-            'sector_source': 'pytdx快照聚合/通达信协议',
+        'shared_stock_pool': {
+            'source_module': 'skills/shared_a_share_pool',
+            'source_path': shared_universe.get('source_path', ''),
+            'selected_count': shared_universe.get('selected_count', 0),
+            'filters': shared_universe.get('filters', {}),
         },
     }
     payload = sanitize_payload(payload)
