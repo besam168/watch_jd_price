@@ -89,7 +89,7 @@ def load_shared_pool(limit: int | None = None):
     return universe, names_from_universe(universe)
 
 
-def first_round_candidates():
+def first_round_candidates(limit: int = 12):
     sectors = []
     try:
         hot = mw.fetch_hot_stocks()
@@ -114,7 +114,7 @@ def first_round_candidates():
             'change_pct': item.get('change_pct', 0),
             'amount_yi': item.get('amount_yi', 0),
         })
-        if len(picked) >= 12:
+        if len(picked) >= limit:
             break
 
     if not picked:
@@ -133,6 +133,40 @@ def first_round_candidates():
             })
 
     return picked, sectors[:5], shared_universe
+
+
+def fmt_qq_short(payload: dict) -> str:
+    lines = [
+        'V6-test QQ短报',
+        f"股票池: {payload.get('shared_stock_pool', {}).get('selected_count', 0)}只（深市00主板池）",
+        f"首轮候选: {len(payload.get('first_round_candidates', []))}只",
+        f"通过: {len(payload.get('passed', []))}｜部分通过: {len(payload.get('partial', []))}｜不通过: {len(payload.get('failed', []))}",
+        '',
+        '通过名单：',
+    ]
+    passed = payload.get('passed', [])
+    if passed:
+        for x in passed:
+            lines.append(f"- {x['name']} {x['code']}｜{x['change_pct']}%｜{x['amount_yi']}亿｜score {x['score']}")
+    else:
+        lines.append('- 无')
+    lines.append('')
+    lines.append('部分通过：')
+    partial = payload.get('partial', [])
+    if partial:
+        for x in partial[:10]:
+            lines.append(f"- {x['name']} {x['code']}｜{x['change_pct']}%｜{x['amount_yi']}亿｜score {x['score']}")
+    else:
+        lines.append('- 无')
+    lines.append('')
+    lines.append('共振跟随：')
+    follow = payload.get('resonance_follow', [])
+    if follow:
+        for x in follow:
+            lines.append(f"- {x['name']} {x['code']}")
+    else:
+        lines.append('- 无')
+    return '\n'.join(lines)
 
 
 def second_round_filter(candidates):
@@ -196,9 +230,11 @@ def main():
     parser.add_argument('--filter-price-3d', action='store_true', help='启用近3日拉升过滤')
     parser.add_argument('--filter-ma5-soft', action='store_true', help='启用5日线宽松辅助过滤')
     parser.add_argument('--json', action='store_true', help='输出 JSON')
+    parser.add_argument('--qq-short', action='store_true', help='输出 QQ 短报版')
+    parser.add_argument('--candidate-limit', type=int, default=12, help='首轮候选数量')
     args = parser.parse_args()
 
-    candidates, sectors, shared_universe = first_round_candidates()
+    candidates, sectors, shared_universe = first_round_candidates(limit=args.candidate_limit)
     passed, partial, failed = second_round_filter(candidates)
     core, follow = split_resonance(passed)
 
@@ -224,6 +260,10 @@ def main():
 
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if args.qq_short:
+        print(fmt_qq_short(payload))
         return
 
     print(f'{PLUGIN_NAME} 已运行')
