@@ -11,6 +11,11 @@ from pytdx.hq import TdxHq_API
 ENABLE_EASTMONEY = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+SHARED_POOL_DIR = BASE_DIR.parent / 'shared_a_share_pool'
+import sys
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool import UniverseFilters, load_shared_universe, names_from_universe
+
 NAME_MAP_PATH = BASE_DIR / "references" / "name_map.csv"
 AUCTION_SCANNER_DIR = BASE_DIR.parent / "auction_915_925_smooth_scanner"
 AUCTION_UNIVERSE_PATH = AUCTION_SCANNER_DIR / "outputs" / "sz_mainboard_00_universe.json"
@@ -300,27 +305,34 @@ def fetch_index() -> list:
     return out
 
 
+def load_shared_pool(limit: int | None = None) -> tuple[dict, dict[str, str]]:
+    filters = UniverseFilters(
+        allow_markets=('sz',),
+        include_prefixes=('00',),
+        exclude_prefixes=('300', '301', '688', '689', '8', '4'),
+        exclude_st=True,
+        exclude_delisting=True,
+        min_listed_days=60,
+        limit=limit,
+    )
+    universe = load_shared_universe(filters=filters)
+    return universe, names_from_universe(universe)
+
+
 def load_auction_universe() -> list[dict]:
-    if not AUCTION_UNIVERSE_PATH.exists():
-        return []
-    try:
-        obj = json.loads(AUCTION_UNIVERSE_PATH.read_text(encoding="utf-8"))
-        selected = obj.get("selected") or []
-        if isinstance(selected, list):
-            return selected
-    except Exception:
-        return []
-    return []
+    universe, _name_map = load_shared_pool(limit=2000)
+    return universe.get('selected', [])
 
 
 def auction_candidates(limit: int = 30) -> list[dict]:
-    universe = load_auction_universe()
-    if not universe:
+    universe, shared_name_map = load_shared_pool(limit=limit)
+    selected = universe.get('selected', [])
+    if not selected:
         return []
     out = []
-    for item in universe[:limit]:
+    for item in selected[:limit]:
         code = str(item.get("code") or "").strip()
-        name = str(item.get("name") or code).strip() or code
+        name = shared_name_map.get(code, str(item.get("name") or code).strip() or code)
         if not code:
             continue
         symbol = f"sz{code}" if not code.startswith(("sh", "sz")) else code.lower()
