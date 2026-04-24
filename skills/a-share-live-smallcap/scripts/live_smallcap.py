@@ -22,11 +22,14 @@ WORKSPACE = Path(__file__).resolve().parents[3]
 AUCTION_SKILL_DIR = WORKSPACE / 'skills' / 'auction_915_925_smooth_scanner'
 AUCTION_DS_DIR = AUCTION_SKILL_DIR / 'datasource'
 V6_TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts'
+SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
 
 sys.path.insert(0, str(AUCTION_DS_DIR))
 sys.path.insert(0, str(V6_TEST_SCRIPT))
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
 
 from pytdx_snapshot import fetch_quotes_with_fallback  # type: ignore
+from shared_a_share_pool import UniverseFilters, load_shared_universe
 import opening_flow_v6_test as v6  # type: ignore
 
 UNIVERSE_PATH = AUCTION_SKILL_DIR / 'outputs' / 'liutong5yi_marketcap100yi_universe_full.json'
@@ -57,12 +60,20 @@ def market_prefix(code: str) -> str:
 
 
 def load_universe() -> list[dict]:
-    if not UNIVERSE_PATH.exists():
-        raise FileNotFoundError(f'universe_not_found: {UNIVERSE_PATH}')
-    obj = json.loads(UNIVERSE_PATH.read_text(encoding='utf-8'))
-    selected = obj.get('selected') or []
+    filters = UniverseFilters(
+        allow_markets=('sz',),
+        include_prefixes=('00',),
+        exclude_prefixes=('300', '301', '688', '689', '8', '4'),
+        exclude_st=True,
+        exclude_delisting=True,
+        min_listed_days=60,
+        max_float_mkt_cap=100 * 1e8,
+        max_liutongguben=5 * 1e8,
+        limit=3000,
+    )
+    universe = load_shared_universe(universe_path=UNIVERSE_PATH, filters=filters)
     out = []
-    for item in selected:
+    for item in universe.get('selected', []):
         code = str(item.get('code') or '').strip()
         if not code:
             continue
@@ -72,8 +83,10 @@ def load_universe() -> list[dict]:
             'market': item.get('market'),
             'latest_price': safe_float(item.get('latest_price')),
             'liutongguben': safe_float(item.get('liutongguben')),
-            'estimated_liutong_marketcap': safe_float(item.get('estimated_liutong_marketcap')),
+            'estimated_liutong_marketcap': safe_float(item.get('estimated_liutong_marketcap') or item.get('float_mkt_cap')),
             'ipo_date': item.get('ipo_date'),
+            'shared_pool_source_path': universe.get('source_path'),
+            'shared_pool_filters': universe.get('filters'),
         })
     return out
 
@@ -593,15 +606,10 @@ def main():
         'fetch_stats': fetch_stats,
         'track_summaries': track_summaries,
         'raw_tracks': raw_tracks,
-        'data_sources': {
-            'realtime_scan': source,
-            'primary': 'pytdx.hq.TdxHq_API',
-            'secondary': 'disabled',
-            'daily_filter': '腾讯历史K线(akshare)',
-            'fallback': 'pytdx多服务器fallback + 单批失败降级补拉',
-            'universe': str(UNIVERSE_PATH),
-            'legacy_eastmoney': 'disabled',
-            'legacy_sina': 'disabled',
+        'shared_stock_pool': {
+            'source_module': 'skills/shared_a_share_pool',
+            'source_path': (live_items[0].get('shared_pool_source_path', '') if live_items else ''),
+            'filters': (live_items[0].get('shared_pool_filters', {}) if live_items else {}),
         },
     }
 
