@@ -19,6 +19,11 @@ import subprocess
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+from pathlib import Path
+
+SHARED_POOL_DIR = Path(__file__).resolve().parents[2] / 'shared_a_share_pool'
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool.trading_day_guard import guard_non_trading_day
 
 SMTP_SERVER = 'smtp.qq.com'
 SMTP_PORT = 465
@@ -52,7 +57,7 @@ def run_scan(slot: str):
         '--min-change-pct', str(cfg['min_change_pct']),
         '--max-change-pct', str(cfg['max_change_pct']),
         '--min-amount-yi', str(cfg['min_amount_yi']),
-        '--max-total-mv-yi', '100', '--max-circ-mv-yi', '100',
+        '--max-total-mv-yi', '150', '--max-circ-mv-yi', '150',
         '--top-n', '120', '--pick-count', str(cfg['pick_count']),
         '--rounds', str(cfg['rounds']), '--interval-seconds', str(cfg['interval_seconds']),
         '--output-json', out_json,
@@ -132,6 +137,9 @@ def send_email(subject: str, html: str):
 
 
 def main():
+    skipped, _ = guard_non_trading_day('a-share-live-smallcap-dual-phase')
+    if skipped:
+        return
     slot = '0935'
     if len(sys.argv) > 1:
         slot = sys.argv[1].strip()
