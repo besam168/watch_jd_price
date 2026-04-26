@@ -17,6 +17,9 @@ WORKSPACE = Path(__file__).resolve().parents[3]
 HOT_SCRIPT = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'scripts'
 SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
 NAME_MAP_CSV = WORKSPACE / 'skills' / 'a-share-hot-spots' / 'references' / 'name_map.csv'
+SMALLCAP_UNIVERSE_PATH = WORKSPACE / 'skills' / 'auction_915_925_smooth_scanner' / 'outputs' / 'liutong8yi_marketcap150yi_universe_full.json'
+DEFAULT_MAX_FLOAT_MKT_CAP = 150 * 1e8
+DEFAULT_MAX_LIUTONGGUBEN = 8 * 1e8
 sys.path.insert(0, str(HOT_SCRIPT))
 sys.path.insert(0, str(SHARED_POOL_DIR.parent))
 import market_watch as mw  # type: ignore
@@ -76,15 +79,17 @@ def fetch_daily_df(code: str):
 
 def load_shared_pool(limit: int | None = None):
     filters = UniverseFilters(
-        allow_markets=('sz',),
-        include_prefixes=('00',),
+        allow_markets=('sz', 'sh'),
+        include_prefixes=('00', '001', '002', '003', '600', '601', '603', '605'),
         exclude_prefixes=('300', '301', '688', '689', '8', '4'),
         exclude_st=True,
         exclude_delisting=True,
-        min_listed_days=60,
+        min_listed_days=120,
+        max_float_mkt_cap=DEFAULT_MAX_FLOAT_MKT_CAP,
+        max_liutongguben=DEFAULT_MAX_LIUTONGGUBEN,
         limit=limit,
     )
-    universe = load_shared_universe(filters=filters)
+    universe = load_shared_universe(universe_path=SMALLCAP_UNIVERSE_PATH, filters=filters)
     return universe, names_from_universe(universe)
 
 
@@ -100,7 +105,7 @@ def first_round_candidates():
     except Exception:
         sectors = []
 
-    shared_universe, shared_name_map = load_shared_pool(limit=2000)
+    shared_universe, shared_name_map = load_shared_pool(limit=3000)
     allowed_codes = set(shared_name_map.keys())
 
     picked = []
@@ -116,6 +121,27 @@ def first_round_candidates():
         })
         if len(picked) >= 15:
             break
+
+    if not picked:
+        fallback_candidates = []
+        for item in shared_universe.get('selected', [])[:60]:
+            code = str(item.get('code') or '').strip()
+            if not code:
+                continue
+            try:
+                stock = mw.fetch_stock(code)
+            except Exception:
+                continue
+            if stock.get('error'):
+                continue
+            fallback_candidates.append({
+                'name': shared_name_map.get(code, CODE_NAME_MAP.get(code, stock.get('name', code))),
+                'code': code,
+                'change_pct': stock.get('change_pct', 0),
+                'amount_yi': stock.get('amount_yi', 0),
+            })
+        fallback_candidates.sort(key=lambda x: (x.get('change_pct', 0), x.get('amount_yi', 0)), reverse=True)
+        picked = fallback_candidates[:15]
 
     clean_sectors = []
     for sec in sectors[:5]:

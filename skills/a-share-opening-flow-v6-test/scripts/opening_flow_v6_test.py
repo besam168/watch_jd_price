@@ -77,15 +77,20 @@ def fetch_daily_df(code: str):
 
 def load_shared_pool(limit: int | None = None):
     filters = UniverseFilters(
-        allow_markets=('sz',),
-        include_prefixes=('00',),
+        allow_markets=('sz', 'sh'),
+        include_prefixes=('00', '001', '002', '003', '600', '601', '603', '605'),
         exclude_prefixes=('300', '301', '688', '689', '8', '4'),
         exclude_st=True,
         exclude_delisting=True,
         min_listed_days=60,
+        max_float_mkt_cap=150 * 1e8,
+        max_liutongguben=8 * 1e8,
         limit=limit,
     )
-    universe = load_shared_universe(filters=filters)
+    universe = load_shared_universe(
+        universe_path=WORKSPACE / 'skills' / 'auction_915_925_smooth_scanner' / 'outputs' / 'liutong8yi_marketcap150yi_universe_full.json',
+        filters=filters,
+    )
     return universe, names_from_universe(universe)
 
 
@@ -138,7 +143,7 @@ def first_round_candidates(limit: int = 12):
 def fmt_qq_short(payload: dict) -> str:
     lines = [
         'V6-test QQ短报',
-        f"股票池: {payload.get('shared_stock_pool', {}).get('selected_count', 0)}只（深市00主板池）",
+        f"股票池: {payload.get('shared_stock_pool', {}).get('selected_count', 0)}只（8亿股+150亿基础池）",
         f"首轮候选: {len(payload.get('first_round_candidates', []))}只",
         f"通过: {len(payload.get('passed', []))}｜部分通过: {len(payload.get('partial', []))}｜不通过: {len(payload.get('failed', []))}",
         '',

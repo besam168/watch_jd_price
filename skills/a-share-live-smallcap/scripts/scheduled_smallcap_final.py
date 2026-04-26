@@ -9,6 +9,11 @@ import subprocess
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+from pathlib import Path
+
+SHARED_POOL_DIR = Path(__file__).resolve().parents[2] / 'shared_a_share_pool'
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool.trading_day_guard import guard_non_trading_day
 
 MIN_CHANGE = 3
 MAX_CHANGE = 5
@@ -58,7 +63,7 @@ def generate_text_report(data):
         '=' * 60,
         f'A股中小盘强势股扫描报告（pytdx版） - {now}',
         '=' * 60,
-        f'选股条件：涨幅{MIN_CHANGE}%-{MAX_CHANGE}% | 5亿股+100亿流通市值新池 | 成交额≥{MIN_AMOUNT}亿',
+        f'选股条件：涨幅{MIN_CHANGE}%-{MAX_CHANGE}% | 8亿股+150亿流通市值新池 | 成交额≥{MIN_AMOUNT}亿',
         f"数据来源：{data.get('market_scan_source', 'pytdx-live-universe')}",
         '=' * 60,
         '',
@@ -110,6 +115,9 @@ def send_email(report_text):
 
 
 if __name__ == '__main__':
+    skipped, _ = guard_non_trading_day('a-share-live-smallcap-final')
+    if skipped:
+        sys.exit(0)
     data = run_scan()
     if not data:
         sys.exit(1)

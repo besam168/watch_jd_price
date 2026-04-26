@@ -32,7 +32,7 @@ from pytdx_snapshot import fetch_quotes_with_fallback  # type: ignore
 from shared_a_share_pool import UniverseFilters, load_shared_universe
 import opening_flow_v6_test as v6  # type: ignore
 
-UNIVERSE_PATH = AUCTION_SKILL_DIR / 'outputs' / 'liutong5yi_marketcap100yi_universe_full.json'
+UNIVERSE_PATH = AUCTION_SKILL_DIR / 'outputs' / 'liutong8yi_marketcap150yi_universe_full.json'
 OUTPUT_DIR = BASE_DIR / 'output'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -61,14 +61,14 @@ def market_prefix(code: str) -> str:
 
 def load_universe() -> list[dict]:
     filters = UniverseFilters(
-        allow_markets=('sz',),
-        include_prefixes=('00',),
+        allow_markets=('sz', 'sh'),
+        include_prefixes=('00', '001', '002', '003', '600', '601', '603', '605'),
         exclude_prefixes=('300', '301', '688', '689', '8', '4'),
         exclude_st=True,
         exclude_delisting=True,
         min_listed_days=60,
-        max_float_mkt_cap=100 * 1e8,
-        max_liutongguben=5 * 1e8,
+        max_float_mkt_cap=150 * 1e8,
+        max_liutongguben=8 * 1e8,
         limit=3000,
     )
     universe = load_shared_universe(universe_path=UNIVERSE_PATH, filters=filters)
@@ -217,7 +217,7 @@ def is_smallcap_style(item: dict, max_total_mv_yi: float, max_circ_mv_yi: float,
         if allow_mainboard_60:
             return True, '60主板允许纳入'
         return True, '60主板默认纳入新池'
-    return True, '5亿股+100亿流通市值新池'
+    return True, '8亿股+150亿流通市值新池'
 
 
 def summarize_track(points: list[dict]) -> dict:
@@ -578,7 +578,7 @@ def main():
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'date': args.date,
         'sample_label': args.sample_label,
-        'strategy': '停用东财/新浪实时入口，改用pytdx快照+5亿股100亿流通市值新股票池，多轮采样后再叠加近3日量价+5日线过滤',
+        'strategy': '停用东财/新浪实时入口，改用pytdx快照+8亿股150亿流通市值新股票池，多轮采样后再叠加近3日量价+5日线过滤',
         'market_scan_source': source,
         'top_n': args.top_n,
         'pick_count': args.pick_count,

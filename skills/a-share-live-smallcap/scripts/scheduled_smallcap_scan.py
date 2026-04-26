@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 定时中小盘选股扫描脚本（pytdx版）
-功能：盘中定时扫描 5亿股+100亿流通市值 新股票池，生成报告发送邮件
+功能：盘中定时扫描 8亿股+150亿流通市值 新股票池，生成报告发送邮件
 """
 import os
 os.environ['PYTHONIOENCODING'] = 'utf-8'
@@ -14,6 +14,11 @@ import subprocess
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+from pathlib import Path
+
+SHARED_POOL_DIR = Path(__file__).resolve().parents[2] / 'shared_a_share_pool'
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool.trading_day_guard import guard_non_trading_day
 
 MIN_CHANGE_PCT = 3
 MAX_CHANGE_PCT = 5
@@ -87,7 +92,7 @@ def generate_report(result):
         <h1>📈 A股中小盘强势股扫描报告（pytdx版）</h1>
         <div class=\"header\">
             <p><strong>扫描时间：</strong>{now}</p>
-            <p><strong>选股条件：</strong>涨幅3%-5%、5亿股+100亿流通市值新池、近3日放量、5日线支撑</p>
+            <p><strong>选股条件：</strong>涨幅3%-5%、8亿股+150亿流通市值新池、近3日放量、5日线支撑</p>
             <p><strong>实时来源：</strong>{result.get('market_scan_source', 'pytdx-live-universe')}</p>
         </div>
 
@@ -153,6 +158,9 @@ if __name__ == '__main__':
             sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
+    skipped, _ = guard_non_trading_day('a-share-live-smallcap-scan')
+    if skipped:
+        sys.exit(0)
     print(f"开始扫描中小盘强势股（pytdx版），时间：{datetime.now()}")
     result = run_scan()
     if not result:
