@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import smtplib
 import ssl
+import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 from email.message import EmailMessage
 from pathlib import Path
 import subprocess
@@ -17,6 +18,9 @@ REPORT_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOG_DIR / "smallcap_opening_mailer.log"
+SHARED_POOL_DIR = ROOT / "skills" / "shared_a_share_pool"
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool.trading_day_guard import guard_non_trading_day
 
 SENDER = "910633260@qq.com"
 AUTH_CODE = "sghqeeeeyuzjbcbb"
@@ -258,6 +262,11 @@ def send_email(subject: str, body: str, retries: int = 3, retry_delay: int = 8) 
 
 
 def main() -> int:
+    skipped, reason = guard_non_trading_day('smallcap_opening_mailer')
+    if skipped:
+        log_line(f"skip_non_trading_day reason={reason}")
+        return 0
+
     payload = run_plugin()
     body = build_text_report(payload)
     qq_brief = build_qq_brief(payload)
