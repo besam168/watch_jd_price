@@ -1,0 +1,10 @@
+{
+  "defaultTickers": ["TSLA", "AAPL", "RXRX"],
+  "maxTickers": 3,
+  "tradeDate": "AUTO",
+  "recipients": [
+    "besam168168@gmail.com",
+    "758622673@qq.com"
+  ],
+  "subjectPrefix": "晚间热点多票合集报告"
+}
