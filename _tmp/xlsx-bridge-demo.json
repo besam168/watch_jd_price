@@ -1,0 +1,18 @@
+{
+  "sheets": [
+    {
+      "name": "Summary",
+      "rows": [
+        ["Item", "Amount", "Note"],
+        ["Alpha", 12, "ok"],
+        ["Beta", 30, "ok"],
+        ["Total", "=SUM(B2:B3)", "formula"]
+      ],
+      "widths": {
+        "A": 18,
+        "B": 12,
+        "C": 18
+      }
+    }
+  ]
+}

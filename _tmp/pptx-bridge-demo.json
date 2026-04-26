@@ -1,0 +1,29 @@
+{
+  "title": "桥接脚本测试演示",
+  "author": "沈万三",
+  "theme": {
+    "accent": "2563EB",
+    "bg": "F8FAFC"
+  },
+  "slides": [
+    {
+      "title": "MiniMax PPT Bridge",
+      "subtitle": "最小可调用桥接脚本",
+      "bullets": [
+        "输入 JSON 结构",
+        "输出 .pptx 文件",
+        "适合后续自动化生成"
+      ],
+      "footer": "OpenClaw local bridge"
+    },
+    {
+      "title": "当前状态",
+      "bullets": [
+        "pptxgenjs 已接通",
+        "markitdown[pptx] 已可反读",
+        "后续可继续做模板化增强"
+      ],
+      "body": "这版先追求稳定可用，不追求花哨排版。"
+    }
+  ]
+}
