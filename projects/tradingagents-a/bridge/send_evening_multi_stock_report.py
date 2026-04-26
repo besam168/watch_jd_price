@@ -69,6 +69,42 @@ def run_ticker(ticker: str, trade_date: str) -> dict:
     }
 
 
+def zh_decision(decision: str | None) -> str:
+    mapping = {
+        "BUY": "偏多",
+        "HOLD": "观望",
+        "SELL": "偏空",
+        "ERROR": "运行失败",
+    }
+    if not decision:
+        return "未给出"
+    return mapping.get(str(decision).upper(), str(decision))
+
+
+def zh_bullets(items: list[str], fallback: str, limit: int) -> list[str]:
+    rows = []
+    for item in (items or [])[:limit]:
+        text = str(item).strip()
+        if not text:
+            continue
+        text = text.replace("Short-term", "短线")
+        text = text.replace("Medium-term", "中线")
+        text = text.replace("Long-term", "长线")
+        text = text.replace("Price", "股价")
+        text = text.replace("risk", "风险")
+        text = text.replace("support", "支撑")
+        text = text.replace("resistance", "压力")
+        text = text.replace("rebound", "反弹")
+        text = text.replace("downtrend", "下行趋势")
+        text = text.replace("bullish", "偏强")
+        text = text.replace("bearish", "偏弱")
+        text = text.replace("moving average", "均线")
+        rows.append(text)
+    if not rows:
+        return [fallback]
+    return rows
+
+
 def render_email_body(trade_date: str, rows: list[dict]) -> str:
     lines = [
         f"晚间热点多票合集报告（{trade_date}）",
@@ -84,22 +120,16 @@ def render_email_body(trade_date: str, rows: list[dict]) -> str:
     for idx, row in enumerate(rows, start=1):
         lines += [
             f"二.{idx} {row['ticker']}",
-            f"- 结论：{row.get('decision', 'N/A')}",
+            f"- 结论：{zh_decision(row.get('decision'))}（{row.get('decision', 'N/A')}）",
             f"- 中文摘要：{row.get('summary_zh') or '暂无摘要'}",
         ]
-        reasons = row.get("key_reasons") or []
-        if reasons:
-            lines.append("- 核心依据：")
-            lines += [f"  • {x}" for x in reasons[:3]]
-        else:
-            lines.append("- 核心依据：暂未稳定提炼到中文依据")
-        risks = row.get("risks") or []
-        if risks:
-            lines.append("- 主要风险：")
-            lines += [f"  • {x}" for x in risks[:2]]
-        else:
-            lines.append("- 主要风险：暂未稳定提炼到中文风险")
-        lines += ["",]
+        reasons = zh_bullets(row.get("key_reasons") or [], "暂未稳定提炼到中文依据", 3)
+        lines.append("- 核心依据：")
+        lines += [f"  • {x}" for x in reasons]
+        risks = zh_bullets(row.get("risks") or [], "暂未稳定提炼到中文风险", 2)
+        lines.append("- 主要风险：")
+        lines += [f"  • {x}" for x in risks]
+        lines += [""]
     lines += [
         "三、说明",
         "- 当前分析由 TradingAgents Bridge 自动生成，路由优先走已打通的 OpenAI 兼容链路。",
@@ -122,7 +152,7 @@ def render_markdown(trade_date: str, rows: list[dict]) -> str:
         lines += [
             f"## {idx}. {row['ticker']}",
             "",
-            f"- 结论：**{row.get('decision', 'N/A')}**",
+            f"- 结论：**{zh_decision(row.get('decision'))}**（{row.get('decision', 'N/A')}）",
             f"- 路由：{row.get('provider', 'n/a')}/{row.get('model', 'n/a')} ({row.get('profile', 'n/a')})",
             f"- 耗时：{row.get('duration_ms', 'n/a')} ms",
             "",
@@ -133,17 +163,11 @@ def render_markdown(trade_date: str, rows: list[dict]) -> str:
             "### 核心依据",
             "",
         ]
-        reasons = row.get("key_reasons") or []
-        if reasons:
-            lines += [f"- {x}" for x in reasons[:4]]
-        else:
-            lines.append("- 暂未稳定提炼到核心依据")
+        reasons = zh_bullets(row.get("key_reasons") or [], "暂未稳定提炼到中文依据", 4)
+        lines += [f"- {x}" for x in reasons]
         lines += ["", "### 主要风险", ""]
-        risks = row.get("risks") or []
-        if risks:
-            lines += [f"- {x}" for x in risks[:3]]
-        else:
-            lines.append("- 暂未稳定提炼到主要风险")
+        risks = zh_bullets(row.get("risks") or [], "暂未稳定提炼到中文风险", 3)
+        lines += [f"- {x}" for x in risks]
         lines += ["", "---", ""]
     return "\n".join(lines)
 
