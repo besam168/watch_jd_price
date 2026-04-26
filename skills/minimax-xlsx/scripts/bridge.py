@@ -60,6 +60,20 @@ def analyze_workbook(in_path: Path):
     return result
 
 
+def update_cells(spec: dict, in_path: Path, out_path: Path | None):
+    wb = load_workbook(in_path)
+    for op in spec.get('updates', []):
+        sheet = op['sheet']
+        cell = op['cell']
+        value = op.get('value')
+        ws = wb[sheet]
+        ws[cell] = value
+    target = out_path or in_path
+    ensure_parent(target)
+    wb.save(target)
+    return str(target)
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest='cmd', required=True)
@@ -71,6 +85,11 @@ def main():
     p_analyze = sub.add_parser('analyze')
     p_analyze.add_argument('--input', required=True)
 
+    p_update = sub.add_parser('update-cells')
+    p_update.add_argument('--input', required=True, help='workbook path')
+    p_update.add_argument('--spec', required=True, help='json update spec path')
+    p_update.add_argument('--output', required=False)
+
     args = parser.parse_args()
 
     if args.cmd == 'create':
@@ -80,6 +99,10 @@ def main():
     elif args.cmd == 'analyze':
         result = analyze_workbook(Path(args.input))
         print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.cmd == 'update-cells':
+        spec = read_json(args.spec)
+        out = update_cells(spec, Path(args.input), Path(args.output) if args.output else None)
+        print(out)
 
 
 if __name__ == '__main__':

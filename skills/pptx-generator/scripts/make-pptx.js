@@ -19,15 +19,84 @@ function normText(v, fallback = '') {
   return String(v);
 }
 
+function parseMarkdownToSpec(text) {
+  const lines = text.replace(/\r\n/g, '\n').split('\n');
+  const slides = [];
+  let current = null;
+  let deckTitle = '';
+
+  function pushCurrent() {
+    if (current) {
+      current.body = (current.bodyLines || []).join('\n').trim();
+      delete current.bodyLines;
+      slides.push(current);
+    }
+  }
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    if (line.startsWith('# ')) {
+      if (!deckTitle) deckTitle = line.slice(2).trim();
+      else {
+        pushCurrent();
+        current = { title: line.slice(2).trim(), bullets: [], bodyLines: [] };
+      }
+      continue;
+    }
+
+    if (line.startsWith('## ')) {
+      pushCurrent();
+      current = { title: line.slice(3).trim(), bullets: [], bodyLines: [] };
+      continue;
+    }
+
+    if (!current) {
+      current = { title: deckTitle || 'Untitled', bullets: [], bodyLines: [] };
+    }
+
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      current.bullets.push(line.slice(2).trim());
+    } else {
+      current.bodyLines.push(line);
+    }
+  }
+
+  pushCurrent();
+
+  if (!slides.length) {
+    slides.push({ title: deckTitle || 'Untitled', bullets: [], body: text.trim() });
+  }
+
+  return {
+    title: deckTitle || slides[0]?.title || 'Untitled Presentation',
+    slides: slides.map((s, idx) => ({
+      title: s.title || `Slide ${idx + 1}`,
+      bullets: s.bullets || [],
+      body: s.body || ''
+    }))
+  };
+}
+
+function loadSpec(inputPath) {
+  const ext = path.extname(inputPath).toLowerCase();
+  if (ext === '.json') return readJson(inputPath);
+  if (ext === '.md' || ext === '.markdown' || ext === '.txt') {
+    return parseMarkdownToSpec(fs.readFileSync(inputPath, 'utf8'));
+  }
+  throw new Error(`Unsupported input type: ${ext}`);
+}
+
 async function main() {
   const inputPath = process.argv[2];
   const outputPath = process.argv[3];
   if (!inputPath || !outputPath) {
-    console.error('Usage: node make-pptx.js <input.json> <output.pptx>');
+    console.error('Usage: node make-pptx.js <input.(json|md|txt)> <output.pptx>');
     process.exit(2);
   }
 
-  const spec = readJson(inputPath);
+  const spec = loadSpec(inputPath);
   const pptx = new pptxgen();
   pptx.layout = spec.layout || 'LAYOUT_WIDE';
   pptx.author = spec.author || 'OpenClaw';

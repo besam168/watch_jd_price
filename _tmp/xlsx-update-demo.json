@@ -1,0 +1,8 @@
+{
+  "updates": [
+    {"sheet": "Summary", "cell": "B2", "value": 18},
+    {"sheet": "Summary", "cell": "C2", "value": "updated"},
+    {"sheet": "Summary", "cell": "B5", "value": 48},
+    {"sheet": "Summary", "cell": "A5", "value": "ManualTotal"}
+  ]
+}
