@@ -71,7 +71,7 @@ def main():
         'mode': 'all_in_one',
         'capture': cap_json,
         'judgement': judge_json,
-        'compact_lines': [x.get('compact_line') for x in (judge_json.get('passed') or []) if x.get('compact_line')],
+        'compact_lines': list((judge_json.get('compact_lines') or [])),
     }
     safe_print_json(summary)
 

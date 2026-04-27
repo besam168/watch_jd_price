@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import csv
 import json
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = BASE_DIR / 'outputs'
 TRACK_PATH = OUTPUT_DIR / 'auction_sniper_v2_track_auto_today.json'
 OUTPUT_MODULE_DIR = BASE_DIR / 'output'
+NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\a-share-hot-spots\references\name_map.csv')
 sys.path.insert(0, str(OUTPUT_MODULE_DIR))
 from writer import write_outputs  # type: ignore
 
@@ -49,11 +51,37 @@ def build_track_map(track_payload: dict) -> dict[str, list[dict]]:
     return out
 
 
-def analyze_one(meta_rows: list[dict]) -> dict:
+def load_name_map() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not NAME_MAP_PATH.exists():
+        return mapping
+    try:
+        with NAME_MAP_PATH.open('r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row or len(row) < 2:
+                    continue
+                first = str(row[0]).strip()
+                second = str(row[1]).strip()
+                if not first or not second:
+                    continue
+                if first.lower() == 'name' and second.lower() == 'code':
+                    continue
+                if first.isdigit() and len(first) == 6:
+                    mapping[first] = second
+                elif second.isdigit() and len(second) == 6:
+                    mapping[second] = first
+    except Exception:
+        return mapping
+    return mapping
+
+
+def analyze_one(meta_rows: list[dict], name_map: dict[str, str]) -> dict:
     first = meta_rows[0]
     code = str(first.get('code') or '')
     symbol = str(first.get('symbol') or code)
-    name = str(first.get('name') or code)
+    raw_name = str(first.get('name') or code)
+    name = name_map.get(code) or raw_name
     last_close = safe_float(first.get('last_close'))
     prices = [safe_float(x.get('price')) for x in meta_rows if safe_float(x.get('price')) > 0]
     vol_ratios = [safe_float(x.get('volume_ratio_proxy')) for x in meta_rows]
@@ -79,7 +107,7 @@ def analyze_one(meta_rows: list[dict]) -> dict:
     reasons = []
     if drift_up and 2.0 <= change_pct <= 5.0 and volume_ratio > 1.5:
         mode = 'sanan'
-    elif peak_pct >= 9.0 and retrace_ok and 1.0 <= change_pct <= 5.0 and volume_ratio > 2.5:
+    elif peak_pct >= 8.5 and retrace_ok and 1.0 <= change_pct <= 5.0 and volume_ratio > 2.0:
         mode = 'jinmantang'
     else:
         if not drift_up:
@@ -116,8 +144,9 @@ def main():
     if not track_path.exists():
         raise SystemExit(f'track_file_not_found: {track_path}')
     payload = json.loads(track_path.read_text(encoding='utf-8'))
+    name_map = load_name_map()
     track_map = build_track_map(payload)
-    all_rows = [analyze_one(rows) for _, rows in track_map.items()]
+    all_rows = [analyze_one(rows, name_map) for _, rows in track_map.items()]
     passed_rows = [x for x in all_rows if x.get('passed')]
     passed_rows.sort(key=lambda x: (x.get('change_pct') or 0, x.get('volume_ratio') or 0), reverse=True)
     passed_rows = passed_rows[:args.top_n]
