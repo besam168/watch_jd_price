@@ -131,6 +131,7 @@ def main():
         'passed_count': len(passed_rows),
         'outputs': outputs,
         'passed': passed_rows,
+        'compact_lines': [f"[{'三安模式' if x.get('mode') == 'sanan' else '金螳螂模式'}] {x.get('symbol', '').upper()} - {x.get('name', '')} - {x.get('change_pct')}% - 量比{x.get('volume_ratio')}" for x in passed_rows],
     }
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.json else None))
 

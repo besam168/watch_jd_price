@@ -11,6 +11,15 @@ DEFAULT_SERVERS: List[Tuple[str, int]] = [
 ]
 
 
+def decode_name(text: str) -> str:
+    s = str(text or "")
+    try:
+        return s.encode("latin1", errors="ignore").decode("gbk", errors="ignore") or s
+    except Exception:
+        return s
+
+
+
 def market_for_code(code: str) -> int:
     c = str(code).strip()
     if c.startswith(("00", "001", "002", "003", "30")):
@@ -37,7 +46,13 @@ def _fetch_quotes_once(symbols: Sequence[str], server: Tuple[str, int]) -> List[
     try:
         req = [(market_for_code(normalize_code(s)), normalize_code(s)) for s in symbols]
         rows = api.get_security_quotes(req) or []
-        return [dict(x) for x in rows]
+        decoded = []
+        for x in rows:
+            d = dict(x)
+            if 'name' in d:
+                d['name'] = decode_name(d.get('name'))
+            decoded.append(d)
+        return decoded
     except Exception:
         return []
     finally:

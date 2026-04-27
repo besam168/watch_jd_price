@@ -26,6 +26,16 @@ def normalize_code(code: str) -> str:
     return 'sh' + c
 
 
+def decode_name(text: str) -> str:
+    s = str(text or '')
+    try:
+        fixed = s.encode('latin1', errors='ignore').decode('gbk', errors='ignore')
+        return fixed or s
+    except Exception:
+        return s
+
+
+
 def load_universe(limit: int = 0) -> list[dict]:
     obj = json.loads(UNIVERSE_PATH.read_text(encoding='utf-8'))
     rows = obj.get('selected') or []
@@ -34,7 +44,7 @@ def load_universe(limit: int = 0) -> list[dict]:
         code = str(row.get('code') or '').strip()
         if not code:
             continue
-        out.append({'code': code, 'symbol': normalize_code(code), 'name': str(row.get('name') or code)})
+        out.append({'code': code, 'symbol': normalize_code(code), 'name': decode_name(str(row.get('name') or code))})
     if limit and limit > 0:
         out = out[:limit]
     return out

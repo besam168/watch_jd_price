@@ -36,6 +36,16 @@ def normalize_code(code: str) -> str:
     return 'sh' + c
 
 
+def decode_name(text: str) -> str:
+    s = str(text or '')
+    try:
+        fixed = s.encode('latin1', errors='ignore').decode('gbk', errors='ignore')
+        return fixed or s
+    except Exception:
+        return s
+
+
+
 def load_universe(limit: int = 0) -> list[dict]:
     if not UNIVERSE_PATH.exists():
         raise SystemExit(f'universe_not_found: {UNIVERSE_PATH}')
@@ -46,10 +56,11 @@ def load_universe(limit: int = 0) -> list[dict]:
         code = str(row.get('code') or '').strip()
         if not code:
             continue
+        raw_name = str(row.get('name') or code)
         out.append({
             'code': code,
             'symbol': normalize_code(code),
-            'name': str(row.get('name') or code),
+            'name': decode_name(raw_name),
             'estimated_liutong_marketcap': row.get('estimated_liutong_marketcap'),
         })
     if limit and limit > 0:
