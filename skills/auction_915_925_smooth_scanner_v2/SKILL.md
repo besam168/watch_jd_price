@@ -46,6 +46,17 @@ python {baseDir}/pipeline/run_v2.py --date auto_today
 python {baseDir}/pipeline/run_v2.py --date auto_today --limit 300
 ```
 
+连续轨迹采样（V2 真实轨迹基础版）：
+```powershell
+python {baseDir}/pipeline/capture_track_v2.py 300 6 5
+```
+说明：
+- 第1个参数：扫描股票数上限
+- 第2个参数：采样轮数
+- 第3个参数：轮间隔秒数
+- 当前会生成 `auction_sniper_v2_track_auto_today.json` 作为 09:15~09:24 连续轨迹基础数据
+
+
 ## 标准输出
 默认生成：
 - `outputs/auction_sniper_v2_YYYYMMDD.csv`
@@ -74,3 +85,10 @@ python {baseDir}/pipeline/run_v2.py --date auto_today --limit 300
 - 明确模式分类
 - 明确失败原因
 - 若为快照近似或降级推断，必须在结果里标注说明
+
+## V2 当前进度说明
+当前 V2 已分成两层：
+1. **run_v2.py**：09:24:30 附近快照版规则筛选
+2. **capture_track_v2.py**：09:15~09:24 连续采样轨迹捕获底座
+
+也就是说，这版已经不只是单快照骨架，已经开始补“真实连续竞价轨迹”能力；后续可继续把三安模式/金螳螂模式从快照近似升级为连续轨迹精确判定。
