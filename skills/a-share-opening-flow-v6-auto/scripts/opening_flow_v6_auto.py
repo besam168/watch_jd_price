@@ -23,6 +23,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 PLUGIN_NAME = 'A股开盘风向与实时盯盘插件 V6自动指令版'
 BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE = BASE_DIR.parent.parent
+SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
+from shared_a_share_pool.trading_day_guard import guard_non_trading_day
 FORMAL_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow' / 'scripts' / 'opening_flow.py'
 TEST_SCRIPT = WORKSPACE / 'skills' / 'a-share-opening-flow-v6-test' / 'scripts' / 'opening_flow_v6_test.py'
 STATE_DIR = BASE_DIR / 'output'
@@ -37,6 +40,7 @@ RECIPIENTS = ['besam168168@gmail.com', '758622673@qq.com']
 EMAIL_STAGE_TIMES = {'09:25', '09:33', '09:38', '09:45'}
 QQBOT_TARGET = 'qqbot:c2c:A79F990232234F712BD31B9E2FF973F6'
 QQBOT_CHANNEL = 'qqbot'
+QQ_PUSH_ENABLED = False
 OPENCLAW_CMD = r'C:\Users\besam\AppData\Roaming\npm\openclaw.ps1'
 
 PYTHON_EXE = sys.executable
@@ -333,6 +337,8 @@ def save_email_preview(stage_time: str, subject: str, text_body: str, html_body:
 
 
 def send_qq_brief(message: str) -> None:
+    if not QQ_PUSH_ENABLED:
+        return
     cmd = [
         'powershell',
         '-NoProfile',
@@ -559,6 +565,9 @@ def get_due_stage(now_str: str):
 
 
 def run_current_stage(allow_catchup: bool = False):
+    skipped, _ = guard_non_trading_day('a-share-opening-flow-v6-auto-current')
+    if skipped:
+        return 0
     state = refresh_state_for_today(load_state())
     now_str = datetime.now().strftime('%H:%M')
     matched = [s for s in DEFAULT_STAGES if s[0] == now_str]
@@ -574,6 +583,9 @@ def run_current_stage(allow_catchup: bool = False):
 
 
 def run_auto_loop(poll_seconds: int = 20):
+    skipped, _ = guard_non_trading_day('a-share-opening-flow-v6-auto-loop')
+    if skipped:
+        return 0
     state = refresh_state_for_today(load_state())
     executed = set(state.get('executed', []))
     print('进入自动调度模式。')
