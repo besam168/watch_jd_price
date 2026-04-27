@@ -1,23 +1,28 @@
 ---
 name: auction_915_925_smooth_scanner_v2
-description: 基于 auction_915_925_smooth_scanner 的新版集合竞价狙击手插件。在 09:24:30 附近扫描沪深主板中小票，按“三安模式（稳健抬升型）”与“金螳螂模式（洗盘回落型）”两类逻辑输出候选股。默认复用 pytdx 快照与 8亿股+150亿主板基础池，适用于盘前 09:25 前快速狙击与竞价复盘。
+description: 基于 auction_915_925_smooth_scanner 底盘改造的新版集合竞价狙击手插件。09:24:30 附近仅按“三安模式（稳健抬升型）”与“金螳螂模式（冲板回落型）”两套规则筛股，不再沿用旧版平滑扫描选股条件。默认复用 pytdx 快照与 8亿股+150亿主板基础池，适用于 09:25 前快速输出竞价狙击名单。
 ---
 
 # auction_915_925_smooth_scanner_v2
 
-这是一个**集合竞价狙击手 V2** 插件，底盘继承自 `auction_915_925_smooth_scanner`，但目标不再只是“轨迹平滑”，而是直接按**策略分型**抓 09:24:30 的竞价机会。
+这是一个**集合竞价狙击手 V2** 插件。
 
-## 核心模式
+它虽然继承自 `auction_915_925_smooth_scanner` 的数据底盘，但**选股逻辑已经切换**：
 
-### 1. 稳健型（三安模式）
+- **删除旧版“轨迹平滑 / smooth_score / range_ratio / rmse_ratio”那套选股条件**
+- **只保留新版两种模式规则**
+
+## 唯一保留的选股条件
+
+### 1. 三安模式（稳健型）
 满足以下条件：
 - 09:20 后价格重心平稳抬升
 - 当前涨幅在 **+2% ~ +5%**
 - 竞价量比 **> 1.5**
 
-### 2. 洗盘型（金螳螂模式）
+### 2. 金螳螂模式（洗盘型）
 满足以下条件：
-- 09:15~09:19 期间触及过接近涨停/冲板高位
+- 09:15~09:19 期间触及过涨停
 - 09:20 后撤单回落至 **+1% ~ +5%**
 - 09:24:30 时竞价量比 **> 2.5**
 
@@ -47,6 +52,10 @@ python {baseDir}/pipeline/run_v2.py --date auto_today --limit 300
 - `outputs/auction_sniper_v2_YYYYMMDD.json`
 - `outputs/auction_sniper_v2_YYYYMMDD.md`
 
+## 主输出格式
+每条候选默认按以下格式表达：
+- `[模式分类] 股票代码 - 名称 - 当前涨幅 - 竞价量比`
+
 ## 输出字段
 - `mode`：模式分类（sanan / jinmantang）
 - `symbol`
@@ -57,7 +66,6 @@ python {baseDir}/pipeline/run_v2.py --date auto_today --limit 300
 - `price_0915_ref`
 - `price_0919_high`
 - `price_0920_ref`
-- `score`
 - `passed`
 - `fail_reasons`
 

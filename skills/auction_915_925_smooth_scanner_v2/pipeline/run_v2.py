@@ -111,15 +111,12 @@ def build_candidate(meta: dict, row: dict, date_text: str) -> dict:
     jinmantang_ok = jinmantang_peak_pct >= 9.0 and 1.0 <= change_pct <= 5.0 and volume_ratio > 2.5
 
     mode = ''
-    note = '当前版本基于 09:24:30 附近 pytdx 快照做近似判定；若后续补到 09:15~09:24 连续轨迹，可进一步提升准确度。'
-    score = 0.0
+    note = '当前版本基于 09:24:30 附近 pytdx 快照做近似判定；旧 smooth 规则已停用，仅保留三安模式/金螳螂模式。'
     reasons = []
     if sanan_ok:
         mode = 'sanan'
-        score = round(change_pct * 10 + volume_ratio * 15, 2)
     elif jinmantang_ok:
         mode = 'jinmantang'
-        score = round(jinmantang_peak_pct * 3 + volume_ratio * 18, 2)
     else:
         if not (2.0 <= change_pct <= 5.0 or 1.0 <= change_pct <= 5.0):
             reasons.append('change_pct_out_of_range')
@@ -141,7 +138,6 @@ def build_candidate(meta: dict, row: dict, date_text: str) -> dict:
         'price_0920_ref': price_0920_ref,
         'change_pct': change_pct,
         'volume_ratio': volume_ratio,
-        'score': score,
         'passed': bool(mode),
         'fail_reasons': ';'.join(reasons),
         'note': note,
