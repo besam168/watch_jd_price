@@ -12,9 +12,35 @@ DATASOURCE_DIR = BASE_DIR / 'datasource'
 OUTPUT_DIR = BASE_DIR / 'outputs'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 UNIVERSE_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner\outputs\liutong8yi_marketcap150yi_universe_full.json')
+NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\a-share-hot-spots\references\name_map.csv')
 sys.path.insert(0, str(DATASOURCE_DIR))
 
 from pytdx_snapshot import fetch_quotes_with_fallback  # type: ignore
+
+
+def load_name_map() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not NAME_MAP_PATH.exists():
+        return mapping
+    try:
+        lines = NAME_MAP_PATH.read_text(encoding='utf-8-sig', errors='ignore').splitlines()
+        for line in lines:
+            parts = [x.strip() for x in line.split(',')]
+            if len(parts) < 2:
+                continue
+            a, b = parts[0], parts[1]
+            if a.lower() == 'name' and b.lower() == 'code':
+                continue
+            if a.isdigit() and len(a) == 6:
+                mapping[a] = b
+            elif b.isdigit() and len(b) == 6:
+                mapping[b] = a
+    except Exception:
+        return mapping
+    return mapping
+
+
+NAME_MAP = load_name_map()
 
 
 def normalize_code(code: str) -> str:
@@ -44,7 +70,7 @@ def load_universe(limit: int = 0) -> list[dict]:
         code = str(row.get('code') or '').strip()
         if not code:
             continue
-        out.append({'code': code, 'symbol': normalize_code(code), 'name': decode_name(str(row.get('name') or code))})
+        out.append({'code': code, 'symbol': normalize_code(code), 'name': NAME_MAP.get(code) or decode_name(str(row.get('name') or code))})
     if limit and limit > 0:
         out = out[:limit]
     return out

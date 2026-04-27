@@ -14,6 +14,16 @@ STATE_PATH = OUTPUT_DIR / 'judgement_092430_state.json'
 LOG_PATH = OUTPUT_DIR / 'judgement_092430.log'
 
 
+def safe_print_json(obj):
+    text = json.dumps(obj, ensure_ascii=False)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        sys.stdout.buffer.write(text.encode('utf-8', errors='replace'))
+        sys.stdout.buffer.write(b'\n')
+
+
+
 def parse_args():
     p = argparse.ArgumentParser(description='09:24:30 集合竞价判定输出')
     p.add_argument('--top-n', type=int, default=30)
@@ -63,7 +73,7 @@ def main():
     else:
         log_line('FAIL ' + payload['stderr'])
         raise SystemExit(done.returncode)
-    print(json.dumps(payload, ensure_ascii=False))
+    safe_print_json(payload)
 
 
 if __name__ == '__main__':
