@@ -56,6 +56,15 @@ python {baseDir}/pipeline/capture_track_v2.py 300 6 5
 - 第3个参数：轮间隔秒数
 - 当前会生成 `auction_sniper_v2_track_auto_today.json` 作为 09:15~09:24 连续轨迹基础数据
 
+连续轨迹判定（V2 轨迹判断版）：
+```powershell
+python {baseDir}/pipeline/run_v2_track_judgement.py --json
+```
+说明：
+- 该入口不再只看单次快照
+- 会基于 `auction_sniper_v2_track_auto_today.json` 里的连续采样轨迹，直接判定三安模式 / 金螳螂模式
+
+
 
 ## 标准输出
 默认生成：
@@ -87,8 +96,9 @@ python {baseDir}/pipeline/capture_track_v2.py 300 6 5
 - 若为快照近似或降级推断，必须在结果里标注说明
 
 ## V2 当前进度说明
-当前 V2 已分成两层：
+当前 V2 已分成三层：
 1. **run_v2.py**：09:24:30 附近快照版规则筛选
 2. **capture_track_v2.py**：09:15~09:24 连续采样轨迹捕获底座
+3. **run_v2_track_judgement.py**：基于连续采样轨迹直接做三安模式 / 金螳螂模式判定
 
-也就是说，这版已经不只是单快照骨架，已经开始补“真实连续竞价轨迹”能力；后续可继续把三安模式/金螳螂模式从快照近似升级为连续轨迹精确判定。
+也就是说，这版已经不只是单快照骨架，而是已经把“连续竞价轨迹 -> 模式识别”主链路搭起来了；后续还可以继续微调阈值和采样节奏。
