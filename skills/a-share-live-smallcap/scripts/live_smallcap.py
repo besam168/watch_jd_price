@@ -110,6 +110,7 @@ def reference_price(row: dict) -> float:
     bid1 = safe_float(row.get('bid1'))
     ask1 = safe_float(row.get('ask1'))
     price = safe_float(row.get('price'))
+    last_close = safe_float(row.get('last_close'))
     if bid1 > 0 and ask1 > 0:
         return round((bid1 + ask1) / 2, 4)
     if price > 0:
@@ -118,6 +119,8 @@ def reference_price(row: dict) -> float:
         return round(bid1, 4)
     if ask1 > 0:
         return round(ask1, 4)
+    if last_close > 0:
+        return round(last_close, 4)
     return 0.0
 
 
