@@ -8,6 +8,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 JUDGEMENT_SCRIPT = BASE_DIR / 'pipeline' / 'run_v2_track_judgement.py'
+MAIL_SCRIPT = BASE_DIR / 'scripts' / 'send_v2_mail.py'
 OUTPUT_DIR = BASE_DIR / 'outputs'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 STATE_PATH = OUTPUT_DIR / 'judgement_092430_state.json'
@@ -28,6 +29,7 @@ def parse_args():
     p = argparse.ArgumentParser(description='09:24:30 集合竞价判定输出')
     p.add_argument('--top-n', type=int, default=30)
     p.add_argument('--force', action='store_true')
+    p.add_argument('--skip-mail', action='store_true')
     return p.parse_args()
 
 
@@ -70,6 +72,19 @@ def main():
     if done.returncode == 0:
         save_state({'last_run_date': today, 'last_run_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
         log_line('DONE ' + payload['stdout'])
+        if not args.skip_mail and MAIL_SCRIPT.exists():
+            mail_cmd = [sys.executable, str(MAIL_SCRIPT)]
+            log_line('MAIL_RUN ' + ' '.join(mail_cmd))
+            mail_done = subprocess.run(mail_cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
+            payload['mail'] = {
+                'returncode': mail_done.returncode,
+                'stdout': (mail_done.stdout or '').strip(),
+                'stderr': (mail_done.stderr or '').strip(),
+            }
+            if mail_done.returncode == 0:
+                log_line('MAIL_DONE ' + payload['mail']['stdout'])
+            else:
+                log_line('MAIL_FAIL ' + payload['mail']['stderr'])
     else:
         log_line('FAIL ' + payload['stderr'])
         raise SystemExit(done.returncode)
