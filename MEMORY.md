@@ -241,6 +241,17 @@ _这里记录一些需要记住的小事情_
 - 科技情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_tech_report.py
 - 综合情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_comprehensive_report.py
 - Windows任务计划程序任务名：沈万三_每日科技报告、沈万三_每日综合情报报告
+- 2026-04-28：`skills/auction_915_925_smooth_scanner_v2` 今天已完成真正收口：
+  1. 原先只挂上 `沈万三_集合竞价狙击手V2_0915_Capture`，缺少 `沈万三_集合竞价狙击手V2_092430_Judgement`，已重新执行安装脚本补齐两阶段任务；
+  2. 已成功生成当日正式产物：`auction_sniper_v2_20260428.csv/.json/.md`，并补做 `auction_sniper_v2_20260428_excel.xlsx`；
+  3. 今日 V2 命中 5 只票并已人工核准名称：众生药业、恒润股份、圣阳股份、崇达技术、美利云；
+  4. 已新增 `scripts/send_v2_mail.py`，并把 `run_judgement_092430.py` 接成“判定成功后自动发邮件”，实测返回 `MAIL_SENT_OK`；
+  5. 当前 V2 可对外口径：定时任务已补齐、结果可自动生成、邮件自动发送已真实打通；QQ 侧仅确认可手动发文件，暂不宣称已自动推 QQ。
+- 2026-04-26：日报自动化项目已拆成“抓取/筛选层 + 邮件发送层”两段；已落地 4 个定时任务：`SWS_Report_Run_0740`、`SWS_Report_Run_2110`、`SWS_Report_Send_0810`、`SWS_Report_Send_2130`，用于早晚自动生成和自动发信。
+- 2026-04-26：日报规则当前固定为严格 24 小时窗口；数量规则为保底 `12/6/6`、上限 `20/10/10`；两轮补量逻辑已接入，第二轮只补缺口栏目，不使用系统搜索作为主流程。
+- 2026-04-26：Gemini 今晚已实测不适合作为日报中文化正式生产链路；中文化改走替代翻译路线，已生成 `daily_report_cn.md` 与 `daily_report_cn_polished.md`，但后者仍需继续清理孤立摘要、孤立来源行和串类条目，明天继续收口。
+- 2026-04-27：日报自动化链路（抓新闻 -> 英文原稿 -> 中文稿 -> 发邮件）今天已多次真实跑通，`daily_report_cn.md` 可自动更新并发信；但内容质量修复未完成，主要问题仍是标题中文化不足、摘要模板化严重、国际/财经/科技筛选失真。
+- 2026-04-27：今天尝试调 Claude Code / Codex 通过 ACP runtime 协助修稿质量，均失败并报 `ACP runtime backend is currently unavailable`；说明当前 ACP backend 不可用。
 - 默认全球综合情报报告的自动抓取已升级为 4 组白名单流程：
   1. `news_core`：BBC、Reuters、AP News、Al Jazeera、CNBC World、Yahoo Finance
   2. `markets_global`：NYSE、TWSE、SSE、JPX、KRX、Investing.com 日本站、Naver Finance、东方财富
@@ -301,6 +312,18 @@ _这里记录一些需要记住的小事情_
   3. 最后重启 gateway：`openclaw gateway restart`
 - 2026-04-05 验证结果：完成上述 3 步并重启后，`openclaw status` 已可在当前 control-ui 会话中直接执行，不再弹批准条。
 - 注意：这套做法等于把本机 `exec` 调成 **full + ask off**，方便但会明显放宽安全边界；若未来要重新收紧，优先从 `openclaw approvals get/set --gateway` 与 `tools.exec.ask/security` 回调。
+
+- 2026-04-28：`skills/nano-banana-bridge` 今天已从“安全骨架 / mock 版”推进到**可真实出图的 OpenAI-compatible 生图插件**：
+  1. 已接通 `https://api-cn.hi-code.cc/v1` + `gpt-image-1`，走 `POST /images/generations`；
+  2. 已真实验证返回 `data[0].b64_json` 并落本地 PNG，不再只是 mock；
+  3. 当前已支持两种调用方式：
+     - 显式尺寸：`--size 2048x1152`
+     - 比例 + 档位：`--aspect-ratio <ratio> --resolution <1K|2K|4K>`
+  4. 当前已支持的 **8 种比例**：`1:1`、`3:2`、`2:3`、`16:9`、`9:16`、`4:3`、`3:4`、`21:9`；
+  5. 当前已支持的 **3 种分辨率档位**：`1K`、`2K`、`4K`；
+  6. 已真实验证 `16:9 + 2K -> 2048x1152` 可出图成功，并已连续产出垃圾分类项目的外观图、社区场景图、功能流程图；
+  7. 当前边界必须继续说清：优先打通的是**文生图**，`input-image` 图生图/编辑分支还没补，`/v1/responses + image_generation` 兼容层也还没补；
+  8. 当前最稳的对外使用口径：这条插件链路已经可正式用于学校项目图、比赛展板图、流程示意图等中文场景图生成。
 
 ---
 
