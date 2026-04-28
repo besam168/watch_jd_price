@@ -2,7 +2,6 @@ import argparse
 import base64
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.request
@@ -13,6 +12,17 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / 'output'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+ASPECT_RATIO_TO_SIZE = {
+    '1:1': {'1K': '1024x1024', '2K': '2048x2048', '4K': '4096x4096'},
+    '3:2': {'1K': '1536x1024', '2K': '2304x1536', '4K': '4608x3072'},
+    '2:3': {'1K': '1024x1536', '2K': '1536x2304', '4K': '3072x4608'},
+    '16:9': {'1K': '1792x1024', '2K': '2048x1152', '4K': '4096x2304'},
+    '9:16': {'1K': '1024x1792', '2K': '1152x2048', '4K': '2304x4096'},
+    '4:3': {'1K': '1365x1024', '2K': '2731x2048', '4K': '5461x4096'},
+    '3:4': {'1K': '1024x1365', '2K': '2048x2731', '4K': '4096x5461'},
+    '21:9': {'1K': '2389x1024', '2K': '4779x2048', '4K': '9557x4096'},
+}
 
 
 def build_output_path(prefix: str = 'nano-banana') -> Path:
@@ -36,6 +46,21 @@ def infer_extension_from_url(url: str) -> str:
     return '.png'
 
 
+def resolve_size(explicit_size: str | None, aspect_ratio: str | None, resolution: str | None) -> str:
+    if explicit_size:
+        return explicit_size
+    if aspect_ratio and resolution:
+        try:
+            return ASPECT_RATIO_TO_SIZE[aspect_ratio][resolution]
+        except KeyError:
+            raise ValueError(f'Unsupported aspect-ratio/resolution combination: {aspect_ratio} + {resolution}')
+    if aspect_ratio and not resolution:
+        raise ValueError('aspect-ratio was provided without resolution. Use --resolution 1K|2K|4K together.')
+    if resolution and not aspect_ratio:
+        raise ValueError('resolution was provided without aspect-ratio. Use --aspect-ratio together.')
+    return '1024x1024'
+
+
 def http_json(url: str, payload: dict, headers: dict) -> dict:
     req = urllib.request.Request(
         url,
@@ -54,7 +79,7 @@ def download_binary(url: str) -> bytes:
         return resp.read()
 
 
-def generate_openai_compatible(prompt: str, size: str, model: str, base_url: str, api_key: str, output_path: Path) -> dict:
+def generate_openai_compatible(prompt: str, size: str, model: str, base_url: str, api_key: str, output_path: Path, aspect_ratio: str | None, resolution: str | None) -> dict:
     endpoint = f'{base_url}/images/generations'
     payload = {
         'model': model,
@@ -91,6 +116,8 @@ def generate_openai_compatible(prompt: str, size: str, model: str, base_url: str
         'inputImage': None,
         'output': str(output_path),
         'size': size,
+        'aspectRatio': aspect_ratio,
+        'resolution': resolution,
         'provider': 'openai-compatible',
         'model': model,
         'baseUrl': base_url,
@@ -102,7 +129,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='Nano Banana style image generation bridge skeleton')
     parser.add_argument('--prompt', required=True, help='Text prompt for generation/editing')
     parser.add_argument('--input-image', help='Optional input image path for image-to-image/edit mode')
-    parser.add_argument('--size', default='1024x1024', help='Output size, e.g. 1024x1024 or 1536x1024')
+    parser.add_argument('--size', help='Explicit output size, e.g. 1024x1024 or 2048x1152')
+    parser.add_argument('--aspect-ratio', choices=list(ASPECT_RATIO_TO_SIZE.keys()), help='Aspect ratio preset')
+    parser.add_argument('--resolution', choices=['1K', '2K', '4K'], help='Resolution tier used with --aspect-ratio')
     parser.add_argument('--provider', default='mock', help='Provider name: mock | openai-compatible')
     parser.add_argument('--base-url', help='Base URL for provider, e.g. https://api-cn.hi-code.cc/v1')
     parser.add_argument('--api-key', help='API key for provider')
@@ -118,6 +147,12 @@ def main() -> int:
     api_key = args.api_key or os.environ.get('OPENAI_IMAGE_API_KEY')
     model = args.model or os.environ.get('OPENAI_IMAGE_MODEL') or 'gpt-image-1'
 
+    try:
+        size = resolve_size(args.size, args.aspect_ratio, args.resolution)
+    except ValueError as e:
+        print(json.dumps({'status': 'error', 'error': str(e)}, ensure_ascii=False, indent=2))
+        return 1
+
     if args.dry_run:
         print(json.dumps({
             'status': 'ok',
@@ -125,7 +160,9 @@ def main() -> int:
             'prompt': args.prompt,
             'inputImage': input_image,
             'output': str(output_path),
-            'size': args.size,
+            'size': size,
+            'aspectRatio': args.aspect_ratio,
+            'resolution': args.resolution,
             'provider': args.provider,
             'model': model,
             'baseUrl': base_url,
@@ -140,7 +177,9 @@ def main() -> int:
             'prompt': args.prompt,
             'inputImage': input_image,
             'output': str(output_path),
-            'size': args.size,
+            'size': size,
+            'aspectRatio': args.aspect_ratio,
+            'resolution': args.resolution,
             'provider': 'mock',
             'note': 'Skeleton bridge mock output. Switch to --provider openai-compatible for real generation.'
         }, ensure_ascii=False, indent=2))
@@ -169,11 +208,13 @@ def main() -> int:
         try:
             result = generate_openai_compatible(
                 prompt=args.prompt,
-                size=args.size,
+                size=size,
                 model=model,
                 base_url=base_url,
                 api_key=api_key,
                 output_path=output_path,
+                aspect_ratio=args.aspect_ratio,
+                resolution=args.resolution,
             )
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
