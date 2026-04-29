@@ -37,6 +37,30 @@ Skills are shared. Your setup is yours. Keeping them apart means you can update 
 
 ---
 
+### GitHub SSH 443 上传路线（2026-04-29 新增）
+- 这台机器如果 `git@github.com:...` 的 22 端口 SSH 不通，直接切：`ssh.github.com:443`
+- 首次执行：
+
+```powershell
+ssh -T -p 443 git@ssh.github.com
+```
+
+- 确认 `yes` 后，会把 `[ssh.github.com]:443` 写入 `known_hosts`
+- 之后 remote 建议直接写成：
+
+```powershell
+ssh://git@ssh.github.com:443/<owner>/<repo>.git
+```
+
+- 推送模板：
+
+```powershell
+git remote set-url origin ssh://git@ssh.github.com:443/<owner>/<repo>.git
+git push -u origin main
+```
+
+- 已真实跑通仓库：`office-productivity-skills`
+
 ### 办公室软件 / 文档类插件（2026-04-29 整理）
 - Word 简版生成：`docx-generator`
 - Word 强编辑版：`minimax-docx`

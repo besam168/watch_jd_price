@@ -241,6 +241,20 @@ _这里记录一些需要记住的小事情_
 - 科技情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_tech_report.py
 - 综合情报任务脚本位置：C:\Users\besam\.openclaw\workspace\daily_comprehensive_report.py
 - Windows任务计划程序任务名：沈万三_每日科技报告、沈万三_每日综合情报报告
+- 2026-04-29：GitHub SSH 上传路线今晚又新增一条必须长期记住的实战结论：**这台机器推 GitHub 仓库时，若 22 端口 SSH 不通，直接切 `ssh.github.com:443`。**
+  1. 本次新仓库 `office-productivity-skills` 已真实通过 **SSH 443** 成功上传；
+  2. 首次需要先执行：`ssh -T -p 443 git@ssh.github.com`，并确认 `yes`，把 `[ssh.github.com]:443` 写入 `known_hosts`；
+  3. 随后把 remote 设为：`ssh://git@ssh.github.com:443/<owner>/<repo>.git`，再执行 `git push -u origin main` 即可；
+  4. 本次成功案例：`git@github.com:besam168/office-productivity-skills.git` 因 22 端口链路异常失败，改走 `ssh://git@ssh.github.com:443/besam168/office-productivity-skills.git` 后成功；
+  5. 因此以后这台机器的 GitHub 上传默认策略应更新为：
+     - **优先 SSH，不走 HTTPS**；
+     - **22 端口失败就立刻切 443 SSH，不再死磕**；
+     - **第一次只要通过 host key 校验，后面就可复用。**
+- 2026-04-29：`office-productivity-skills` 办公插件合集仓库今晚已正式建立并成功上传：
+  1. GitHub 地址：`https://github.com/besam168/office-productivity-skills`
+  2. 当前仓库已收录：`docx-generator`、`minimax-docx`、`minimax-xlsx`、`pptx-generator`、`word-to-pdf`
+  3. 已包含中文安装教程：`docs/install-guide-zh.md`
+  4. 以后若另一台 OpenClaw 电脑要补 Office 能力，优先直接从这个仓库拉取，不再从总工作区临时拼装。
 - 2026-04-29：`skills/nano-banana-bridge` 的生图链今天已进一步修复并踩实，后续按下面口径执行：
   1. 当前真实可用主链路固定为：`openai-compatible` + `https://api-cn.hi-code.cc/v1` + `gpt-image-1` + **强制 `/images/generations`**；
   2. `https://www.hi-code.cc/v1` 今天对图像请求连续返回 `HTTP 403 / error code 1010`，当前视为**被风控/不可用**，不要再当正式默认入口；
