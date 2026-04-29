@@ -24,6 +24,12 @@ ASPECT_RATIO_TO_SIZE = {
     '21:9': {'1K': '2389x1024', '2K': '4779x2048', '4K': '9557x4096'},
 }
 
+OPENAI_LEGAL_SIZES = {
+    '1024x1024',
+    '1024x1536',
+    '1536x1024',
+}
+
 
 def build_output_path(prefix: str = 'nano-banana') -> Path:
     stamp = time.strftime('%Y%m%d_%H%M%S')
@@ -44,6 +50,23 @@ def infer_extension_from_url(url: str) -> str:
         if path.endswith(ext):
             return '.jpg' if ext == '.jpeg' else ext
     return '.png'
+
+
+def normalize_openai_size(size: str) -> str:
+    if size in OPENAI_LEGAL_SIZES:
+        return size
+
+    try:
+        width_s, height_s = size.lower().split('x', 1)
+        width = int(width_s)
+        height = int(height_s)
+    except Exception as exc:
+        raise ValueError(f'Invalid size: {size}') from exc
+
+    landscape = width >= height
+    if abs(width - height) <= min(width, height) * 0.1:
+        return '1024x1024'
+    return '1536x1024' if landscape else '1024x1536'
 
 
 def resolve_size(explicit_size: str | None, aspect_ratio: str | None, resolution: str | None) -> str:
@@ -79,12 +102,32 @@ def download_binary(url: str) -> bytes:
         return resp.read()
 
 
-def generate_openai_compatible(prompt: str, size: str, model: str, base_url: str, api_key: str, output_path: Path, aspect_ratio: str | None, resolution: str | None) -> dict:
+def save_image_result(image_payload: str, output_path: Path) -> tuple[Path, str]:
+    if image_payload.startswith('http://') or image_payload.startswith('https://'):
+        actual_ext = infer_extension_from_url(image_payload)
+        actual_output = output_path.with_suffix(actual_ext)
+        actual_output.write_bytes(download_binary(image_payload))
+        return actual_output, 'url'
+
+    if image_payload.startswith('data:'):
+        try:
+            _, b64 = image_payload.split(',', 1)
+        except ValueError as exc:
+            raise RuntimeError('Invalid data URL image payload') from exc
+        output_path.write_bytes(base64.b64decode(b64))
+        return output_path, 'data_url'
+
+    output_path.write_bytes(base64.b64decode(image_payload))
+    return output_path, 'b64_json'
+
+
+def generate_openai_images_api(prompt: str, size: str, model: str, base_url: str, api_key: str, output_path: Path, aspect_ratio: str | None, resolution: str | None) -> dict:
     endpoint = f'{base_url}/images/generations'
+    actual_size = normalize_openai_size(size)
     payload = {
         'model': model,
         'prompt': prompt,
-        'size': size,
+        'size': actual_size,
     }
     headers = {
         'Content-Type': 'application/json',
@@ -97,31 +140,87 @@ def generate_openai_compatible(prompt: str, size: str, model: str, base_url: str
         raise RuntimeError(f'No image data returned from provider: {data}')
 
     first = items[0]
-    if first.get('b64_json'):
-        output_path.write_bytes(base64.b64decode(first['b64_json']))
-        source_mode = 'b64_json'
-    elif first.get('url'):
-        actual_ext = infer_extension_from_url(first['url'])
-        actual_output = output_path.with_suffix(actual_ext)
-        actual_output.write_bytes(download_binary(first['url']))
-        output_path = actual_output
-        source_mode = 'url'
-    else:
+    image_payload = first.get('b64_json') or first.get('url')
+    if not image_payload:
         raise RuntimeError(f'Unsupported provider response shape: {first}')
 
+    saved_output, source_mode = save_image_result(image_payload, output_path)
     return {
         'status': 'ok',
-        'mode': 'openai-compatible',
+        'mode': 'openai-compatible-images',
         'prompt': prompt,
         'inputImage': None,
-        'output': str(output_path),
-        'size': size,
+        'output': str(saved_output),
+        'requestedSize': size,
+        'size': actual_size,
         'aspectRatio': aspect_ratio,
         'resolution': resolution,
         'provider': 'openai-compatible',
         'model': model,
         'baseUrl': base_url,
         'responseSource': source_mode,
+    }
+
+
+def parse_responses_output(payload: dict) -> tuple[str, dict]:
+    output = payload.get('output')
+    if not isinstance(output, list):
+        raise RuntimeError(f'Unsupported responses payload: {payload}')
+
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        if item.get('type') != 'image_generation_call':
+            continue
+        result = item.get('result')
+        if isinstance(result, str) and result.strip():
+            actual = {
+                'size': item.get('size'),
+                'quality': item.get('quality'),
+                'output_format': item.get('output_format'),
+                'revised_prompt': item.get('revised_prompt'),
+            }
+            return result, actual
+
+    raise RuntimeError(f'No image_generation_call result in responses payload: {payload}')
+
+
+def generate_openai_responses_api(prompt: str, size: str, model: str, base_url: str, api_key: str, output_path: Path, aspect_ratio: str | None, resolution: str | None) -> dict:
+    endpoint = f'{base_url}/responses'
+    actual_size = normalize_openai_size(size)
+    payload = {
+        'model': model,
+        'input': f'Use the following text as the complete prompt. Do not rewrite it:\n{prompt}',
+        'tools': [
+            {
+                'type': 'image_generation',
+                'size': actual_size,
+            }
+        ],
+    }
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {api_key}',
+    }
+
+    data = http_json(endpoint, payload, headers)
+    image_payload, actual = parse_responses_output(data)
+    saved_output, source_mode = save_image_result(image_payload, output_path)
+    return {
+        'status': 'ok',
+        'mode': 'openai-compatible-responses',
+        'prompt': prompt,
+        'inputImage': None,
+        'output': str(saved_output),
+        'requestedSize': size,
+        'size': actual.get('size') or actual_size,
+        'aspectRatio': aspect_ratio,
+        'resolution': resolution,
+        'provider': 'openai-compatible',
+        'model': model,
+        'baseUrl': base_url,
+        'responseSource': source_mode,
+        'actual': actual,
     }
 
 
@@ -133,6 +232,7 @@ def main() -> int:
     parser.add_argument('--aspect-ratio', choices=list(ASPECT_RATIO_TO_SIZE.keys()), help='Aspect ratio preset')
     parser.add_argument('--resolution', choices=['1K', '2K', '4K'], help='Resolution tier used with --aspect-ratio')
     parser.add_argument('--provider', default='mock', help='Provider name: mock | openai-compatible')
+    parser.add_argument('--api-mode', choices=['images', 'responses', 'auto'], default='auto', help='API style for openai-compatible provider')
     parser.add_argument('--base-url', help='Base URL for provider, e.g. https://api-cn.hi-code.cc/v1')
     parser.add_argument('--api-key', help='API key for provider')
     parser.add_argument('--model', help='Model name for provider')
@@ -160,10 +260,12 @@ def main() -> int:
             'prompt': args.prompt,
             'inputImage': input_image,
             'output': str(output_path),
-            'size': size,
+            'requestedSize': size,
+            'normalizedOpenAISize': normalize_openai_size(size),
             'aspectRatio': args.aspect_ratio,
             'resolution': args.resolution,
             'provider': args.provider,
+            'apiMode': args.api_mode,
             'model': model,
             'baseUrl': base_url,
         }, ensure_ascii=False, indent=2))
@@ -177,7 +279,8 @@ def main() -> int:
             'prompt': args.prompt,
             'inputImage': input_image,
             'output': str(output_path),
-            'size': size,
+            'requestedSize': size,
+            'size': normalize_openai_size(size),
             'aspectRatio': args.aspect_ratio,
             'resolution': args.resolution,
             'provider': 'mock',
@@ -206,16 +309,53 @@ def main() -> int:
             return 1
 
         try:
-            result = generate_openai_compatible(
-                prompt=args.prompt,
-                size=size,
-                model=model,
-                base_url=base_url,
-                api_key=api_key,
-                output_path=output_path,
-                aspect_ratio=args.aspect_ratio,
-                resolution=args.resolution,
-            )
+            if args.api_mode == 'images':
+                result = generate_openai_images_api(
+                    prompt=args.prompt,
+                    size=size,
+                    model=model,
+                    base_url=base_url,
+                    api_key=api_key,
+                    output_path=output_path,
+                    aspect_ratio=args.aspect_ratio,
+                    resolution=args.resolution,
+                )
+            elif args.api_mode == 'responses':
+                result = generate_openai_responses_api(
+                    prompt=args.prompt,
+                    size=size,
+                    model=model,
+                    base_url=base_url,
+                    api_key=api_key,
+                    output_path=output_path,
+                    aspect_ratio=args.aspect_ratio,
+                    resolution=args.resolution,
+                )
+            else:
+                try:
+                    result = generate_openai_images_api(
+                        prompt=args.prompt,
+                        size=size,
+                        model=model,
+                        base_url=base_url,
+                        api_key=api_key,
+                        output_path=output_path,
+                        aspect_ratio=args.aspect_ratio,
+                        resolution=args.resolution,
+                    )
+                except Exception as first_error:
+                    result = generate_openai_responses_api(
+                        prompt=args.prompt,
+                        size=size,
+                        model=model,
+                        base_url=base_url,
+                        api_key=api_key,
+                        output_path=output_path,
+                        aspect_ratio=args.aspect_ratio,
+                        resolution=args.resolution,
+                    )
+                    result['fallbackFrom'] = str(first_error)
+
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         except urllib.error.HTTPError as e:
@@ -224,12 +364,24 @@ def main() -> int:
                 'status': 'error',
                 'error': f'HTTP {e.code} calling provider',
                 'details': details,
+                'provider': args.provider,
+                'apiMode': args.api_mode,
+                'baseUrl': base_url,
+                'model': model,
+                'requestedSize': size,
+                'normalizedOpenAISize': normalize_openai_size(size),
             }, ensure_ascii=False, indent=2))
             return 1
         except Exception as e:
             print(json.dumps({
                 'status': 'error',
                 'error': str(e),
+                'provider': args.provider,
+                'apiMode': args.api_mode,
+                'baseUrl': base_url,
+                'model': model,
+                'requestedSize': size,
+                'normalizedOpenAISize': normalize_openai_size(size),
             }, ensure_ascii=False, indent=2))
             return 1
 

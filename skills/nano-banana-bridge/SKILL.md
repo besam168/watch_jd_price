@@ -21,19 +21,25 @@ description: 本地 Nano Banana 风格生图桥接骨架。当前已支持接入
 - 通过 OpenAI-compatible / Gemini / FAL / 本地 SD / ComfyUI 接统一桥接
 
 ## 当前状态
-当前已具备两种模式：
+当前已具备三种模式：
 
 1. **mock / dry-run 模式**
    - 用于安全联调
    - 不真正调用外部接口
 
-2. **OpenAI-compatible 图像生成模式**
-   - 通过 `--provider openai-compatible`
-   - 调用兼容 OpenAI 风格的图像生成 HTTP 接口
-   - 默认从参数或环境变量读取：
-     - `OPENAI_IMAGE_BASE_URL`
-     - `OPENAI_IMAGE_API_KEY`
-     - `OPENAI_IMAGE_MODEL`
+2. **OpenAI-compatible Images API 模式**
+   - 通过 `--provider openai-compatible --api-mode images`
+   - 调用兼容 OpenAI 风格的 `/images/generations`
+
+3. **OpenAI-compatible Responses API 模式**
+   - 通过 `--provider openai-compatible --api-mode responses`
+   - 调用 `/responses` + `image_generation` 工具
+   - `--api-mode auto` 会优先尝试 images，失败后自动 fallback 到 responses
+
+默认从参数或环境变量读取：
+- `OPENAI_IMAGE_BASE_URL`
+- `OPENAI_IMAGE_API_KEY`
+- `OPENAI_IMAGE_MODEL`
 
 ## 已支持的画幅比例与分辨率档位
 
@@ -98,21 +104,31 @@ python {baseDir}/scripts/generate_image.py --prompt "未来城市夜景" --provi
 $env:OPENAI_IMAGE_BASE_URL="https://api-cn.hi-code.cc/v1"
 $env:OPENAI_IMAGE_API_KEY="<your-key>"
 $env:OPENAI_IMAGE_MODEL="gpt-image-1"
-python {baseDir}/scripts/generate_image.py --prompt "未来城市夜景，电影感，超清" --provider openai-compatible --aspect-ratio 16:9 --resolution 2K
+python {baseDir}/scripts/generate_image.py --prompt "未来城市夜景，电影感，超清" --provider openai-compatible --api-mode auto --aspect-ratio 16:9 --resolution 2K
 ```
 
 ### 4）真实调用 OpenAI-compatible 图像接口（按显式 size）
 ```powershell
-python {baseDir}/scripts/generate_image.py --prompt "黑金高级感产品海报" --provider openai-compatible --base-url "https://api-cn.hi-code.cc/v1" --api-key "<your-key>" --model "gpt-image-1" --size "2048x1152"
+python {baseDir}/scripts/generate_image.py --prompt "黑金高级感产品海报" --provider openai-compatible --api-mode auto --base-url "https://api-cn.hi-code.cc/v1" --api-key "<your-key>" --model "gpt-image-1" --size "2048x1152"
 ```
+
+### 5）只走 Responses API 兼容模式
+```powershell
+python {baseDir}/scripts/generate_image.py --prompt "未来城市夜景" --provider openai-compatible --api-mode responses --base-url "https://api-cn.hi-code.cc/v1" --api-key "<your-key>" --model "gpt-image-1" --size "1536x1024"
+```
+
 
 ## 说明
 - 当前脚本优先实现 **文生图**。
-- 不同 provider 的图像接口字段可能略有不同；当前按常见 OpenAI-compatible 形式优先兼容：
+- 已兼容两条主路径：
   - `POST /images/generations`
-  - body 含 `model`、`prompt`、`size`
-  - 响应中优先读取 `data[0].b64_json`，其次尝试 `data[0].url`
-- 若目标接口只兼容 `/v1/responses` + `image_generation` 工具，则需要后续再补一层适配。
+  - `POST /responses` + `image_generation`
+- `--api-mode auto` 会先试 `images`，失败后自动切到 `responses`
+- 为兼容 `gpt-image-1` 常见限制，脚本会把超出官方常见范围的尺寸自动规整到：
+  - `1024x1024`
+  - `1536x1024`
+  - `1024x1536`
+- 若目标接口只支持其中一种风格，以真实返回报错为准。
 
 ## 未来可接 provider
 后续可以继续扩展到：
@@ -145,4 +161,5 @@ python {baseDir}/scripts/generate_image.py --prompt "黑金高级感产品海报
 如果要正式使用：
 1. 先用 `--dry-run` 验证参数
 2. 再用一条简单 prompt 做真实出图
-3. 验证接口实际返回结构后，再决定是否继续补图生图 / 编辑 / responses 兼容层
+3. 优先用 `--api-mode auto`，让脚本自动在 images / responses 间切换
+4. 若今天突然失效，先检查 base_url 是否变化，再看是 `/images/generations` 还是 `/responses` 挂掉
