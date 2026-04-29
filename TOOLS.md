@@ -37,6 +37,14 @@ Skills are shared. Your setup is yours. Keeping them apart means you can update 
 
 ---
 
+### 办公室软件 / 文档类插件（2026-04-29 整理）
+- Word 简版生成：`docx-generator`
+- Word 强编辑版：`minimax-docx`
+- Excel / 表格：`minimax-xlsx`
+- PPT / 演示文稿：`pptx-generator`
+- Word 转 PDF：`word-to-pdf`
+- 另一台电脑安装教程已写入：`办公软件插件安装教程.md`
+
 ## 生图链路工作区说明（2026-04-29 更新）
 
 ### nano-banana-bridge 当前正式用法
