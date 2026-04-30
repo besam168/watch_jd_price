@@ -255,9 +255,18 @@ _这里记录一些需要记住的小事情_
   2. 当前仓库已收录：`docx-generator`、`minimax-docx`、`minimax-xlsx`、`pptx-generator`、`word-to-pdf`
   3. 已包含中文安装教程：`docs/install-guide-zh.md`
   4. 以后若另一台 OpenClaw 电脑要补 Office 能力，优先直接从这个仓库拉取，不再从总工作区临时拼装。
-- 2026-04-29：`skills/nano-banana-bridge` 的生图链今天已进一步修复并踩实，后续按下面口径执行：
-  1. 当前真实可用主链路固定为：`openai-compatible` + `https://api-cn.hi-code.cc/v1` + `gpt-image-1` + **强制 `/images/generations`**；
-  2. `https://www.hi-code.cc/v1` 今天对图像请求连续返回 `HTTP 403 / error code 1010`，当前视为**被风控/不可用**，不要再当正式默认入口；
+- 2026-04-30：大老板已明确新的默认口径：**以后在聊天里只要说“美股”或“美股指数盘面”，默认就是查“真指数”，不是ETF代理。**
+  1. 默认查询对象固定为：
+     - `^DJI` = 道琼斯工业指数
+     - `^IXIC` = 纳斯达克综合指数
+     - `^GSPC` = 标普500指数
+  2. **不得再把 `SPY / QQQ / DIA` 直接说成三大指数**；它们最多只能作为 ETF 代理或情绪参考，且必须明确标注“ETF”。
+  3. 默认输出顺序固定为：
+     - 三大真指数点位与涨跌幅
+     - 一句盘面判断（强 / 弱 / 分化 / 震荡）
+     - 如有需要再补七巨头或科技权重
+  4. 若系统桥接文件 `reports/scheduled/qveris_market_snapshot.json` 无效、过期、缺核心键，**不得拿缓存硬回**；应直接切到可用实时行情链路。
+  5. 当前可用的严格查询口径，优先使用能返回真指数的实时工具，不再优先用 ETF 替代指数。
   3. `https://api-cn.hi-code.cc/v1` 的 `/responses + image_generation` 当前会退化成普通文本响应（返回 `tools: []`、`tool_choice: none`），说明这条兼容层**不能把 Responses 当正式生图路径**；
   4. 因此当前生产用法应明确收敛为：**只走 `--api-mode images`，不走 `auto` / `responses` 作为正式口径**；
   5. 今天已真实成功出图的稳态参数组合包括：

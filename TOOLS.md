@@ -105,4 +105,17 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
 - **未完全踩实**：真 4K 稳定返回
 - **后续策略**：先稳图，后超分；先实际返回，再对外宣称
 
-Add whatever helps you do your job. This is your cheat sheet.
+### 美股默认查询口径（2026-04-30 新增）
+- 以后大老板在聊天里只说：`美股` / `美股盘面` / `美股指数盘面`
+- 默认一律按**真指数**查询，不用 ETF 代理顶替。
+- 固定查询对象：
+  - `^DJI` → 道琼斯工业指数
+  - `^IXIC` → 纳斯达克综合指数
+  - `^GSPC` → 标普500指数
+- `SPY / QQQ / DIA` 只能作为 ETF 代理参考，**不能直接说成三大指数**。
+- 默认回答结构：
+  1. 三大真指数点位 + 涨跌幅
+  2. 一句话盘面判断（强 / 弱 / 分化 / 震荡）
+  3. 如用户继续追问，再补七巨头、科技权重、对A股映射
+- 如果 `reports/scheduled/qveris_market_snapshot.json` 无效、过期、缺 `SPX / IXIC / DJI` 核心键，禁止直接拿缓存回；必须切实时行情链路。
+
