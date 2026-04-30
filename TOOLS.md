@@ -60,6 +60,18 @@ git push -u origin main
 ```
 
 - 已真实跑通仓库：`office-productivity-skills`
+- 2026-04-30 新增已跑通仓库：`global-news-mail`
+
+### 独立仓库登记（2026-04-30 更新）
+- `global-news-mail`
+  - GitHub：`https://github.com/besam168/global-news-mail`
+  - SSH remote：`ssh://git@ssh.github.com:443/besam168/global-news-mail.git`
+  - 本地目录：`C:\Users\besam\.openclaw\workspace\global-news-mail`
+  - 性质：**独立 Git 仓库**，不是总工作区普通目录
+  - 维护规则：
+    1. 以后改这个项目，优先在 `global-news-mail` 目录里单独 `git status / add / commit / push`
+    2. 总工作区只保留入口/记忆/总览，不要把独立仓库内容再重复散拷到总仓
+    3. 若总工作区需要记录它，只记录仓库指针、说明文档或相关记忆，不做双重主线维护
 
 ### 办公室软件 / 文档类插件（2026-04-29 整理）
 - Word 简版生成：`docx-generator`
