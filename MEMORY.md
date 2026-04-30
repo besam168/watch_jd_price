@@ -298,6 +298,28 @@ _这里记录一些需要记住的小事情_
 - 2026-04-26：日报规则当前固定为严格 24 小时窗口；数量规则为保底 `12/6/6`、上限 `20/10/10`；两轮补量逻辑已接入，第二轮只补缺口栏目，不使用系统搜索作为主流程。
 - 2026-04-26：Gemini 今晚已实测不适合作为日报中文化正式生产链路；中文化改走替代翻译路线，已生成 `daily_report_cn.md` 与 `daily_report_cn_polished.md`，但后者仍需继续清理孤立摘要、孤立来源行和串类条目，明天继续收口。
 - 2026-04-27：日报自动化链路（抓新闻 -> 英文原稿 -> 中文稿 -> 发邮件）今天已多次真实跑通，`daily_report_cn.md` 可自动更新并发信；但内容质量修复未完成，主要问题仍是标题中文化不足、摘要模板化严重、国际/财经/科技筛选失真。
+- 2026-04-30：日报自动化项目今天已与“全球综合情报长报告链”正式切分清楚；当前应长期记住两条线不是一回事：
+  1. **日报自动化项目**：`run_daily_report.py` -> `generate_daily_report_cn.py` -> `send_daily_report_cn.py`
+  2. **全球综合情报长报告链**：`collect_comprehensive_report.py` / `send_collected_comprehensive_report.py`
+- 2026-04-30：今天已按大老板要求真实跑通日报自动化项目的“生成 + 发送”全链：
+  - `run_daily_report_openclaw.bat` 生成成功
+  - `run_send_daily_report_cn.bat` 返回 `SENT_OK`
+  - 当前规则仍是严格 24 小时窗口，因此邮件主体主要是前一日（2026-04-29）新闻，不等于“发旧邮件”，但也不能夸大成“完全全新当天内容”。
+- 2026-04-30：日报自动化项目的 Windows 任务计划程序今天已正式切换完成并验收通过：
+  - 已禁用旧任务：`\OpenClaw\DailyNewsReport_AM_0735`、`\OpenClaw\DailyNewsReport_PM_2105`
+  - 已启用新任务：`\SWS_Report_Run_0740`、`\SWS_Report_Run_2110`、`\SWS_Report_Send_0810`、`\SWS_Report_Send_2130`
+  - 今日已真实看到：`\SWS_Report_Run_0740` 与 `\SWS_Report_Send_0810` 成功执行
+- 2026-04-30：大老板今天新增并确认一条长期口径：**这条日报自动化项目的报告署名以后统一用 `整理：Wsws168`。**
+- 2026-04-30：今天已把这条日报自动化项目收成独立 GitHub 仓库，作为以后换系统/换电脑的迁移基础：
+  1. 仓库名：`global-news-mail`
+  2. GitHub：`https://github.com/besam168/global-news-mail`
+  3. 本地目录：`C:\Users\besam\.openclaw\workspace\global-news-mail`
+  4. SSH remote：`ssh://git@ssh.github.com:443/besam168/global-news-mail.git`
+  5. 首次提交：`d1d4f16` — `Initialize global-news-mail repo skeleton`
+- 2026-04-30：当前对 `global-news-mail` 的最准确长期口径必须克制：
+  - **已完成第一版仓库骨架、脚本归档、任务脚本与中文教程上传**；
+  - **还不能说“第二台电脑拉下来就 100% 即装即用”**；
+  - 下一轮要继续补：依赖自描述、配置统一、仓库内独立真跑验收。
 - 2026-04-27：今天尝试调 Claude Code / Codex 通过 ACP runtime 协助修稿质量，均失败并报 `ACP runtime backend is currently unavailable`；说明当前 ACP backend 不可用。
 - 默认全球综合情报报告的自动抓取已升级为 4 组白名单流程：
   1. `news_core`：BBC、Reuters、AP News、Al Jazeera、CNBC World、Yahoo Finance
