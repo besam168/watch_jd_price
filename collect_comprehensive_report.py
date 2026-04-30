@@ -140,6 +140,11 @@ append_log("Mode switched: force full whitelist crawl every run.")
 refresh_script = ROOT / "refresh_qveris_market_snapshot.py"
 refresh_rc = None
 refresh_elapsed = None
+refresh_stdout = ""
+refresh_stderr = ""
+refresh_snapshot_valid = False
+refresh_snapshot_reason = "not-run"
+core_snapshot_keys = {"SPX", "IXIC", "DJI"}
 if refresh_script.exists():
     try:
         def _run_refresh():
@@ -156,14 +161,37 @@ if refresh_script.exists():
 
         completed, refresh_elapsed = timed_step("REFRESH_MARKET_SNAPSHOT", _run_refresh)
         refresh_rc = completed.returncode
+        refresh_stdout = completed.stdout or ""
+        refresh_stderr = completed.stderr or ""
         append_log(f"===== REFRESH_MARKET_SNAPSHOT rc={completed.returncode} =====")
-        append_log(completed.stdout or "(no refresh stdout)")
-        if completed.stderr:
+        append_log(refresh_stdout or "(no refresh stdout)")
+        if refresh_stderr:
             append_log("[refresh stderr]")
-            append_log(completed.stderr)
+            append_log(refresh_stderr)
     except Exception as e:
         refresh_rc = -1
+        refresh_stderr = str(e)
         append_log(f"REFRESH_MARKET_SNAPSHOT_EXCEPTION: {e}")
+
+snapshot_path = OUT_DIR / "qveris_market_snapshot.json"
+if refresh_rc in (0, None) and snapshot_path.exists():
+    try:
+        snapshot_obj = json.loads(snapshot_path.read_text(encoding="utf-8"))
+        if isinstance(snapshot_obj, dict) and any(k in snapshot_obj for k in core_snapshot_keys):
+            refresh_snapshot_valid = True
+            refresh_snapshot_reason = "core-keys-present"
+        else:
+            refresh_snapshot_reason = "missing-core-keys"
+    except Exception as e:
+        refresh_snapshot_reason = f"invalid-json: {e}"
+elif refresh_rc in (0, None):
+    refresh_snapshot_reason = "snapshot-file-missing"
+else:
+    refresh_snapshot_reason = f"refresh-rc={refresh_rc}"
+
+append_log(
+    f"===== REFRESH_MARKET_SNAPSHOT VALIDATION ok={refresh_snapshot_valid} reason={refresh_snapshot_reason} path={snapshot_path} ====="
+)
 
 whitelist_urls = load_whitelist_urls()
 probe_summary, probe_elapsed = timed_step("FULL_WHITELIST_PROBE", run_whitelist_full_probe, whitelist_urls)
@@ -195,12 +223,12 @@ collect_status = {
     "touchedWhitelistUrlCount": probe_summary["touchedUrlCount"],
     "ok_groups": [
         *( ["full_whitelist_probe"] if probe_summary["okCount"] > 0 else []),
-        *( ["market_snapshot_refresh"] if refresh_rc in (0, None) else []),
+        *( ["market_snapshot_refresh"] if refresh_snapshot_valid else []),
         *( ["headline_evidence_gate"] if headline_evidence_count >= 1 and not evidence_summary["hasPlaceholderSearchDiscovery"] else []),
     ],
     "failed_groups": [
         *( [] if probe_summary["failCount"] == 0 else ["full_whitelist_probe_partial_fail"]),
-        *( [] if refresh_rc in (0, None) else ["market_snapshot_refresh"]),
+        *( [] if refresh_snapshot_valid else ["market_snapshot_refresh"]),
         *( [] if headline_evidence_count >= 1 and not evidence_summary["hasPlaceholderSearchDiscovery"] else ["headline_evidence_gate"]),
     ],
     "results": [
@@ -217,10 +245,15 @@ collect_status = {
         },
         {
             "group": "market_snapshot_refresh",
-            "returncode": refresh_rc if refresh_rc is not None else 0,
-            "ok": refresh_rc in (0, None),
-            "stdout": "refresh_market_snapshot executed" if refresh_rc is not None else "refresh script not found, skipped",
-            "stderr": "",
+            "returncode": 0 if refresh_snapshot_valid else (refresh_rc if refresh_rc is not None else 2),
+            "ok": refresh_snapshot_valid,
+            "stdout": refresh_stdout or ("refresh_market_snapshot executed" if refresh_rc is not None else "refresh script not found, skipped"),
+            "stderr": refresh_stderr,
+            "validation": {
+                "ok": refresh_snapshot_valid,
+                "reason": refresh_snapshot_reason,
+                "path": str(snapshot_path),
+            },
             "urlCount": 0,
         },
         {
