@@ -24,25 +24,58 @@ SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
 V2_DATASOURCE_DIR = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner_v2\datasource')
 sys.path.insert(0, str(V2_DATASOURCE_DIR))
 sys.path.insert(0, str(SHARED_POOL_DIR.parent))
-from pytdx_snapshot import fetch_quotes_with_fallback, TdxHq_API, market_for_code  # type: ignore
+from pytdx_snapshot import fetch_quotes_with_fallback, TdxHq_API, market_for_code, DEFAULT_SERVERS  # type: ignore
 from shared_a_share_pool import UniverseFilters, load_shared_universe, names_from_universe  # type: ignore
 
 
-def _connect_tdx() -> tuple[TdxHq_API, tuple[str, int]]:
-    servers = [
-        ('183.60.224.178', 7709),
-        ('39.108.28.120', 7709),
-        ('119.147.212.81', 7709),
-    ]
-    last_error = None
-    for host, port in servers:
+def _fetch_daily_bars_once(symbol: str, days: int, server: tuple[str, int]) -> list['DailyBar']:
+    api = TdxHq_API()
+    host, port = server
+    code = symbol.replace('sz', '').replace('sh', '')
+    market = market_for_code(code)
+    try:
+        ok = api.connect(host, port, time_out=1)
+    except Exception:
+        return []
+    if not ok:
+        return []
+    try:
+        rows = api.get_security_bars(9, market, code, 0, days) or []
+        out: list[DailyBar] = []
+        for row in rows:
+            d = dict(row)
+            out.append(DailyBar({
+                'date': d.get('datetime') or d.get('date'),
+                'open': safe_float(d.get('open')),
+                'close': safe_float(d.get('close')),
+                'high': safe_float(d.get('high')),
+                'low': safe_float(d.get('low')),
+                'vol': safe_float(d.get('vol') or d.get('volume')),
+            }))
+        return out
+    except Exception:
+        return []
+    finally:
         try:
-            api = TdxHq_API()
-            if api.connect(host, port, time_out=1):
-                return api, (host, port)
-        except Exception as exc:
-            last_error = exc
-    raise RuntimeError(f'pytdx connect failed: {last_error}')
+            api.disconnect()
+        except Exception:
+            pass
+
+
+def load_daily_bars_with_fallback(symbol: str, days: int = 32) -> tuple[list['DailyBar'], dict[str, Any]]:
+    stats: dict[str, Any] = {
+        'symbol': symbol,
+        'days': days,
+        'servers_tried': [],
+        'server_success': None,
+    }
+    for host, port in DEFAULT_SERVERS:
+        stats['servers_tried'].append(f'{host}:{port}')
+        bars = _fetch_daily_bars_once(symbol, days, (host, port))
+        if bars:
+            stats['server_success'] = f'{host}:{port}'
+            return bars, stats
+    return [], stats
 
 
 class DailyBar(dict):
@@ -193,29 +226,8 @@ def snapshot_universe(universe: list[dict]) -> list[dict]:
     return rows
 
 
-def load_daily_bars(symbol: str, days: int = 32) -> list[DailyBar]:
-    api, _ = _connect_tdx()
-    try:
-        code = symbol.replace('sz', '').replace('sh', '')
-        market = market_for_code(code)
-        rows = api.get_security_bars(9, market, code, 0, days) or []
-        out: list[DailyBar] = []
-        for row in rows:
-            d = dict(row)
-            out.append(DailyBar({
-                'date': d.get('datetime') or d.get('date'),
-                'open': safe_float(d.get('open')),
-                'close': safe_float(d.get('close')),
-                'high': safe_float(d.get('high')),
-                'low': safe_float(d.get('low')),
-                'vol': safe_float(d.get('vol') or d.get('volume')),
-            }))
-        return out
-    finally:
-        try:
-            api.disconnect()
-        except Exception:
-            pass
+def load_daily_bars(symbol: str, days: int = 32) -> tuple[list[DailyBar], dict[str, Any]]:
+    return load_daily_bars_with_fallback(symbol, days)
 
 
 def is_limit_touch(bar: DailyBar, prev_close: float) -> bool:
@@ -335,9 +347,11 @@ def main() -> None:
     candidates = []
     reason_counts: dict[str, int] = {}
     failed_examples: list[dict[str, Any]] = []
+    daily_bar_fetch_stats: list[dict[str, Any]] = []
     for meta in universe:
-        bars = load_daily_bars(meta['symbol'], 32)
-        ev = evaluate_history(bars, signal_offsets, args.min_up_days, args.min_volume_multiple, args.post_days, args.post_vol_ratio_max, args.post_avg_vol_ratio_max, args.require_limit_touch)
+        bars, fetch_stats = load_daily_bars(meta['symbol'], 32)
+        daily_bar_fetch_stats.append(fetch_stats)
+        ev = evaluate_history(bars, signal_offsets, args.min_up_days, args.min_volume_multiple, args.post_days, args.post_vol_ratio_max, args.post_avg_vol_ratio_max, args.require_limit_touch) if bars else {'passed': False, 'reason': 'daily_bars_fetch_failed'}
         if ev.get('passed'):
             candidates.append({
                 'symbol': meta['symbol'],
@@ -356,6 +370,7 @@ def main() -> None:
                 failed_examples.append({'symbol': meta['symbol'], 'name': meta['name'], 'reason': reason})
     payload = build_result_payload(candidates, snapshot_rows, config)
     payload['reason_counts'] = reason_counts
+    payload['daily_bar_fetch_stats'] = daily_bar_fetch_stats
     payload['failed_examples'] = failed_examples
     write_outputs(payload)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
