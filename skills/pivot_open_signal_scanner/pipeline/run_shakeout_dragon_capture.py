@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 from typing import Any
+import urllib.request
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WORKSPACE = Path(__file__).resolve().parents[3]
@@ -129,6 +130,43 @@ def load_name_map() -> dict[str, str]:
     return mapping
 
 
+def _fetch_name_from_eastmoney(code: str) -> str:
+    digits = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    if len(digits) != 6:
+        return ''
+    secid = ('1.' + digits) if digits.startswith(('5', '6', '9')) else ('0.' + digits)
+    url = f'https://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f57,f58'
+    try:
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            raw = resp.read()
+        obj = json.loads(raw.decode('utf-8'))
+        data = obj.get('data') or {}
+        name = str(data.get('f58') or '').strip()
+        return name
+    except Exception:
+        return ''
+
+
+def resolve_stock_name(code: str, raw_name: str = '') -> str:
+    digits = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    candidates = [
+        _fetch_name_from_eastmoney(digits),
+        NAME_MAP.get(digits, ''),
+        decode_name(raw_name),
+        str(raw_name or '').strip(),
+    ]
+    for name in candidates:
+        text = str(name or '').strip()
+        if not text:
+            continue
+        if '\ufffd' in text:
+            continue
+        if all(ch == '?' for ch in text):
+            continue
+        return text
+    return digits or str(code or '').strip()
+
+
 NAME_MAP = load_name_map()
 
 
@@ -178,7 +216,7 @@ def load_universe(limit: int = 0) -> list[dict]:
         code = str(row.get('code') or '').strip()
         if not code:
             continue
-        resolved_name = shared_names.get(code) or NAME_MAP.get(code) or decode_name(str(row.get('name') or code)) or code
+        resolved_name = resolve_stock_name(code, shared_names.get(code) or str(row.get('name') or code))
         out.append({'code': code, 'symbol': normalize_code(code), 'name': resolved_name})
     if limit and limit > 0:
         out = out[:limit]
