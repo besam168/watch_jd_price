@@ -382,6 +382,37 @@ _这里记录一些需要记住的小事情_
 - 2026-04-05 验证结果：完成上述 3 步并重启后，`openclaw status` 已可在当前 control-ui 会话中直接执行，不再弹批准条。
 - 注意：这套做法等于把本机 `exec` 调成 **full + ask off**，方便但会明显放宽安全边界；若未来要重新收紧，优先从 `openclaw approvals get/set --gateway` 与 `tools.exec.ask/security` 回调。
 
+- 2026-04-30：今天“生图”这条口径已再次正式收口，后续必须默认这样执行：
+  1. 只要大老板在聊天里直接说 **“生图”**，默认优先启动 **`skills/ppt-image-bridge`**，不要再先绕回默认 `image_generate`，也不要先走花哨映射路线；
+  2. 当前正式默认链路固定为：`openai-compatible` + `https://api-cn.hi-code.cc/v1` + `gpt-image-1` + `POST /images/generations`；
+  3. 当前正式默认尺寸优先用稳定三档：`1024x1024` / `1536x1024` / `1024x1536`；其中竖图默认优先 `1024x1536`；
+  4. `https://www.hi-code.cc/v1` 今天再次实测确认会触发 Cloudflare `HTTP 403 / Error 1010 / browser_signature_banned`，因此**不得再当默认正式入口**；
+  5. 今天新建并收口的正式稳版插件对外名与工作区目录现已统一为：`ppt-image-bridge`；当前目录：`skills/ppt-image-bridge/`；核心脚本为：`scripts/generate_image_stable.py`；
+  6. 这条新稳版插件今天已真实跑通并成功出图：
+     - 输出文件：`skills/ppt-image-bridge/output/stable-image_20260430_151616.png`
+     - 实测成功参数：`api-cn.hi-code.cc/v1` + `gpt-image-1` + `1024x1536` + `b64_json`
+  7. 今日已把这条插件独立收成 GitHub 仓库：
+     - 仓库名：`ppt-image-bridge`
+     - GitHub：`https://github.com/besam168/ppt-image-bridge`
+     - SSH remote：`ssh://git@ssh.github.com:443/besam168/ppt-image-bridge.git`
+     - 首次提交：`388ce06` — `Initialize ppt image bridge`
+  8. 今日又把 Images 2.0 / `gpt-image-2` 测试线独立收成实验仓：
+     - 仓库名：`ppt-image-bridge-v2-lab`
+     - GitHub：`https://github.com/besam168/ppt-image-bridge-v2-lab`
+     - SSH remote：`ssh://git@ssh.github.com:443/besam168/ppt-image-bridge-v2-lab.git`
+     - 首次提交：`cb7477c` — `Initialize ppt image bridge v2 lab`
+  9. 当前这两仓的默认分工必须长期记住：
+     - **`ppt-image-bridge`** = 正式生产仓，默认稳定出图、PPT 配图、中文说明图与日常交付优先走这条；
+     - **`ppt-image-bridge-v2-lab`** = Images 2.0 / `gpt-image-2` 实验仓，专门测试中文排版、2K/4K、多比例与新能力，不默认代替正式版；
+  10. 截至 2026-04-30 今日已真实踩实的 `gpt-image-2` 2K 可用比例包括：
+     - `1:1 + 2K` → `2048x2048`
+     - `16:9 + 2K` → `2048x1152`
+     - `9:16 + 2K` → `1152x2048`
+     - `3:2 + 2K` → `2304x1536`
+     - `2:3 + 2K` → `1536x2304`
+     当前失败/不稳：`16:9 + 4K`、`21:9 + 2K`、`4:3 + 2K`、`3:4 + 2K`；以后必须按真实测试结果说话，不能按请求尺寸夸口。
+  11. 以后对大老板的执行纪律也要固定：**不要再把命令丢给大老板手动折腾**；默认由我直接接管生图链路、调试、测试分仓与口径控制。
+
 - 2026-04-28：`skills/nano-banana-bridge` 今天已从“安全骨架 / mock 版”推进到**可真实出图的 OpenAI-compatible 生图插件**：
   1. 已接通 `https://api-cn.hi-code.cc/v1` + `gpt-image-1`，走 `POST /images/generations`；
   2. 已真实验证返回 `data[0].b64_json` 并落本地 PNG，不再只是 mock；
@@ -400,6 +431,30 @@ _这里记录一些需要记住的小事情_
   - 当前已确认的一次实战口径：2026-04-29 用 `tradingagents-bridge` 查 `SPY / QQQ` 后，判断为 **美股情绪偏多、风险偏好回升、科技偏强、市场更偏进攻端**；
   - 以后听到“美股情报”，默认直接进入这个流程，不再反复确认插件名。
 - 2026-04-29：大老板又明确补充一条长期工作规则：**以后凡是我生成的 Office 文件（如 PPTX / DOCX / XLSX / PDF 等可发送文件），默认直接通过 QQ 用 `<qqfile>` 发过去，不要只报本地路径、也不要等大老板再提醒。**
+- 2026-05-05：新的语音主项目今天已正式立项：
+  1. 英文仓库名：`voice-agent-mvp`
+  2. 中文名：**阿三语音**
+  3. 项目定位：**电脑端实时语音对答主引擎**，不是从天猫精灵真机闭环重新开搞；
+  4. 与旧项目关系固定为：
+     - `voice-agent-mvp / 阿三语音` = 主项目，先做本体；
+     - `tmall-genie-voice-bridge` = 后续桥接层，等本体成熟后再接入智能音箱/天猫精灵。
+- 2026-05-05：阿三语音第一阶段目标也已固定：
+  1. 手动开始录音
+  2. 用户说一句
+  3. STT 转文字
+  4. LLM 生成回复
+  5. TTS 播放回复
+  - 第一阶段验收标准：**一句输入 -> 一句语音回答**
+  - 第一阶段明确先不做：唤醒词、常驻监听、VAD 自动截断、可打断、完整状态机、天猫精灵真机接入。
+- 2026-05-05：阿三语音今天已完成第一轮工程骨架搭建：
+  - 已新建 `voice-agent-mvp/`、`config/`、`scripts/`、`output/`、`docs/`
+  - 已写入基础文件：`README.md`、`config/config.example.json`、`docs/install-guide-zh.md`
+  - 已建立首批脚本：`record_audio.py`、`transcribe_audio.py`、`ask_llm.py`、`synthesize_tts.py`、`play_audio.py`、`run_voice_roundtrip.py`
+- 2026-05-05：阿三语音今天的关键技术策略也要长期记住：
+  1. 第一轮优先先做**音频底座**，顺序固定为：先录音，再播放，再往上接 STT / LLM / TTS；
+  2. 当前本机未安装可直接起步的 Python 录音/STT 关键包（`sounddevice` / `pyaudio` / `speech_recognition` / `whisper` / `faster_whisper` 均未就绪），因此首轮更适合优先复用本机已踩实的 ffmpeg / PowerShell / 旧项目脚本链路；
+  3. 已决定复用 `tmall-genie-voice-bridge` 的稳定 WAV 播放经验：`play_audio.py` 调 `play-local-audio.ps1`，避免重复踩“假成功播放”老坑；
+  4. `record_audio.py` 第一版已按 `ffmpeg + dshow + 16kHz 单声道 + Logi C270 麦克风` 方向落地。
 - 2026-04-29：关于“美股情报”产物形式，又新增一条长期经验：**如果大老板要更直观的 Office 产物，优先做“图表化的一页版或两页版”而不是长文字。**
   - Excel 优先做：**一页看板 + 竖向柱状图**，上面放一句话结论/最强四只/市场风格，下面放数据表；
   - PPT 优先做：**两页版**，第一页总览 + 柱状图，第二页分组/占比/盯盘建议；
@@ -482,6 +537,43 @@ _Last updated: 2026年3月28日_
   1. 先查清 `edge-tts` / 真人语音失败原因；
   2. 先把本机真人语音出声做实；
   3. 再推进真实天猫精灵 / HTTP 播放桥接，不跳步。
+
+- 2026-05-06：今天正式把“Claude Design / Expert Designer”这条设计增强路线落进本地工作区，形成可持续复用的设计模式，而不再只停留在聊天提示词层。
+  1. 已新建本地项目目录：`design-expert-mode/`
+  2. 已落地核心文件：
+     - `design-expert-mode/README.md`
+     - `design-expert-mode/expert-designer-prompt.md`
+     - `design-expert-mode/style-presets.md`
+     - `design-expert-mode/delivery-checklist.md`
+     - `design-expert-mode/usage.md`
+  3. 已把外部 gist `claude_design_system_prompt.md` 的高价值方法论吸收进本地 prompt，并补了融合说明：
+     - `design-expert-mode/gist-integration-notes-2026-05-06.md`
+  4. 当前最准确口径：
+     - **已完成第一版本地骨架与 gist 精华融合**；
+     - **还没到“完整自动化设计代理”程度**；
+     - 当前更像一套“沈万三在设计任务里默认启用的专家级设计工作模式”。
+  5. 这套模式当前覆盖范围：
+     - PPT 设计
+     - 网页 / Landing Page 设计
+     - UI / UX 页面结构
+     - 原型草图
+     - 海报 / 封面 / 信息图
+  6. 当前已明确的设计工作方法应长期记住：
+     - 用户是经理，我是设计执行负责人；
+     - 设计任务优先交付“结构 + 版式 + 视觉节奏”，不只交文案；
+     - 适合预览时优先 HTML/CSS 高保真稿；
+     - 设计前优先吸收现有上下文（品牌、截图、代码、模板、参考页）；
+     - 避免 filler content、廉价 AI 俗套、乱堆元素；
+     - 多版本探索优先做 variation / tweak，而不是散乱开很多份稿；
+     - 交付前必须做 checklist 自检。
+  7. 已追加一条很实用的迁移要求：以后如果另一台电脑也要复用这套模式，优先直接复制 `design-expert-mode/` 目录，并按中文教程启用，不要重新口头解释一遍。
+  8. 已新增教程文件（供另一台电脑迁移使用）：
+     - `design-expert-mode/EXPERT_DESIGNER_另一台电脑迁移教程.md`
+  9. 这条线后续最优先实测样本，固定为昨天的 PPT 项目：
+     - `skills/pptx-generator/output/linzeqi-totoro-finished.json`
+  10. 后续默认执行顺序：
+     - 先记忆和教程沉淀
+     - 再拿真实 PPT / 网页项目做 Expert Designer 增强版实测
 
 ### 2026年3月30日
 - ✅ 今天在 QQ 私聊实战中，进一步验证了**驱动执行层 AI（尤其 Codex CLI）时的长期方法论**：
