@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+from datetime import datetime
+from pathlib import Path
+import sys
+from typing import Any
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = BASE_DIR / 'outputs'
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_JSON = OUTPUT_DIR / 'shakeout_dragon_capture.json'
+OUTPUT_CSV = OUTPUT_DIR / 'shakeout_dragon_capture.csv'
+OUTPUT_MD = OUTPUT_DIR / 'shakeout_dragon_capture.md'
+
+UNIVERSE_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner\outputs\liutong8yi_marketcap150yi_universe_full.json')
+NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner_v2\references\name_map_v2.csv')
+FALLBACK_NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\a-share-hot-spots\references\name_map.csv')
+V2_DATASOURCE_DIR = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner_v2\datasource')
+sys.path.insert(0, str(V2_DATASOURCE_DIR))
+from pytdx_snapshot import fetch_quotes_with_fallback, TdxHq_API, market_for_code  # type: ignore
+
+
+def _connect_tdx() -> tuple[TdxHq_API, tuple[str, int]]:
+    servers = [
+        ('183.60.224.178', 7709),
+        ('39.108.28.120', 7709),
+        ('119.147.212.81', 7709),
+    ]
+    last_error = None
+    for host, port in servers:
+        try:
+            api = TdxHq_API()
+            if api.connect(host, port, time_out=1):
+                return api, (host, port)
+        except Exception as exc:
+            last_error = exc
+    raise RuntimeError(f'pytdx connect failed: {last_error}')
+
+
+class DailyBar(dict):
+    @property
+    def open(self) -> float:
+        return float(self.get('open') or 0.0)
+
+    @property
+    def close(self) -> float:
+        return float(self.get('close') or 0.0)
+
+    @property
+    def high(self) -> float:
+        return float(self.get('high') or 0.0)
+
+    @property
+    def low(self) -> float:
+        return float(self.get('low') or 0.0)
+
+    @property
+    def vol(self) -> float:
+        return float(self.get('vol') or self.get('volume') or 0.0)
+
+
+def _load_map_file(path: Path) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    if not path.exists():
+        return mapping
+    try:
+        for line in path.read_text(encoding='utf-8-sig', errors='ignore').splitlines():
+            parts = [x.strip() for x in line.split(',')]
+            if len(parts) < 2:
+                continue
+            a, b = parts[0], parts[1]
+            if a.lower() == 'name' and b.lower() == 'code':
+                continue
+            if a.isdigit() and len(a) == 6:
+                mapping[a] = b
+            elif b.isdigit() and len(b) == 6:
+                mapping[b] = a
+    except Exception:
+        return mapping
+    return mapping
+
+
+def load_name_map() -> dict[str, str]:
+    mapping = _load_map_file(NAME_MAP_PATH)
+    fallback = _load_map_file(FALLBACK_NAME_MAP_PATH)
+    for code, name in fallback.items():
+        mapping.setdefault(code, name)
+    return mapping
+
+
+NAME_MAP = load_name_map()
+
+
+def normalize_code(code: str) -> str:
+    c = str(code or '').strip()
+    if c.startswith(('sz', 'sh')):
+        return c.lower()
+    if c.startswith(('000', '001', '002', '003')):
+        return 'sz' + c
+    return 'sh' + c
+
+
+def safe_float(value, default=0.0):
+    try:
+        if value is None or value == '':
+            return default
+        return float(value)
+    except Exception:
+        return default
+
+
+def decode_name(text: str) -> str:
+    s = str(text or '')
+    try:
+        fixed = s.encode('latin1', errors='ignore').decode('gbk', errors='ignore')
+        return fixed or s
+    except Exception:
+        return s
+
+
+def load_universe(limit: int = 0) -> list[dict]:
+    obj = json.loads(UNIVERSE_PATH.read_text(encoding='utf-8'))
+    rows = obj.get('selected') or []
+    out = []
+    for row in rows:
+        code = str(row.get('code') or '').strip()
+        if not code:
+            continue
+        out.append({'code': code, 'symbol': normalize_code(code), 'name': NAME_MAP.get(code) or decode_name(str(row.get('name') or code))})
+    if limit and limit > 0:
+        out = out[:limit]
+    return out
+
+
+def reference_price(row: dict) -> float:
+    bid1 = safe_float(row.get('bid1'))
+    ask1 = safe_float(row.get('ask1'))
+    price = safe_float(row.get('price'))
+    last_close = safe_float(row.get('last_close'))
+    if bid1 > 0 and ask1 > 0:
+        return round((bid1 + ask1) / 2, 4)
+    if price > 0:
+        return round(price, 4)
+    if bid1 > 0:
+        return round(bid1, 4)
+    if ask1 > 0:
+        return round(ask1, 4)
+    if last_close > 0:
+        return round(last_close, 4)
+    return 0.0
+
+
+def snapshot_universe(universe: list[dict]) -> list[dict]:
+    result = fetch_quotes_with_fallback([x['symbol'] for x in universe], primary_batch_size=50)
+    quote_map = {str(row.get('code') or '').strip(): row for row in (result.get('rows') or [])}
+    rows = []
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for meta in universe:
+        row = quote_map.get(meta['code']) or {}
+        rows.append({
+            'code': meta['code'],
+            'symbol': meta['symbol'],
+            'name': meta['name'],
+            'captured_at': now,
+            'price': reference_price(row),
+            'last_close': safe_float(row.get('last_close')),
+            'bid1': safe_float(row.get('bid1')),
+            'ask1': safe_float(row.get('ask1')),
+            'bid_vol1': safe_float(row.get('bid_vol1')),
+            'ask_vol1': safe_float(row.get('ask_vol1')),
+            'volume_ratio_proxy': round((safe_float(row.get('bid_vol1')) + safe_float(row.get('ask_vol1'))) / max(safe_float(row.get('last_close')) * 10.0, 1.0), 4),
+        })
+    return rows
+
+
+def load_daily_bars(symbol: str, days: int = 32) -> list[DailyBar]:
+    api, _ = _connect_tdx()
+    try:
+        code = symbol.replace('sz', '').replace('sh', '')
+        market = market_for_code(code)
+        rows = api.get_security_bars(9, market, code, 0, days) or []
+        out: list[DailyBar] = []
+        for row in rows:
+            d = dict(row)
+            out.append(DailyBar({
+                'date': d.get('datetime') or d.get('date'),
+                'open': safe_float(d.get('open')),
+                'close': safe_float(d.get('close')),
+                'high': safe_float(d.get('high')),
+                'low': safe_float(d.get('low')),
+                'vol': safe_float(d.get('vol') or d.get('volume')),
+            }))
+        return out
+    finally:
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+
+
+def is_limit_touch(bar: DailyBar, prev_close: float) -> bool:
+    if prev_close <= 0:
+        return False
+    return bar.high >= round(prev_close * 1.095, 4)
+
+
+def evaluate_history(bars: list[DailyBar], signal_offsets: tuple[int, ...], min_up_days: int, min_volume_multiple: float, post_days: int, post_vol_ratio_max: float, post_avg_vol_ratio_max: float, require_limit_touch: bool) -> dict[str, Any]:
+    if len(bars) < 8:
+        return {'passed': False, 'reason': 'not_enough_daily_bars'}
+    bars = bars[-(max(signal_offsets) + post_days + 6):]
+    latest_index = len(bars) - 1
+    for offset in signal_offsets:
+        sig_idx = latest_index - offset
+        if sig_idx - 5 < 0 or sig_idx + post_days >= len(bars):
+            continue
+        signal = bars[sig_idx]
+        prev = bars[sig_idx - 1]
+        window = bars[sig_idx - 5:sig_idx + 1]
+        up_days = sum(1 for b in window if b.close > b.open)
+        if up_days < min_up_days:
+            continue
+        if signal.vol < max(prev.vol * min_volume_multiple, 1.0):
+            continue
+        if signal.close <= signal.open:
+            continue
+        if require_limit_touch and not is_limit_touch(signal, prev.close):
+            continue
+        base_price = signal.open
+        post = bars[sig_idx + 1:sig_idx + 1 + post_days]
+        if len(post) < post_days:
+            continue
+        if any(b.low < base_price for b in post):
+            continue
+        if any(b.vol >= signal.vol for b in post):
+            continue
+        avg_post_vol = sum(b.vol for b in post) / post_days
+        if avg_post_vol >= signal.vol * post_avg_vol_ratio_max:
+            continue
+        if any((b.vol / signal.vol) > post_vol_ratio_max for b in post):
+            continue
+        return {
+            'passed': True,
+            'signal_offset': offset,
+            'base_price': round(base_price, 4),
+            'signal_volume': round(signal.vol, 4),
+            'signal_open': round(signal.open, 4),
+            'signal_close': round(signal.close, 4),
+            'reason': 'shakeout_pattern_confirmed',
+        }
+    return {'passed': False, 'reason': 'no_valid_signal_day'}
+
+
+def build_result_payload(candidates: list[dict], all_rows: list[dict], config: dict[str, Any]) -> dict:
+    return {
+        'plugin': 'shakeout_dragon_capture',
+        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'config': config,
+        'passed_count': len(candidates),
+        'candidates': candidates,
+        'all_rows': all_rows,
+    }
+
+
+def write_outputs(payload: dict) -> None:
+    OUTPUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+    with OUTPUT_CSV.open('w', encoding='utf-8-sig', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['symbol', 'name', 'signal_offset', 'base_price', 'signal_volume', 'last_close', 'note'])
+        writer.writeheader()
+        for row in payload.get('candidates', []):
+            writer.writerow({k: row.get(k) for k in ['symbol', 'name', 'signal_offset', 'base_price', 'signal_volume', 'last_close', 'note']})
+    lines = [f"# Shakeout Dragon Capture\n", f"- generated_at: {payload['generated_at']}\n", f"- passed_count: {payload['passed_count']}\n", "\n## Candidates\n"]
+    for row in payload.get('candidates', []):
+        lines.append(f"- {row.get('symbol')} {row.get('name')} | offset={row.get('signal_offset')} | base={row.get('base_price')} | vol={row.get('signal_volume')} | note={row.get('note')}\n")
+    OUTPUT_MD.write_text(''.join(lines), encoding='utf-8')
+
+
+def main() -> None:
+    p = argparse.ArgumentParser(description='Shakeout Dragon Capture')
+    p.add_argument('--limit', type=int, default=300)
+    p.add_argument('--signal-offsets', default='2,3,4')
+    p.add_argument('--min-up-days', type=int, default=4)
+    p.add_argument('--min-volume-multiple', type=float, default=2.0)
+    p.add_argument('--post-days', type=int, default=3)
+    p.add_argument('--post-vol-ratio-max', type=float, default=1.0)
+    p.add_argument('--post-avg-vol-ratio-max', type=float, default=0.7)
+    p.add_argument('--require-limit-touch', action='store_true')
+    args = p.parse_args()
+
+    signal_offsets = tuple(int(x.strip()) for x in args.signal_offsets.split(',') if x.strip())
+    config = {
+        'limit': args.limit,
+        'signal_offsets': list(signal_offsets),
+        'min_up_days': args.min_up_days,
+        'min_volume_multiple': args.min_volume_multiple,
+        'post_days': args.post_days,
+        'post_vol_ratio_max': args.post_vol_ratio_max,
+        'post_avg_vol_ratio_max': args.post_avg_vol_ratio_max,
+        'require_limit_touch': args.require_limit_touch,
+        'history_source': 'pytdx_daily_bars',
+    }
+
+    universe = load_universe(args.limit)
+    snapshot_rows = snapshot_universe(universe)
+    candidates = []
+    for meta in universe:
+        bars = load_daily_bars(meta['symbol'], 32)
+        ev = evaluate_history(bars, signal_offsets, args.min_up_days, args.min_volume_multiple, args.post_days, args.post_vol_ratio_max, args.post_avg_vol_ratio_max, args.require_limit_touch)
+        if ev.get('passed'):
+            candidates.append({
+                'symbol': meta['symbol'],
+                'name': meta['name'],
+                'signal_offset': ev.get('signal_offset'),
+                'base_price': ev.get('base_price'),
+                'signal_volume': ev.get('signal_volume'),
+                'last_close': bars[-1].close if bars else 0.0,
+                'note': '关注今日回踩或破位放量启动点',
+                'reason': ev.get('reason'),
+            })
+    payload = build_result_payload(candidates, snapshot_rows, config)
+    write_outputs(payload)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+
+
+if __name__ == '__main__':
+    main()
