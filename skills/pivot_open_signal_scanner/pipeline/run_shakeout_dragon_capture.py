@@ -213,34 +213,45 @@ def evaluate_history(bars: list[DailyBar], signal_offsets: tuple[int, ...], min_
         return {'passed': False, 'reason': 'not_enough_daily_bars'}
     bars = bars[-(max(signal_offsets) + post_days + 6):]
     latest_index = len(bars) - 1
+    last_reason = 'no_valid_signal_day'
     for offset in signal_offsets:
         sig_idx = latest_index - offset
         if sig_idx - 5 < 0 or sig_idx + post_days >= len(bars):
+            last_reason = 'signal_window_out_of_range'
             continue
         signal = bars[sig_idx]
         prev = bars[sig_idx - 1]
         window = bars[sig_idx - 5:sig_idx + 1]
         up_days = sum(1 for b in window if b.close > b.open)
         if up_days < min_up_days:
+            last_reason = 'up_days_not_enough'
             continue
         if signal.vol < max(prev.vol * min_volume_multiple, 1.0):
+            last_reason = 'signal_volume_not_enough'
             continue
         if signal.close <= signal.open:
+            last_reason = 'signal_not_bullish'
             continue
         if require_limit_touch and not is_limit_touch(signal, prev.close):
+            last_reason = 'limit_touch_not_met'
             continue
         base_price = signal.open
         post = bars[sig_idx + 1:sig_idx + 1 + post_days]
         if len(post) < post_days:
+            last_reason = 'post_days_not_enough'
             continue
         if any(b.low < base_price for b in post):
+            last_reason = 'base_price_broken'
             continue
         if any(b.vol >= signal.vol for b in post):
+            last_reason = 'post_volume_not_lower'
             continue
         avg_post_vol = sum(b.vol for b in post) / post_days
         if avg_post_vol >= signal.vol * post_avg_vol_ratio_max:
+            last_reason = 'post_avg_volume_too_high'
             continue
         if any((b.vol / signal.vol) > post_vol_ratio_max for b in post):
+            last_reason = 'post_vol_ratio_too_high'
             continue
         return {
             'passed': True,
@@ -251,7 +262,7 @@ def evaluate_history(bars: list[DailyBar], signal_offsets: tuple[int, ...], min_
             'signal_close': round(signal.close, 4),
             'reason': 'shakeout_pattern_confirmed',
         }
-    return {'passed': False, 'reason': 'no_valid_signal_day'}
+    return {'passed': False, 'reason': last_reason}
 
 
 def build_result_payload(candidates: list[dict], all_rows: list[dict], config: dict[str, Any]) -> dict:
@@ -306,6 +317,8 @@ def main() -> None:
     universe = load_universe(args.limit)
     snapshot_rows = snapshot_universe(universe)
     candidates = []
+    reason_counts: dict[str, int] = {}
+    failed_examples: list[dict[str, Any]] = []
     for meta in universe:
         bars = load_daily_bars(meta['symbol'], 32)
         ev = evaluate_history(bars, signal_offsets, args.min_up_days, args.min_volume_multiple, args.post_days, args.post_vol_ratio_max, args.post_avg_vol_ratio_max, args.require_limit_touch)
@@ -320,7 +333,14 @@ def main() -> None:
                 'note': '关注今日回踩或破位放量启动点',
                 'reason': ev.get('reason'),
             })
+        else:
+            reason = str(ev.get('reason') or 'unknown')
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            if len(failed_examples) < 15:
+                failed_examples.append({'symbol': meta['symbol'], 'name': meta['name'], 'reason': reason})
     payload = build_result_payload(candidates, snapshot_rows, config)
+    payload['reason_counts'] = reason_counts
+    payload['failed_examples'] = failed_examples
     write_outputs(payload)
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
