@@ -10,6 +10,7 @@ import sys
 from typing import Any
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+WORKSPACE = Path(__file__).resolve().parents[3]
 OUTPUT_DIR = BASE_DIR / 'outputs'
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_JSON = OUTPUT_DIR / 'shakeout_dragon_capture.json'
@@ -19,9 +20,12 @@ OUTPUT_MD = OUTPUT_DIR / 'shakeout_dragon_capture.md'
 UNIVERSE_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner\outputs\liutong8yi_marketcap150yi_universe_full.json')
 NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner_v2\references\name_map_v2.csv')
 FALLBACK_NAME_MAP_PATH = Path(r'C:\Users\besam\.openclaw\workspace\skills\a-share-hot-spots\references\name_map.csv')
+SHARED_POOL_DIR = WORKSPACE / 'skills' / 'shared_a_share_pool'
 V2_DATASOURCE_DIR = Path(r'C:\Users\besam\.openclaw\workspace\skills\auction_915_925_smooth_scanner_v2\datasource')
 sys.path.insert(0, str(V2_DATASOURCE_DIR))
+sys.path.insert(0, str(SHARED_POOL_DIR.parent))
 from pytdx_snapshot import fetch_quotes_with_fallback, TdxHq_API, market_for_code  # type: ignore
+from shared_a_share_pool import UniverseFilters, load_shared_universe, names_from_universe  # type: ignore
 
 
 def _connect_tdx() -> tuple[TdxHq_API, tuple[str, int]]:
@@ -123,14 +127,26 @@ def decode_name(text: str) -> str:
 
 
 def load_universe(limit: int = 0) -> list[dict]:
-    obj = json.loads(UNIVERSE_PATH.read_text(encoding='utf-8'))
-    rows = obj.get('selected') or []
+    filters = UniverseFilters(
+        allow_markets=('sz', 'sh'),
+        include_prefixes=('00', '001', '002', '003', '600', '601', '603', '605'),
+        exclude_prefixes=('300', '301', '688', '689', '8', '4'),
+        exclude_st=True,
+        exclude_delisting=True,
+        min_listed_days=60,
+        max_float_mkt_cap=150 * 1e8,
+        max_liutongguben=8 * 1e8,
+        limit=max(limit or 0, 3000) if limit else 3000,
+    )
+    universe_obj = load_shared_universe(universe_path=UNIVERSE_PATH, filters=filters)
+    shared_names = names_from_universe(universe_obj)
     out = []
-    for row in rows:
+    for row in universe_obj.get('selected', []):
         code = str(row.get('code') or '').strip()
         if not code:
             continue
-        out.append({'code': code, 'symbol': normalize_code(code), 'name': NAME_MAP.get(code) or decode_name(str(row.get('name') or code))})
+        resolved_name = shared_names.get(code) or NAME_MAP.get(code) or decode_name(str(row.get('name') or code)) or code
+        out.append({'code': code, 'symbol': normalize_code(code), 'name': resolved_name})
     if limit and limit > 0:
         out = out[:limit]
     return out
