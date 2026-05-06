@@ -1,5 +1,5 @@
 # Shakeout Dragon Capture
-- generated_at: 2026-05-06 12:08:11
+- generated_at: 2026-05-07 06:48:08
 - passed_count: 5
 
 ## Candidates

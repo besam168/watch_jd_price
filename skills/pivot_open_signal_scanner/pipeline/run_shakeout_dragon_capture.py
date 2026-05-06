@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -137,7 +138,7 @@ def _fetch_name_from_eastmoney(code: str) -> str:
     secid = ('1.' + digits) if digits.startswith(('5', '6', '9')) else ('0.' + digits)
     url = f'https://push2.eastmoney.com/api/qt/stock/get?secid={secid}&fields=f57,f58'
     try:
-        with urllib.request.urlopen(url, timeout=10) as resp:
+        with urllib.request.urlopen(url, timeout=4) as resp:
             raw = resp.read()
         obj = json.loads(raw.decode('utf-8'))
         data = obj.get('data') or {}
@@ -147,21 +148,70 @@ def _fetch_name_from_eastmoney(code: str) -> str:
         return ''
 
 
+def _fetch_name_from_tencent(code: str) -> str:
+    digits = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    if len(digits) != 6:
+        return ''
+    symbol = ('sh' + digits) if digits.startswith(('5', '6', '9')) else ('sz' + digits)
+    url = f'https://qt.gtimg.cn/q={symbol}'
+    try:
+        with urllib.request.urlopen(url, timeout=4) as resp:
+            raw = resp.read()
+        text = raw.decode('gbk', errors='ignore')
+        if '="' not in text:
+            return ''
+        body = text.split('="', 1)[1].rsplit('"', 1)[0]
+        parts = body.split('~')
+        if len(parts) >= 2:
+            return str(parts[1]).strip()
+    except Exception:
+        return ''
+    return ''
+
+
+def _looks_like_garbled_name(text: str) -> bool:
+    s = str(text or '').strip()
+    if not s:
+        return True
+    if s.isdigit():
+        return True
+    if '\ufffd' in s or '?' in s or '��' in s:
+        return True
+    bad_markers = ('Ã', 'Å', 'Æ', 'Ð', 'Ñ', 'Ó', 'Ô', 'Õ', 'Ö', '×', 'Ø', 'Ù', 'Ú', 'Û', 'Ü', 'Ý', 'Þ', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë', 'ì', 'í', 'î', 'ï', 'ð', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö')
+    if any(ch in s for ch in bad_markers):
+        return True
+    cjk_count = sum(1 for ch in s if '\u4e00' <= ch <= '\u9fff')
+    latin_count = sum(1 for ch in s if ch.isascii() and ch.isalpha())
+    if cjk_count == 0 and latin_count == 0:
+        return True
+    return False
+
+
+def _fetch_name_with_timeout(fetcher, code: str, timeout_sec: float = 5.0) -> str:
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(fetcher, code)
+        try:
+            return str(future.result(timeout=timeout_sec) or '').strip()
+        except FuturesTimeoutError:
+            return ''
+        except Exception:
+            return ''
+
+
 def resolve_stock_name(code: str, raw_name: str = '') -> str:
     digits = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    decoded_raw = decode_name(raw_name)
+    cached_name = NAME_MAP.get(digits, '')
     candidates = [
-        _fetch_name_from_eastmoney(digits),
-        NAME_MAP.get(digits, ''),
-        decode_name(raw_name),
+        _fetch_name_with_timeout(_fetch_name_from_tencent, digits, 5.0),
+        _fetch_name_with_timeout(_fetch_name_from_eastmoney, digits, 5.0),
+        cached_name,
+        decoded_raw,
         str(raw_name or '').strip(),
     ]
     for name in candidates:
         text = str(name or '').strip()
-        if not text:
-            continue
-        if '\ufffd' in text:
-            continue
-        if all(ch == '?' for ch in text):
+        if _looks_like_garbled_name(text):
             continue
         return text
     return digits or str(code or '').strip()
@@ -265,7 +315,7 @@ def snapshot_universe(universe: list[dict]) -> list[dict]:
 
 
 def load_daily_bars(symbol: str, days: int = 32) -> tuple[list[DailyBar], dict[str, Any]]:
-    return load_daily_bars_with_fallback(symbol, days)
+    return load_daily_bars_guarded(symbol, days)
 
 
 def is_limit_touch(bar: DailyBar, prev_close: float) -> bool:
@@ -331,6 +381,31 @@ def evaluate_history(bars: list[DailyBar], signal_offsets: tuple[int, ...], min_
     return {'passed': False, 'reason': last_reason}
 
 
+def load_daily_bars_guarded(symbol: str, days: int = 32, timeout_sec: float = 8.0) -> tuple[list[DailyBar], dict[str, Any]]:
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(load_daily_bars_with_fallback, symbol, days)
+        try:
+            return future.result(timeout=timeout_sec)
+        except FuturesTimeoutError:
+            return [], {
+                'symbol': symbol,
+                'days': days,
+                'servers_tried': [],
+                'server_success': None,
+                'guard_timeout_sec': timeout_sec,
+                'guard_status': 'timeout',
+            }
+        except Exception:
+            return [], {
+                'symbol': symbol,
+                'days': days,
+                'servers_tried': [],
+                'server_success': None,
+                'guard_timeout_sec': timeout_sec,
+                'guard_status': 'error',
+            }
+
+
 def build_result_payload(candidates: list[dict], all_rows: list[dict], config: dict[str, Any]) -> dict:
     return {
         'plugin': 'shakeout_dragon_capture',
@@ -340,6 +415,58 @@ def build_result_payload(candidates: list[dict], all_rows: list[dict], config: d
         'candidates': candidates,
         'all_rows': all_rows,
     }
+
+
+def _debug_name_trace(codes: list[str]) -> list[dict[str, Any]]:
+    traces: list[dict[str, Any]] = []
+    for code in codes:
+        digits = ''.join(ch for ch in str(code or '') if ch.isdigit())
+        raw_map = NAME_MAP.get(digits, '')
+        em_name = _fetch_name_from_eastmoney(digits)
+        resolved = resolve_stock_name(digits, raw_map or digits)
+        traces.append({
+            'code': digits,
+            'map_name': raw_map,
+            'eastmoney_name': em_name,
+            'resolved_name': resolved,
+            'eastmoney_name_hex': em_name.encode('utf-8', errors='ignore').hex(),
+            'resolved_name_hex': resolved.encode('utf-8', errors='ignore').hex(),
+        })
+    return traces
+
+
+def _console_safe_text(text: str) -> str:
+    s = str(text or '')
+    try:
+        s.encode(sys.stdout.encoding or 'utf-8')
+        return s
+    except Exception:
+        return f"{s.encode('utf-8', errors='ignore').hex()} [utf8-hex]"
+
+
+def _repair_text_for_output(text: str) -> str:
+    s = str(text or '').strip()
+    if not s:
+        return s
+    if _looks_like_garbled_name(s):
+        try:
+            fixed = s.encode('latin1', errors='ignore').decode('utf-8', errors='ignore').strip()
+            if fixed and not _looks_like_garbled_name(fixed):
+                return fixed
+        except Exception:
+            pass
+    return s
+
+
+def sanitize_payload(payload: dict) -> dict:
+    for row in payload.get('candidates', []):
+        row['name'] = _repair_text_for_output(row.get('name', ''))
+        row['note'] = _repair_text_for_output(row.get('note', ''))
+    for row in payload.get('all_rows', []):
+        row['name'] = _repair_text_for_output(row.get('name', ''))
+    for row in payload.get('failed_examples', []):
+        row['name'] = _repair_text_for_output(row.get('name', ''))
+    return payload
 
 
 def write_outputs(payload: dict) -> None:
@@ -353,6 +480,37 @@ def write_outputs(payload: dict) -> None:
     for row in payload.get('candidates', []):
         lines.append(f"- {row.get('symbol')} {row.get('name')} | offset={row.get('signal_offset')} | base={row.get('base_price')} | vol={row.get('signal_volume')} | note={row.get('note')}\n")
     OUTPUT_MD.write_text(''.join(lines), encoding='utf-8')
+
+
+def build_console_summary(payload: dict) -> dict[str, Any]:
+    failed_examples = []
+    for row in payload.get('failed_examples', [])[:15]:
+        failed_examples.append({
+            'symbol': row.get('symbol'),
+            'name': _console_safe_text(row.get('name') or ''),
+            'reason': row.get('reason'),
+        })
+    candidates = []
+    for row in payload.get('candidates', [])[:20]:
+        candidates.append({
+            'symbol': row.get('symbol'),
+            'name': _console_safe_text(row.get('name') or ''),
+            'signal_offset': row.get('signal_offset'),
+            'base_price': row.get('base_price'),
+            'signal_volume': row.get('signal_volume'),
+            'reason': row.get('reason'),
+        })
+    return {
+        'plugin': payload.get('plugin'),
+        'generated_at': payload.get('generated_at'),
+        'passed_count': payload.get('passed_count'),
+        'reason_counts': payload.get('reason_counts'),
+        'candidates_preview': candidates,
+        'failed_examples_preview': failed_examples,
+        'output_json': str(OUTPUT_JSON),
+        'output_csv': str(OUTPUT_CSV),
+        'output_md': str(OUTPUT_MD),
+    }
 
 
 def main() -> None:
@@ -410,8 +568,10 @@ def main() -> None:
     payload['reason_counts'] = reason_counts
     payload['daily_bar_fetch_stats'] = daily_bar_fetch_stats
     payload['failed_examples'] = failed_examples
+    payload = sanitize_payload(payload)
     write_outputs(payload)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    console_summary = build_console_summary(payload)
+    print(json.dumps(console_summary, ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':
