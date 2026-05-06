@@ -225,6 +225,7 @@ def _run_local_whisper(*, wav_path: Path, language: str, model: str) -> Dict[str
         "ok": bool(text),
         "mode": "wav_file",
         "text": text,
+        "text_b64": base64.b64encode(text.encode("utf-8")).decode("ascii") if text else "",
         "confidence": None,
         "culture": str(payload.get("language") or language or "unknown"),
         "requested_culture": language,
@@ -691,6 +692,7 @@ def main() -> None:
     parser.add_argument("--preprocess-mode", choices=["standard", "wake"], default=DEFAULT_PREPROCESS_MODE, help="Audio preprocessing mode. Use 'wake' for short wake phrases and 'standard' for normal dictation.")
     parser.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config.local-speaker.json"), help="Config JSON used when --echo-speak is enabled.")
     parser.add_argument("--echo-speak", action="store_true", help="If recognition succeeds, hand recognized text to scripts/speak.py flow.")
+    parser.add_argument("--result-json", help="Optional UTF-8 JSON file path to write the structured recognition result for downstream consumers.")
     args = parser.parse_args()
 
     wav_path = Path(args.wav).resolve() if args.wav else None
@@ -734,6 +736,12 @@ def main() -> None:
             config_path = Path(args.config).resolve()
             config = load_config(config_path)
             result["speak_result"] = speak(text=str(result["text"]), config=config, config_path=config_path)
+
+        if args.result_json:
+            result_json_path = Path(args.result_json).resolve()
+            result_json_path.parent.mkdir(parents=True, exist_ok=True)
+            result_json_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            result["result_json_path"] = str(result_json_path)
 
         print(json.dumps(result, ensure_ascii=False, indent=2))
         raise SystemExit(0 if result.get("ok") else 1)

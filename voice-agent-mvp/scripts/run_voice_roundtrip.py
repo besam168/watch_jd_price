@@ -1,4 +1,5 @@
 import argparse
+import base64
 import json
 import subprocess
 import sys
@@ -9,16 +10,59 @@ def run_step(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
 
 
-def extract_text(stdout: str) -> str:
-    for line in reversed(stdout.splitlines()):
-        line = line.strip()
-        if not line or not line.startswith('{'):
-            continue
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+def load_result_payload(result_json_path: Path | None) -> dict:
+    if not result_json_path or not result_json_path.is_file():
+        return {}
+    try:
+        payload = json.loads(result_json_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def extract_text(stdout: str, result_json_path: Path | None = None) -> str:
+    payload = load_result_payload(result_json_path)
+    if payload:
         text = str(payload.get('text') or '').strip()
+        if text:
+            return text
+        text_b64 = str(payload.get('text_b64') or '').strip()
+        if text_b64:
+            try:
+                decoded = base64.b64decode(text_b64).decode('utf-8').strip()
+            except Exception:
+                decoded = ''
+            if decoded:
+                return decoded
+
+    decoder = json.JSONDecoder()
+    idx = 0
+    payloads: list[dict] = []
+    while idx < len(stdout):
+        start = stdout.find('{', idx)
+        if start == -1:
+            break
+        try:
+            payload, end = decoder.raw_decode(stdout[start:])
+        except json.JSONDecodeError:
+            idx = start + 1
+            continue
+        if isinstance(payload, dict):
+            payloads.append(payload)
+        idx = start + end
+
+    for payload in reversed(payloads):
+        text = str(payload.get('text') or '').strip()
+        if text and set(text) != {'?'}:
+            return text
+        text_b64 = str(payload.get('text_b64') or '').strip()
+        if text_b64:
+            try:
+                decoded = base64.b64decode(text_b64).decode('utf-8').strip()
+            except Exception:
+                decoded = ''
+            if decoded:
+                return decoded
         if text:
             return text
     return ''
@@ -53,6 +97,7 @@ def main():
     transcribe_script = script_dir / 'transcribe_audio.py'
     tts_script = script_dir / 'synthesize_tts.py'
     wav_path = Path(args.wav_path).resolve()
+    result_json_path = script_dir.parent / 'output' / 'last_stt_result.json'
 
     cmd = [
         sys.executable,
@@ -68,8 +113,11 @@ def main():
         args.whisper_model,
         '--preprocess-mode',
         args.preprocess_mode,
+        '--result-json',
+        str(result_json_path),
     ]
     completed = run_step(cmd)
+    payload = load_result_payload(result_json_path)
 
     if completed.stdout:
         safe_print('=== STT RAW OUTPUT ===')
@@ -77,15 +125,35 @@ def main():
     if completed.stderr:
         safe_print('=== STT STDERR ===')
         safe_print(completed.stderr)
+    if payload:
+        safe_print(f'STT_RESULT_JSON={result_json_path}')
+        text_b64 = str(payload.get('text_b64') or '').strip()
+        if text_b64:
+            safe_print(f'STT_TEXT_B64={text_b64}')
 
-    text = extract_text(completed.stdout)
+    text = extract_text(completed.stdout, result_json_path)
     if not text:
         safe_print('ROUNTRIP_STT_EMPTY=1')
         raise SystemExit(completed.returncode or 2)
 
     reply_text = f'{args.echo_prefix}{text}'
-    safe_print(f'ROUNTRIP_STT_TEXT={text}')
-    safe_print(f'ROUNTRIP_REPLY_TEXT={reply_text}')
+    reply_json_path = script_dir.parent / 'output' / 'last_roundtrip_reply.json'
+    reply_payload = {
+        'ok': True,
+        'stt_text': text,
+        'stt_text_b64': base64.b64encode(text.encode('utf-8')).decode('ascii'),
+        'reply_text': reply_text,
+        'reply_text_b64': base64.b64encode(reply_text.encode('utf-8')).decode('ascii'),
+        'result_json_path': str(result_json_path),
+        'wav_path': str(wav_path),
+        'engine': args.engine,
+        'whisper_model': args.whisper_model,
+        'preprocess_mode': args.preprocess_mode,
+    }
+    reply_json_path.write_text(json.dumps(reply_payload, ensure_ascii=False, indent=2), encoding='utf-8')
+    safe_print(f'ROUNTRIP_REPLY_JSON={reply_json_path}')
+    safe_print(f'ROUNTRIP_STT_TEXT_B64={reply_payload["stt_text_b64"]}')
+    safe_print(f'ROUNTRIP_REPLY_TEXT_B64={reply_payload["reply_text_b64"]}')
 
     if args.speak:
         tts_completed = run_step([sys.executable, str(tts_script), reply_text])

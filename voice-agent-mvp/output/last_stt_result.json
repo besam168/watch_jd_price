@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "mode": "wav_file",
+  "text": "我跟他在一起我跟他在一起我跟他在一起我跟他在一起",
+  "text_b64": "5oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW3",
+  "confidence": null,
+  "culture": "zh",
+  "requested_culture": "zh",
+  "selected_culture": "zh",
+  "culture_fallback_used": false,
+  "installed_recognizers": [],
+  "timed_out": false,
+  "wav_path": "C:\\Users\\besam\\AppData\\Local\\Temp\\tmall-mic-clean-5bl3m3y0.wav",
+  "elapsed_ms": 0,
+  "error": null,
+  "engine": {
+    "name": "local_whisper",
+    "transport": "python_subprocess",
+    "model": "base",
+    "note": "Local Whisper runs offline after model download and is currently the preferred path for Chinese wav transcription on this machine.",
+    "ffmpeg": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\local-whisper\\.venv\\Scripts\\ffmpeg.EXE",
+    "python": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\local-whisper\\.venv\\Scripts\\python.exe"
+  },
+  "result_source": "primary",
+  "attempt_count": 1,
+  "preprocess_mode": "wake",
+  "cleaned_wav_path": "C:\\Users\\besam\\AppData\\Local\\Temp\\tmall-mic-clean-5bl3m3y0.wav",
+  "preprocess_filter_chain": "highpass=f=120,lowpass=f=3800,volume=8dB",
+  "level_summary": {
+    "channels": 1,
+    "sample_width": 2,
+    "frame_rate": 16000,
+    "frame_count": 79712,
+    "duration_seconds": 4.98,
+    "max_abs": 32767,
+    "rms": 3947,
+    "likely_silent": false,
+    "likely_too_quiet_for_stt": false
+  },
+  "cleaned_level_summary": {
+    "channels": 1,
+    "sample_width": 2,
+    "frame_rate": 16000,
+    "frame_count": 79712,
+    "duration_seconds": 4.98,
+    "max_abs": 32768,
+    "rms": 6206,
+    "likely_silent": false,
+    "likely_too_quiet_for_stt": false
+  },
+  "warnings": [
+    "Local Whisper runs offline after model download and is currently the preferred path for Chinese wav transcription on this machine.",
+    "Pre-roll delay applied before capture: 1.0s",
+    "Applied audio preprocessing before Whisper (wake mode)."
+  ]
+}

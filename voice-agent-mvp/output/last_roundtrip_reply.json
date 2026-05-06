@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "stt_text": "我跟他在一起我跟他在一起我跟他在一起我跟他在一起",
+  "stt_text_b64": "5oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW3",
+  "reply_text": "阿三收到：我跟他在一起我跟他在一起我跟他在一起我跟他在一起",
+  "reply_text_b64": "6Zi/5LiJ5pS25Yiw77ya5oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW35oiR6Lef5LuW5Zyo5LiA6LW3",
+  "result_json_path": "C:\\Users\\besam\\.openclaw\\workspace\\voice-agent-mvp\\output\\last_stt_result.json",
+  "wav_path": "C:\\Users\\besam\\.openclaw\\workspace\\voice-agent-mvp\\output\\recorded_gain18.wav",
+  "engine": "local_whisper",
+  "whisper_model": "base",
+  "preprocess_mode": "wake"
+}
