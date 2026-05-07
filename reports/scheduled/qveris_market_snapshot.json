@@ -1,0 +1,44 @@
+{
+  "DJI": {
+    "price": 49910.59,
+    "c": 49910.59,
+    "change_pct": 1.24,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "SPX": {
+    "price": 7365.12,
+    "c": 7365.12,
+    "change_pct": 1.46,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "IXIC": {
+    "price": 25838.94,
+    "c": 25838.94,
+    "change_pct": 2.02,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "VIX": {
+    "price": 17.42,
+    "c": 17.42,
+    "change_pct": 0.17,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "CLUSD": {
+    "price": 92.46,
+    "c": 92.46,
+    "change_pct": -2.76,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "BZUSD": {
+    "price": 98.67,
+    "c": 98.67,
+    "change_pct": -2.57,
+    "source": "quick_market_snapshot_yfinance"
+  },
+  "XAUUSD": {
+    "price": 4741.6,
+    "c": 4741.6,
+    "change_pct": 1.28,
+    "source": "quick_market_snapshot_yfinance"
+  }
+}
