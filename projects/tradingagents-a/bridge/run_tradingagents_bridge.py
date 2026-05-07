@@ -47,6 +47,8 @@ def load_json(path: Path, default: dict):
 
 def classify_error(msg: str) -> str:
     text = (msg or "").lower()
+    if "timeout" in text or "timed out" in text or "timeoutexpired" in text:
+        return "timeout_error"
     if "no module named" in text or "modulenotfounderror" in text or "importerror" in text:
         return "install_error"
     if "api_key" in text or "auth" in text or "unauthorized" in text or "401" in text or "403" in text:
@@ -122,11 +124,15 @@ def resolve_run_params(args, profile_name: str) -> dict:
     model = args.model or profile.get("model") or "gpt-5.4"
     base_url = args.base_url or profile.get("base_url")
     env_key = profile.get("env_key")
-    api_key = os.getenv(env_key) if env_key else None
-    api_version = profile.get("api_version")
-    transport = profile.get("transport")
+    api_key = None
     if args.api_key:
         api_key = args.api_key
+    elif env_key:
+        api_key = os.getenv(env_key)
+        if not api_key:
+            api_key = profile.get("api_key")
+    api_version = profile.get("api_version")
+    transport = profile.get("transport")
     default_analysts = app_cfg.get("defaultAnalysts") or ["market"]
     analysts = [a.strip() for a in args.analysts.split(",") if a.strip()] if args.analysts else default_analysts
     language = args.language or app_cfg.get("defaultLanguage") or "zh-CN"
@@ -508,42 +514,115 @@ def archive_outputs(stem: str):
             shutil.copy2(src, dst)
 
 
-def invoke_tradingagents(ticker: str, trade_date: str, provider: str, model: str, base_url: str | None, api_key: str | None, selected_analysts: list[str], api_version: str | None = None, transport: str | None = None):
-    sys.path.insert(0, str(REPO_DIR))
-    from tradingagents.graph.trading_graph import TradingAgentsGraph
-    from tradingagents.default_config import DEFAULT_CONFIG
+def build_lightweight_market_fallback(ticker: str, trade_date: str, profile_name: str, language: str, reason: str, duration_ms: int) -> dict | None:
+    script = (
+        "import json, yfinance as yf; "
+        f"df=yf.Ticker('{ticker}').history(period='10d'); "
+        "assert not df.empty, 'empty_history'; "
+        "close=float(df['Close'].iloc[-1]); "
+        "prev=float(df['Close'].iloc[-2]) if len(df)>1 else close; "
+        "ma5=float(df['Close'].tail(5).mean()); "
+        "chg=(close-prev)/prev*100 if prev else 0.0; "
+        "trend='UP' if close>=ma5 else 'DOWN'; "
+        "print(json.dumps({'close':close,'prev':prev,'ma5':ma5,'change_pct':chg,'trend':trend}, ensure_ascii=False))"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=str(ROOT),
+            capture_output=True,
+            text=True,
+            timeout=35,
+            check=True,
+        )
+        payload = json.loads((proc.stdout or "").strip())
+    except Exception:
+        return None
 
-    if provider == "openai" and api_key:
-        os.environ["OPENAI_API_KEY"] = api_key
-    if provider == "google" and api_key:
-        os.environ["GOOGLE_API_KEY"] = api_key
-        os.environ["GEMINI_API_KEY"] = api_key
-        if api_version:
-            os.environ["GOOGLE_API_VERSION"] = api_version
-            os.environ["GEMINI_API_VERSION"] = api_version
-
-    config = DEFAULT_CONFIG.copy()
-    config["llm_provider"] = provider
-    if base_url:
-        config["backend_url"] = base_url
-    config["deep_think_llm"] = model
-    config["quick_think_llm"] = model
-    config["max_debate_rounds"] = 1
-    config["max_risk_discuss_rounds"] = 1
-    config["data_vendors"] = {
-        "core_stock_apis": "yfinance",
-        "technical_indicators": "yfinance",
-        "fundamental_data": "yfinance",
-        "news_data": "yfinance",
+    close = float(payload.get("close"))
+    prev = float(payload.get("prev"))
+    ma5 = float(payload.get("ma5"))
+    change_pct = float(payload.get("change_pct"))
+    trend = str(payload.get("trend") or "FLAT")
+    if change_pct >= 2:
+        decision = "BUY"
+    elif change_pct <= -2:
+        decision = "SELL"
+    else:
+        decision = "HOLD"
+    trend_zh = "站上5日均线" if trend == "UP" else "回到5日均线下方"
+    direction_zh = "上涨" if change_pct >= 0 else "下跌"
+    summary_zh = (
+        f"深度分析未完成，已自动降级为轻量行情摘要：{ticker} 在 {trade_date} 收盘约 {close:.2f} 美元，"
+        f"较前一交易日{direction_zh} {abs(change_pct):.2f}%，当前{trend_zh}。"
+    )
+    return {
+        "ok": True,
+        "ticker": ticker,
+        "date": trade_date,
+        "provider": "yfinance",
+        "model": "lightweight-market-fallback",
+        "base_url": None,
+        "profile": f"{profile_name}_fallback",
+        "selected_analysts": ["market"],
+        "decision": decision,
+        "summary_zh": summary_zh,
+        "key_reasons": [
+            reason,
+            f"最新收盘价 {close:.2f}，前收 {prev:.2f}，单日涨跌幅 {change_pct:+.2f}%",
+            f"5日均线约 {ma5:.2f}，当前价格与短线均线关系为：{trend_zh}",
+        ],
+        "risks": [
+            "该结果未包含完整 TradingAgents 多角色深度推理，只适合作为降级版参考",
+            "若需要高置信结论，建议后续对白名单个股单独重跑深度分析",
+        ],
+        "generated_at": utc_now(),
+        "duration_ms": duration_ms,
+        "retry_count": 0,
+        "fallback_used": True,
+        "language": language,
+        "recovered_from_exception": reason,
     }
-    if provider == "google":
-        config["google_api_version"] = api_version or "v1beta"
-        config["google_transport"] = transport or "rest"
-    ta = TradingAgentsGraph(selected_analysts=selected_analysts, debug=True, config=config)
-    return ta.propagate(ticker, trade_date)
 
 
-def run_bridge(args, initial_status: dict):
+def persist_fallback_result(initial_status: dict, fallback_result: dict, step: str, error_type: str, error_message: str):
+    result_md = (
+        f"# TradingAgents Result\n\n"
+        f"## Basic Info\n"
+        f"- Ticker: {fallback_result['ticker']}\n"
+        f"- Date: {fallback_result['date']}\n"
+        f"- Provider: {fallback_result['provider']}\n"
+        f"- Model: {fallback_result['model']}\n"
+        f"- Profile: {fallback_result['profile']}\n"
+        f"- Analysts: {', '.join(fallback_result['selected_analysts'])}\n"
+        f"- Duration: {fallback_result['duration_ms']} ms\n\n"
+        f"## 中文结论\n\n{zh_decision_label(fallback_result['decision'])}（{fallback_result['decision']}）\n\n"
+        f"## 中文摘要\n\n{fallback_result['summary_zh']}\n\n"
+        f"## 中文核心依据\n" + "\n".join([f"- {r}" for r in fallback_result['key_reasons']]) + "\n\n"
+        f"## 中文主要风险\n" + "\n".join([f"- {r}" for r in fallback_result['risks']]) + "\n"
+    )
+    RESULT_MD_PATH.write_text(result_md, encoding="utf-8")
+    write_json(RESULT_JSON_PATH, fallback_result)
+    status = {
+        **initial_status,
+        "ok": True,
+        "provider": fallback_result["provider"],
+        "model": fallback_result["model"],
+        "base_url": fallback_result.get("base_url"),
+        "profile": fallback_result["profile"],
+        "selected_analysts": fallback_result["selected_analysts"],
+        "step": step,
+        "error": error_message,
+        "error_type": error_type,
+        "duration_ms": fallback_result["duration_ms"],
+        "retry_count": fallback_result.get("retry_count", 0),
+        "fallback_used": True,
+        "language": fallback_result["language"],
+        "generated_at": utc_now(),
+    }
+    write_json(STATUS_PATH, status)
+
+
     started = datetime.now()
     profile_order = resolve_profile_list(args.profile)
     last_error = None
@@ -564,6 +643,20 @@ def run_bridge(args, initial_status: dict):
             fallback_used = True
 
         print(f"BRIDGE_START ticker={args.ticker} date={args.date} provider={provider} model={model} analysts={selected_analysts} profile={profile_name}")
+        running_status = {
+            **initial_status,
+            "provider": provider,
+            "model": model,
+            "base_url": base_url,
+            "profile": profile_name,
+            "selected_analysts": selected_analysts,
+            "step": "running",
+            "retry_count": total_retries,
+            "fallback_used": fallback_used,
+            "language": language,
+            "generated_at": utc_now(),
+        }
+        write_json(STATUS_PATH, running_status)
         for attempt in range(retry_count + 1):
             try:
                 state, decision = invoke_tradingagents(
@@ -654,7 +747,96 @@ def run_bridge(args, initial_status: dict):
             except Exception as e:
                 tb = traceback.format_exc()
                 err_text = f"{e}\n{tb}"
+                try:
+                    log_text = LOG_PATH.read_text(encoding="utf-8", errors="replace") if LOG_PATH.exists() else ""
+                except Exception:
+                    log_text = ""
+                if "FINAL TRANSACTION PROPOSAL" in log_text.upper():
+                    extraction_source = log_text
+                    normalized_decision = normalize_decision_label(extraction_source)
+                    key_reasons = ensure_chinese_bullets(extract_key_reasons(extraction_source), "reason")
+                    risks = ensure_chinese_bullets(extract_risks(extraction_source), "risk")
+                    summary_zh = summarize_zh(extraction_source, args.ticker, args.date, provider, model, selected_analysts, key_reasons, risks)
+                    duration_ms = int((datetime.now() - started).total_seconds() * 1000)
+                    result_md = (
+                        f"# TradingAgents Result\n\n"
+                        f"## Basic Info\n"
+                        f"- Ticker: {args.ticker}\n"
+                        f"- Date: {args.date}\n"
+                        f"- Provider: {provider}\n"
+                        f"- Model: {model}\n"
+                        f"- Profile: {profile_name}\n"
+                        f"- Analysts: {', '.join(selected_analysts)}\n"
+                        f"- Duration: {duration_ms} ms\n\n"
+                        f"## Final Decision\n\n{extract_decision_core(extraction_source)}\n\n"
+                        f"## 中文结论\n\n{zh_decision_label(normalized_decision)}（{normalized_decision}）\n\n"
+                        f"## 中文摘要\n\n{summary_zh}\n\n"
+                        f"## 中文核心依据\n" + ("\n".join([f"- {r}" for r in key_reasons]) if key_reasons else "- 暂未稳定提炼到中文依据") + "\n\n"
+                        f"## 中文主要风险\n" + ("\n".join([f"- {r}" for r in risks]) if risks else "- 暂未稳定提炼到中文风险") + "\n"
+                    )
+                    RESULT_MD_PATH.write_text(result_md, encoding="utf-8")
+                    result_json = {
+                        "ok": True,
+                        "ticker": args.ticker,
+                        "date": args.date,
+                        "provider": provider,
+                        "model": model,
+                        "base_url": base_url,
+                        "profile": profile_name,
+                        "selected_analysts": selected_analysts,
+                        "decision": normalized_decision,
+                        "summary_zh": summary_zh,
+                        "key_reasons": key_reasons,
+                        "risks": risks,
+                        "state_keys": None,
+                        "generated_at": utc_now(),
+                        "duration_ms": duration_ms,
+                        "retry_count": total_retries,
+                        "fallback_used": fallback_used,
+                        "language": language,
+                        "recovered_from_exception": str(e),
+                    }
+                    write_json(RESULT_JSON_PATH, result_json)
+                    status = {
+                        **initial_status,
+                        "ok": True,
+                        "provider": provider,
+                        "model": model,
+                        "base_url": base_url,
+                        "profile": profile_name,
+                        "selected_analysts": selected_analysts,
+                        "step": "completed_with_recovery",
+                        "error": str(e),
+                        "error_type": classify_error(err_text),
+                        "duration_ms": duration_ms,
+                        "retry_count": total_retries,
+                        "fallback_used": fallback_used,
+                        "language": language,
+                        "generated_at": utc_now(),
+                    }
+                    write_json(STATUS_PATH, status)
+                    if params["save_history"]:
+                        archive_outputs(ts_slug())
+                    print(f"BRIDGE_OK_RECOVERED ticker={args.ticker} date={args.date} provider={provider} model={model} profile={profile_name}")
+                    return 0
                 error_type = classify_error(err_text)
+                duration_ms = int((datetime.now() - started).total_seconds() * 1000)
+                if error_type == "timeout_error":
+                    fallback_result = build_lightweight_market_fallback(
+                        args.ticker,
+                        args.date,
+                        profile_name,
+                        language,
+                        f"单票深度分析超时，已自动降级为轻量行情结论（provider={provider}, model={model}）",
+                        duration_ms,
+                    )
+                    if fallback_result:
+                        fallback_result["retry_count"] = total_retries
+                        persist_fallback_result(initial_status, fallback_result, "completed_with_timeout_fallback", error_type, str(e))
+                        if params["save_history"]:
+                            archive_outputs(ts_slug())
+                        print(f"BRIDGE_OK_TIMEOUT_FALLBACK ticker={args.ticker} date={args.date} provider={provider} model={model} profile={profile_name}")
+                        return 0
                 last_error = (str(e), error_type, profile_name)
                 if should_retry(error_type) and attempt < retry_count:
                     total_retries += 1
