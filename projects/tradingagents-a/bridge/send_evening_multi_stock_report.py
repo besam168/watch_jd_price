@@ -13,7 +13,9 @@ WORKSPACE = Path(r"C:\Users\besam\.openclaw\workspace")
 PROJECT = WORKSPACE / "projects" / "tradingagents-a"
 BRIDGE = PROJECT / "bridge"
 REPO = PROJECT / "repo"
-PYTHON = REPO / ".venv" / "Scripts" / "python.exe"
+PRIMARY_PYTHON = PROJECT / ".venv" / "Scripts" / "python.exe"
+LEGACY_PYTHON = REPO / ".venv" / "Scripts" / "python.exe"
+PYTHON = PRIMARY_PYTHON if PRIMARY_PYTHON.exists() else LEGACY_PYTHON
 RUNNER = BRIDGE / "run_tradingagents_bridge.py"
 OUTDIR = BRIDGE / "outputs"
 REPORT_DIR = BRIDGE / "scheduled_reports"
@@ -66,6 +68,7 @@ def run_ticker(ticker: str, trade_date: str) -> dict:
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = OPENAI_API_KEY
     cmd = [str(PYTHON), str(RUNNER), "--ticker", ticker, "--date", trade_date, "--profile", DEFAULT_PROFILE]
+    python_hint = str(PYTHON)
     try:
         subprocess.run(
             cmd,
@@ -90,13 +93,14 @@ def run_ticker(ticker: str, trade_date: str) -> dict:
         if fallback:
             fallback["summary_zh"] = f"深度分析失败，已自动降级为轻量行情摘要：{fallback['summary_zh']}"
             fallback["key_reasons"].insert(0, f"底层 TradingAgents bridge 返回非零退出码：{error_msg[:120]}")
+            fallback["key_reasons"].insert(1, f"本次调度使用解释器：{python_hint}")
             fallback["risks"].append("当前深度分析链路稳定性不足，已自动回退为轻量结论")
             return fallback
         return {
             "ticker": ticker,
             "decision": "ERROR",
             "summary_zh": f"运行失败：{error_msg}",
-            "key_reasons": ["底层 TradingAgents bridge 返回非零退出码，单票分析未正常完成"],
+            "key_reasons": ["底层 TradingAgents bridge 返回非零退出码，单票分析未正常完成", f"本次调度使用解释器：{python_hint}"],
             "risks": ["当前桥接链路存在稳定性问题，批量晚报可能被个别标的拖垮"],
             "ok": False,
             "duration_ms": status.get("duration_ms"),
@@ -125,6 +129,7 @@ def build_timeout_fallback(ticker: str, timeout_ms: int, trade_date: str) -> dic
     if fallback:
         fallback["summary_zh"] = f"深度分析超时，已自动降级为轻量行情摘要：{fallback['summary_zh']}"
         fallback["key_reasons"].insert(0, f"单票分析超过 {int(timeout_ms / 1000)} 秒，已跳过重型 agent graph")
+        fallback["key_reasons"].insert(1, f"批量任务默认解释器：{PYTHON}")
         fallback["risks"].append("当前深度分析层存在普遍超时风险，建议把该结论视为轻量版参考")
         return fallback
     return {
