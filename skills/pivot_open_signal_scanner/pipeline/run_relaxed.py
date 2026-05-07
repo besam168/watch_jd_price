@@ -12,4 +12,5 @@ cmd = [
     '--min-volume-multiple', '1.7',
     '--post-avg-vol-ratio-max', '0.85',
 ]
+cmd.extend(sys.argv[1:])
 raise SystemExit(subprocess.run(cmd).returncode)

@@ -80,6 +80,52 @@ def load_daily_bars_with_fallback(symbol: str, days: int = 32) -> tuple[list['Da
     return [], stats
 
 
+def load_daily_bars_fast(symbol: str, days: int = 32) -> tuple[list['DailyBar'], dict[str, Any]]:
+    api = TdxHq_API()
+    code = symbol.replace('sz', '').replace('sh', '')
+    market = market_for_code(code)
+    stats: dict[str, Any] = {
+        'symbol': symbol,
+        'days': days,
+        'servers_tried': [],
+        'server_success': None,
+        'mode': 'fast-first-server',
+    }
+    if not DEFAULT_SERVERS:
+        return [], stats
+    host, port = DEFAULT_SERVERS[0]
+    stats['servers_tried'].append(f'{host}:{port}')
+    try:
+        ok = api.connect(host, port, time_out=0.35)
+    except Exception:
+        return [], stats
+    if not ok:
+        return [], stats
+    try:
+        rows = api.get_security_bars(9, market, code, 0, days) or []
+        out: list[DailyBar] = []
+        for row in rows:
+            d = dict(row)
+            out.append(DailyBar({
+                'date': d.get('datetime') or d.get('date'),
+                'open': safe_float(d.get('open')),
+                'close': safe_float(d.get('close')),
+                'high': safe_float(d.get('high')),
+                'low': safe_float(d.get('low')),
+                'vol': safe_float(d.get('vol') or d.get('volume')),
+            }))
+        if out:
+            stats['server_success'] = f'{host}:{port}'
+        return out, stats
+    except Exception:
+        return [], stats
+    finally:
+        try:
+            api.disconnect()
+        except Exception:
+            pass
+
+
 class DailyBar(dict):
     @property
     def open(self) -> float:
@@ -314,8 +360,8 @@ def snapshot_universe(universe: list[dict]) -> list[dict]:
     return rows
 
 
-def load_daily_bars(symbol: str, days: int = 32) -> tuple[list[DailyBar], dict[str, Any]]:
-    return load_daily_bars_guarded(symbol, days)
+def load_daily_bars(symbol: str, days: int = 32, fast_mode: bool = False, timeout_sec: float = 8.0) -> tuple[list[DailyBar], dict[str, Any]]:
+    return load_daily_bars_guarded(symbol, days, timeout_sec=timeout_sec, fast_mode=fast_mode)
 
 
 def is_limit_touch(bar: DailyBar, prev_close: float) -> bool:
@@ -381,9 +427,10 @@ def evaluate_history(bars: list[DailyBar], signal_offsets: tuple[int, ...], min_
     return {'passed': False, 'reason': last_reason}
 
 
-def load_daily_bars_guarded(symbol: str, days: int = 32, timeout_sec: float = 8.0) -> tuple[list[DailyBar], dict[str, Any]]:
+def load_daily_bars_guarded(symbol: str, days: int = 32, timeout_sec: float = 8.0, fast_mode: bool = False) -> tuple[list[DailyBar], dict[str, Any]]:
+    target = load_daily_bars_fast if fast_mode else load_daily_bars_with_fallback
     with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(load_daily_bars_with_fallback, symbol, days)
+        future = pool.submit(target, symbol, days)
         try:
             return future.result(timeout=timeout_sec)
         except FuturesTimeoutError:
@@ -394,6 +441,7 @@ def load_daily_bars_guarded(symbol: str, days: int = 32, timeout_sec: float = 8.
                 'server_success': None,
                 'guard_timeout_sec': timeout_sec,
                 'guard_status': 'timeout',
+                'mode': 'fast-first-server' if fast_mode else 'fallback-all-servers',
             }
         except Exception:
             return [], {
@@ -403,6 +451,7 @@ def load_daily_bars_guarded(symbol: str, days: int = 32, timeout_sec: float = 8.
                 'server_success': None,
                 'guard_timeout_sec': timeout_sec,
                 'guard_status': 'error',
+                'mode': 'fast-first-server' if fast_mode else 'fallback-all-servers',
             }
 
 
@@ -523,6 +572,8 @@ def main() -> None:
     p.add_argument('--post-vol-ratio-max', type=float, default=1.0)
     p.add_argument('--post-avg-vol-ratio-max', type=float, default=0.7)
     p.add_argument('--require-limit-touch', action='store_true')
+    p.add_argument('--fast-mode', action='store_true', help='Use first-server fast daily bar fetch for large universes')
+    p.add_argument('--history-timeout-sec', type=float, default=8.0)
     args = p.parse_args()
 
     signal_offsets = tuple(int(x.strip()) for x in args.signal_offsets.split(',') if x.strip())
@@ -536,6 +587,8 @@ def main() -> None:
         'post_avg_vol_ratio_max': args.post_avg_vol_ratio_max,
         'require_limit_touch': args.require_limit_touch,
         'history_source': 'pytdx_daily_bars',
+        'fast_mode': args.fast_mode,
+        'history_timeout_sec': args.history_timeout_sec,
     }
 
     universe = load_universe(args.limit)
@@ -545,7 +598,7 @@ def main() -> None:
     failed_examples: list[dict[str, Any]] = []
     daily_bar_fetch_stats: list[dict[str, Any]] = []
     for meta in universe:
-        bars, fetch_stats = load_daily_bars(meta['symbol'], 32)
+        bars, fetch_stats = load_daily_bars(meta['symbol'], 32, fast_mode=args.fast_mode, timeout_sec=args.history_timeout_sec)
         daily_bar_fetch_stats.append(fetch_stats)
         ev = evaluate_history(bars, signal_offsets, args.min_up_days, args.min_volume_multiple, args.post_days, args.post_vol_ratio_max, args.post_avg_vol_ratio_max, args.require_limit_touch) if bars else {'passed': False, 'reason': 'daily_bars_fetch_failed'}
         if ev.get('passed'):
