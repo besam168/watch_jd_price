@@ -637,6 +637,56 @@ def persist_fallback_result(initial_status: dict, fallback_result: dict, step: s
         api_key = params["api_key"]
         selected_analysts = params["analysts"]
         language = params["language"]
+def invoke_tradingagents(ticker: str, trade_date: str, provider: str, model: str, base_url: str | None, api_key: str | None, selected_analysts: list[str], api_version: str | None = None, transport: str | None = None):
+    sys.path.insert(0, str(REPO_DIR))
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from tradingagents.default_config import DEFAULT_CONFIG
+
+    if provider == "openai" and api_key:
+        os.environ["OPENAI_API_KEY"] = api_key
+    if provider == "google" and api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
+        os.environ["GEMINI_API_KEY"] = api_key
+        if api_version:
+            os.environ["GOOGLE_API_VERSION"] = api_version
+            os.environ["GEMINI_API_VERSION"] = api_version
+
+    config = DEFAULT_CONFIG.copy()
+    config["llm_provider"] = provider
+    if base_url:
+        config["backend_url"] = base_url
+    config["deep_think_llm"] = model
+    config["quick_think_llm"] = model
+    config["max_debate_rounds"] = 1
+    config["max_risk_discuss_rounds"] = 1
+    config["data_vendors"] = {
+        "core_stock_apis": "yfinance",
+        "technical_indicators": "yfinance",
+        "fundamental_data": "yfinance",
+        "news_data": "yfinance",
+    }
+    if provider == "google":
+        config["google_api_version"] = api_version or "v1beta"
+        config["google_transport"] = transport or "rest"
+    ta = TradingAgentsGraph(selected_analysts=selected_analysts, debug=True, config=config)
+    return ta.propagate(ticker, trade_date)
+
+
+def run_bridge(args, initial_status: dict):
+    started = datetime.now()
+    profile_order = resolve_profile_list(args.profile)
+    last_error = None
+    total_retries = 0
+    fallback_used = False
+
+    for idx, profile_name in enumerate(profile_order):
+        params = resolve_run_params(args, profile_name)
+        provider = params["provider"]
+        model = params["model"]
+        base_url = params["base_url"]
+        api_key = params["api_key"]
+        selected_analysts = params["analysts"]
+        language = params["language"]
         retry_count = params["retry_count"]
         retry_wait_seconds = params["retry_wait_seconds"]
         if idx > 0:
