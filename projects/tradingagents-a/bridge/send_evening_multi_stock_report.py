@@ -5,7 +5,7 @@ import smtplib
 import ssl
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 
@@ -27,10 +27,24 @@ OPENAI_API_KEY = "sk-a9055f399bb3abec29a5c5eb5b75a4947aa70b2bcbccd3f542553b3fa91
 DEFAULT_PROFILE = "hi_code_gpt54"
 CONFIG_PATH = BRIDGE / "evening_multi_stock_config.json"
 FALLBACK_DEFAULT_TICKERS = ["TSLA", "AAPL", "RXRX"]
+YFINANCE_SYMBOLS = {
+    "TSLA": "TSLA",
+    "AAPL": "AAPL",
+    "RXRX": "RXRX",
+    "NVDA": "NVDA",
+    "MSFT": "MSFT",
+    "AMZN": "AMZN",
+    "META": "META",
+}
 
 
 def current_trade_date() -> str:
-    return datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    weekday = now.weekday()
+    if weekday >= 5:
+        back_days = weekday - 4
+        now = now - timedelta(days=back_days)
+    return now.strftime("%Y-%m-%d")
 
 
 def load_config() -> dict:
@@ -52,7 +66,44 @@ def run_ticker(ticker: str, trade_date: str) -> dict:
     env = os.environ.copy()
     env["OPENAI_API_KEY"] = OPENAI_API_KEY
     cmd = [str(PYTHON), str(RUNNER), "--ticker", ticker, "--date", trade_date, "--profile", DEFAULT_PROFILE]
-    subprocess.run(cmd, cwd=str(WORKSPACE), env=env, check=True, capture_output=True, text=True)
+    try:
+        subprocess.run(
+            cmd,
+            cwd=str(WORKSPACE),
+            env=env,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired as e:
+        return build_timeout_fallback(ticker, int(float(e.timeout) * 1000), trade_date)
+    except subprocess.CalledProcessError as e:
+        status = {}
+        result = {}
+        if (OUTDIR / "latest-status.json").exists():
+            status = json.loads((OUTDIR / "latest-status.json").read_text(encoding="utf-8"))
+        if (OUTDIR / "latest-result.json").exists():
+            result = json.loads((OUTDIR / "latest-result.json").read_text(encoding="utf-8"))
+        error_msg = (status.get("error") or result.get("error") or e.stderr or e.stdout or str(e)).strip()
+        fallback = build_market_data_fallback(ticker, trade_date)
+        if fallback:
+            fallback["summary_zh"] = f"深度分析失败，已自动降级为轻量行情摘要：{fallback['summary_zh']}"
+            fallback["key_reasons"].insert(0, f"底层 TradingAgents bridge 返回非零退出码：{error_msg[:120]}")
+            fallback["risks"].append("当前深度分析链路稳定性不足，已自动回退为轻量结论")
+            return fallback
+        return {
+            "ticker": ticker,
+            "decision": "ERROR",
+            "summary_zh": f"运行失败：{error_msg}",
+            "key_reasons": ["底层 TradingAgents bridge 返回非零退出码，单票分析未正常完成"],
+            "risks": ["当前桥接链路存在稳定性问题，批量晚报可能被个别标的拖垮"],
+            "ok": False,
+            "duration_ms": status.get("duration_ms"),
+            "profile": result.get("profile") or status.get("profile") or DEFAULT_PROFILE,
+            "provider": result.get("provider") or status.get("provider") or "openai",
+            "model": result.get("model") or status.get("model") or "gpt-5.4",
+        }
     result = json.loads((OUTDIR / "latest-result.json").read_text(encoding="utf-8"))
     status = json.loads((OUTDIR / "latest-status.json").read_text(encoding="utf-8"))
     return {
@@ -66,6 +117,88 @@ def run_ticker(ticker: str, trade_date: str) -> dict:
         "profile": result.get("profile"),
         "provider": result.get("provider"),
         "model": result.get("model"),
+    }
+
+
+def build_timeout_fallback(ticker: str, timeout_ms: int, trade_date: str) -> dict:
+    fallback = build_market_data_fallback(ticker, trade_date)
+    if fallback:
+        fallback["summary_zh"] = f"深度分析超时，已自动降级为轻量行情摘要：{fallback['summary_zh']}"
+        fallback["key_reasons"].insert(0, f"单票分析超过 {int(timeout_ms / 1000)} 秒，已跳过重型 agent graph")
+        fallback["risks"].append("当前深度分析层存在普遍超时风险，建议把该结论视为轻量版参考")
+        return fallback
+    return {
+        "ticker": ticker,
+        "decision": "ERROR",
+        "summary_zh": f"运行超时：单票分析超过 {int(timeout_ms / 1000)} 秒，且轻量兜底也未成功生成。",
+        "key_reasons": ["底层 agent graph 在拉完行情与指标后长时间阻塞，未及时产出最终结论"],
+        "risks": ["当前桥接链路稳定性不足，晚间批量任务容易被单票超时拖住"],
+        "ok": False,
+        "duration_ms": timeout_ms,
+        "profile": DEFAULT_PROFILE,
+        "provider": "openai",
+        "model": "gpt-5.4",
+    }
+
+
+def build_market_data_fallback(ticker: str, trade_date: str) -> dict | None:
+    symbol = YFINANCE_SYMBOLS.get(ticker.upper(), ticker.upper())
+    helper = WORKSPACE / "quick_market_snapshot.py"
+    script = (
+        "import json, yfinance as yf; "
+        f"df=yf.Ticker('{symbol}').history(period='10d'); "
+        "assert not df.empty, 'empty_history'; "
+        "close=float(df['Close'].iloc[-1]); "
+        "prev=float(df['Close'].iloc[-2]) if len(df)>1 else close; "
+        "ma5=float(df['Close'].tail(5).mean()); "
+        "chg=(close-prev)/prev*100 if prev else 0.0; "
+        "trend='UP' if close>=ma5 else 'DOWN'; "
+        "print(json.dumps({'close':close,'prev':prev,'ma5':ma5,'change_pct':chg,'trend':trend}, ensure_ascii=False))"
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=str(WORKSPACE),
+            capture_output=True,
+            text=True,
+            timeout=35,
+            check=True,
+        )
+        payload = json.loads((proc.stdout or "").strip())
+    except Exception:
+        return None
+
+    close = float(payload.get("close"))
+    prev = float(payload.get("prev"))
+    ma5 = float(payload.get("ma5"))
+    change_pct = float(payload.get("change_pct"))
+    trend = str(payload.get("trend") or "FLAT")
+    if change_pct >= 2:
+        decision = "BUY"
+    elif change_pct <= -2:
+        decision = "SELL"
+    else:
+        decision = "HOLD"
+    trend_zh = "站上5日均线" if trend == "UP" else "回到5日均线下方"
+    direction_zh = "上涨" if change_pct >= 0 else "下跌"
+    return {
+        "ticker": ticker,
+        "decision": decision,
+        "summary_zh": f"{ticker} 当日收盘约 {close:.2f} 美元，较前一交易日{direction_zh} {abs(change_pct):.2f}%，当前{trend_zh}。",
+        "key_reasons": [
+            f"最新收盘价 {close:.2f}，前收 {prev:.2f}，单日涨跌幅 {change_pct:+.2f}%",
+            f"5日均线约 {ma5:.2f}，当前价格与短线均线关系为：{trend_zh}",
+            f"该结论为轻量兜底，不依赖重型 TradingAgents 推理，可保证批量任务继续输出",
+        ],
+        "risks": [
+            "该结果未包含完整 agent graph 的多角色深度推理，只适合作为降级版晚报参考",
+            "若次日仍需高置信结论，建议对白名单个股单独重跑深度分析",
+        ],
+        "ok": True,
+        "duration_ms": 0,
+        "profile": f"{DEFAULT_PROFILE}_fallback",
+        "provider": "yfinance",
+        "model": "lightweight-market-fallback",
     }
 
 
@@ -194,6 +327,8 @@ def main():
     parser.add_argument("--date", default=cfg.get("tradeDate") or current_trade_date())
     parser.add_argument("--tickers", default=",".join(cfg.get("defaultTickers", FALLBACK_DEFAULT_TICKERS)))
     args = parser.parse_args()
+    if not str(args.date).strip() or str(args.date).strip().upper() == "AUTO":
+        args.date = current_trade_date()
 
     max_tickers = int(cfg.get("maxTickers", 3))
     recipients = cfg.get("recipients") or ["besam168168@gmail.com", "758622673@qq.com"]
