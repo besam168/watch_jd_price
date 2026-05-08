@@ -117,6 +117,46 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
 - **未完全踩实**：真 4K 稳定返回
 - **后续策略**：先稳图，后超分；先实际返回，再对外宣称
 
+### 生图默认正式入口（2026-04-30 更新）
+- 以后大老板在聊天里只要直接说：`生图`
+- 默认不要再先走 OpenClaw 自带 `image_generate` 试错
+- 默认对外名称按：`ppt-image-bridge`
+- 当前工作区正式目录：`skills/ppt-image-bridge/`
+- 正式默认链路固定为：
+  - provider：`openai-compatible`
+  - base_url：`https://api-cn.hi-code.cc/v1`
+  - model：`gpt-image-1`
+  - endpoint：`/images/generations`
+- 正式默认尺寸只先用稳定三档：
+  - `1024x1024`
+  - `1536x1024`
+  - `1024x1536`
+- 其中：
+  - 竖图默认优先：`1024x1536`
+  - 横图默认优先：`1536x1024`
+- `https://www.hi-code.cc/v1` 今天已再次实测确认会触发 Cloudflare `403 / 1010 / browser_signature_banned`，以后**不再当默认正式入口**。
+- 核心脚本：`skills/ppt-image-bridge/scripts/generate_image_stable.py`
+- 已真实成功出图文件：`skills/ppt-image-bridge/output/stable-image_20260430_151616.png`
+- 正式仓库：`https://github.com/besam168/ppt-image-bridge`
+- 正式仓 SSH remote：`ssh://git@ssh.github.com:443/besam168/ppt-image-bridge.git`
+- 当前默认分工：
+  - `ppt-image-bridge` = 正式生产仓，默认稳定出图、PPT 配图、中文说明图、日常交付都先走这条；
+  - `ppt-image-bridge-v2-lab` = Images 2.0 / `gpt-image-2` 实验仓，专门测中文排版、2K/4K、多比例与新能力，不默认替代正式版；
+- v2 实验仓：`https://github.com/besam168/ppt-image-bridge-v2-lab`
+- v2 实验仓 SSH remote：`ssh://git@ssh.github.com:443/besam168/ppt-image-bridge-v2-lab.git`
+- 截至 2026-04-30 已踩实的 `gpt-image-2` 2K 可用比例：
+  - `1:1`
+  - `16:9`
+  - `9:16`
+  - `3:2`
+  - `2:3`
+- 当前失败/不稳：
+  - `16:9 + 4K`
+  - `21:9 + 2K`
+  - `4:3 + 2K`
+  - `3:4 + 2K`
+- 执行纪律：以后生图链路默认由我直接接管，不再把命令丢给大老板手动折腾。
+
 ### 美股默认查询口径（2026-04-30 新增）
 - 以后大老板在聊天里只说：`美股` / `美股盘面` / `美股指数盘面`
 - 默认一律按**真指数**查询，不用 ETF 代理顶替。
@@ -130,4 +170,30 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
   2. 一句话盘面判断（强 / 弱 / 分化 / 震荡）
   3. 如用户继续追问，再补七巨头、科技权重、对A股映射
 - 如果 `reports/scheduled/qveris_market_snapshot.json` 无效、过期、缺 `SPX / IXIC / DJI` 核心键，禁止直接拿缓存回；必须切实时行情链路。
+
+### OpenClaw 版本回溯 / 降级注意（2026-05-08 新增）
+- 这台机器当前确认过的版本线索：
+  1. **当前版本**：`v2026.4.2`
+  2. **当前全局 npm 安装目录创建时间**：`2026-04-03 10:26:47`
+  3. **本机 OpenClaw 首次初始化时间**：`2026-03-13 23:15~23:16`
+- 已查实：
+  - npm 上存在：`openclaw@2026.3.12`
+  - GitHub tags 上存在：`v2026.3.12`
+- 当前最稳推断：
+  1. 首装时间大概率是：`2026-03-13` 晚上
+  2. 首装版本大概率是：`2026.3.12`
+  3. 到 `2026-03-25` 左右，这套环境已出现 `2026.3.13` 痕迹
+  4. 现在这份 `v2026.4.2` 是后续升级版本，不是首装版本
+- 以后如果大老板再提“降回 3.12 / 回老版本试试”，默认先记住：
+  1. **技术上大概率可降级**，因为 `2026.3.12` 真实存在且可安装
+  2. **不要直接在主环境硬降**
+  3. 优先做法是：**并行验证 / 临时环境验证 / 先备份 `C:\Users\besam\.openclaw` 再试**
+  4. 风险点主要是：
+     - `openclaw.json` 配置结构可能不兼容
+     - QQBot / 新插件 / task / flow / approvals 等后期能力可能不兼容
+     - `.openclaw/` 下状态数据可能带有高版本迁移痕迹，老版本未必能吃下
+- 因此以后默认口径：
+  - **3.12 有**
+  - **理论上可降**
+  - **正式操作前先做隔离验证，不直接动生产主环境**
 
