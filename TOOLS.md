@@ -197,3 +197,19 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
   - **理论上可降**
   - **正式操作前先做隔离验证，不直接动生产主环境**
 
+### desktop-web-workflow 脚本1 固定口令（2026-05-08 新增）
+- 以后大老板在聊天里只要说：`脚本1`
+- 默认就理解为：运行 `desktop-web-workflow` 的脚本1，而**不是**截图脚本
+- 当前固定行为：
+  1. 识别目标浏览器窗口（`OpenClaw Control - Google Chrome`）
+  2. 在已验证的输入框相对位置点击
+  3. **输入：`继续`**
+  4. **然后回车**
+- 同义口令一并视为相同意思：
+  - `启动脚本1`
+  - `起动脚本1`
+  - `跑脚本1`
+- 如果大老板明确说：`截图`，那才走 `qq-screenshot`
+- 以后不要再把“脚本1”误解成截图方案 `pil/system`
+- 当前脚本位置：`skills/desktop-web-workflow/scripts/script1_runner.py`
+
