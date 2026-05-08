@@ -25,7 +25,7 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 - Grid screenshot filename: `qq-grid_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 - Auto-prune: keep the newest 50 screenshot files by default
-- Standard grid preset: `quarter`（4列 × 4行，标签 A1-D4）
+- Standard grid preset: `quarter`
 
 ## Useful options
 ### Force PIL capture
@@ -48,6 +48,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq
 - 用户说：`网格截图` → 返回**标准网格截图**
 - 当前标准网格截图固定为：
   - `quarter` 预设
-  - **4列 × 4行**
-  - 标签从 **A1 ~ D4**
-- 这是 QQ 点击辅助场景的默认长期规格，后续不要随意改成临时网格
+  - **正方小格**
+  - **每个格子单独编号**
+  - **按行编号**：第一行 `A1 A2 A3 ...`，第二行 `B1 B2 B3 ...`，后面依次往下推
+  - 当前实现基线：约 `40px` 一格、红线、白底红字小标签
+- 这是 QQ 点击辅助场景的默认长期规格，后续不要再临时改回别的编号方式
+

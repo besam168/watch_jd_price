@@ -219,9 +219,13 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
 - 当前标准已固定回 `skills/qq-screenshot/`：
   1. 默认 capture 方法：`system`
   2. 默认网格预设：`quarter`
-  3. 标准规格：**4列 × 4行**
-  4. 标准标签：**A1 ~ D4**
-  5. 输出文件前缀：`qq-grid_`
+  3. 标准样式：**正方小格**
+  4. 标准编号：**按行编号**
+     - 第一行：`A1 A2 A3 ...`
+     - 第二行：`B1 B2 B3 ...`
+     - 后面依次往下推
+  5. 当前实现基线：约 `40px` 一格
+  6. 输出文件前缀：`qq-grid_`
 - 以后这条能力专门用于：
   - 点按钮
   - 报格子定位
