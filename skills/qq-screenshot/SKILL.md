@@ -13,6 +13,7 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 - Support selecting **primary / secondary / all screens**
 - Automatically prune older screenshot files from the QQ output folder
 - Keep **PIL / ImageGrab** and **Windows Win + PrtScn** as backup/manual options
+- Support a **standard grid screenshot** mode for click guidance
 - Save each screenshot into a dedicated QQ folder with a new filename
 - Return `MEDIA:<path>` for direct OpenClaw media reply
 
@@ -21,8 +22,10 @@ Use this skill when the user wants a **fresh Windows desktop screenshot sent bac
 - Capture target: primary screen
 - Default method: `system` (latest verified realtime path on this machine)
 - Output filename: `qq-screenshot_YYYYMMDD_HHMMSS_fff.png`
+- Grid screenshot filename: `qq-grid_YYYYMMDD_HHMMSS_fff.png`
 - Return format: `MEDIA:<absolute-path>`
 - Auto-prune: keep the newest 50 screenshot files by default
+- Standard grid preset: `quarter`（4列 × 4行，标签 A1-D4）
 
 ## Useful options
 ### Force PIL capture
@@ -34,3 +37,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq.ps1 -Method system
 ```
+
+### Standard grid screenshot
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File {baseDir}/scripts/capture-qq.ps1 -Method system -Grid -GridPreset quarter
+```
+
+## Long-term standard
+- 用户说：`截图` → 返回普通截图
+- 用户说：`网格截图` → 返回**标准网格截图**
+- 当前标准网格截图固定为：
+  - `quarter` 预设
+  - **4列 × 4行**
+  - 标签从 **A1 ~ D4**
+- 这是 QQ 点击辅助场景的默认长期规格，后续不要随意改成临时网格

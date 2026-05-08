@@ -5,7 +5,10 @@ param(
     [string]$Method = 'system',
     [ValidateSet('primary','secondary','all')]
     [string]$Screen = 'primary',
-    [int]$KeepCount = 50
+    [int]$KeepCount = 50,
+    [switch]$Grid,
+    [ValidateSet('quarter','six')]
+    [string]$GridPreset = 'quarter'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -152,8 +155,18 @@ if (-not (Test-Path $outputPath)) {
     throw "Screenshot file was not created: $outputPath"
 }
 
+if ($Grid) {
+    $gridScript = "C:\Users\besam\.openclaw\workspace\skills\qq-screenshot\scripts\make-grid.py"
+    $gridPath = Join-Path $OutputDir ("qq-grid_" + $timestamp + ".png")
+    python $gridScript --input $outputPath --output $gridPath --preset $GridPreset | Out-Null
+    if (-not (Test-Path $gridPath)) {
+        throw "Grid screenshot file was not created: $gridPath"
+    }
+    $outputPath = $gridPath
+}
+
 if ($KeepCount -gt 0) {
-    $allShots = Get-ChildItem -Path $OutputDir -File -Filter "qq-screenshot_*.png" | Sort-Object LastWriteTime -Descending
+    $allShots = Get-ChildItem -Path $OutputDir -File | Where-Object { $_.Name -like 'qq-screenshot_*.png' -or $_.Name -like 'qq-grid_*.png' } | Sort-Object LastWriteTime -Descending
     if ($allShots.Count -gt $KeepCount) {
         $toRemove = $allShots | Select-Object -Skip $KeepCount
         foreach ($item in $toRemove) {

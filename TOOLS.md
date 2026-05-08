@@ -213,3 +213,21 @@ python skills\nano-banana-bridge\scripts\generate_image.py \
 - 以后不要再把“脚本1”误解成截图方案 `pil/system`
 - 当前脚本位置：`skills/desktop-web-workflow/scripts/script1_runner.py`
 
+### QQ 网格截图标准（2026-05-08 固化）
+- 以后大老板说：`截图` → 默认普通截图
+- 以后大老板说：`网格截图` → 默认**标准网格截图**，不要再临时手搓不同规格
+- 当前标准已固定回 `skills/qq-screenshot/`：
+  1. 默认 capture 方法：`system`
+  2. 默认网格预设：`quarter`
+  3. 标准规格：**4列 × 4行**
+  4. 标准标签：**A1 ~ D4**
+  5. 输出文件前缀：`qq-grid_`
+- 以后这条能力专门用于：
+  - 点按钮
+  - 报格子定位
+  - 桌面点击辅助
+- 执行纪律：
+  - 普通截图和网格截图要分开
+  - 网格截图优先保持标准化，不要每次重新发明格线密度
+  - 除非大老板明确要求，否则不要擅自改预设
+
