@@ -1,0 +1,32 @@
+{
+  "product_name": "京东 iPhone 17 256G",
+  "product_url": "https://item.jd.com/100278222276.html",
+  "allowed_store_keywords": [
+    "自营",
+    "旗舰店",
+    "Apple"
+  ],
+  "poll_minutes": 30,
+  "baseline_price": 5999.0,
+  "price_min": 4000.0,
+  "price_max": 9000.0,
+  "max_rise_pct_from_baseline": 0.25,
+  "known_bad_prices": [
+    11000.0,
+    11041.0,
+    2019.0,
+    2022.0,
+    1800.0
+  ],
+  "only_notify_below_baseline": true,
+  "notify_on_any_drop": true,
+  "notify_min_drop": 1.0,
+  "suppress_first_record_notice": true,
+  "qq_email_to": "besam168168@gmail.com",
+  "smtp": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "user": "910633260@qq.com",
+    "password": "sghqeeeeyuzjbcbb"
+  }
+}
