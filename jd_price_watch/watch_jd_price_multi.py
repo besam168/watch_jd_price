@@ -785,24 +785,91 @@ def normalize_ocr_text(text: str) -> str:
     return text
 
 
-def ocr_image_price(image_path: Path) -> Tuple[Optional[float], List[float], List[str], List[str]]:
+def extract_ocr_price_candidates(text: str) -> List[float]:
+    normalized = normalize_ocr_text(text)
+    hits: List[float] = []
+
+    patterns = [
+        r'￥\s*([0-9]{3,5}(?:\.[0-9]{1,2})?)',
+        r'(?<!\d)([0-9]{4,5}(?:\.[0-9]{1,2})?)(?!\d)',
+    ]
+    for pattern in patterns:
+        for m in re.finditer(pattern, normalized):
+            try:
+                val = float(m.group(1))
+            except ValueError:
+                continue
+            if 1000 <= val <= 20000 and val not in hits:
+                hits.append(val)
+    return hits
+
+
+def score_ocr_candidate(crop_name: str, var_name: str, text: str, value: float) -> float:
+    score = 0.0
+    combo = f'{crop_name}/{var_name}'.lower()
+    text_norm = normalize_ocr_text(text)
+
+    if combo.startswith('jd_price_focus/'):
+        score += 7.0
+    elif combo.startswith('jd_price_mid/'):
+        score += 6.0
+    elif combo.startswith('jd_upper_main/'):
+        score += 5.0
+    elif combo.startswith('jd_desktop_price_area/'):
+        score += 4.0
+    elif combo.startswith('top_center_price_band/'):
+        score += 2.5
+    elif combo.startswith('center_band/'):
+        score += 1.5
+    elif combo.startswith('full_window/'):
+        score -= 2.5
+
+    if var_name in ('gray', 'contrast'):
+        score += 1.0
+    if var_name == 'sharp':
+        score += 0.6
+    if var_name.startswith('bw'):
+        score -= 0.3
+
+    if f'￥{int(value)}' in text_norm or f'￥{value:.2f}' in text_norm:
+        score += 3.5
+    elif re.search(rf'(?<!\d){int(value)}(?!\d)', text_norm):
+        score += 2.0
+
+    if 3000 <= value <= 12000:
+        score += 2.0
+    return score
+
+
+def ocr_image_price(image_path: Path) -> Tuple[Optional[float], List[float], List[str], List[str], List[Dict[str, Any]]]:
     img = Image.open(image_path)
     candidates: List[float] = []
     texts: List[str] = []
     saved: List[str] = []
+    ranked_hits: List[Dict[str, Any]] = []
     for crop_name, crop in crop_variants(img):
         for var_name, var_img in image_variants(crop):
             out_path = OCR_DEBUG_DIR / f'{image_path.stem}_{crop_name}_{var_name}.png'
             var_img.save(out_path)
             saved.append(out_path.name)
-            text = normalize_ocr_text(run_tesseract(out_path))
+            raw_text = run_tesseract(out_path)
+            text = normalize_ocr_text(raw_text)
             if text:
-                texts.append(f'[{crop_name}/{var_name}] {text}')
-                for val in extract_price_candidates(text):
+                ocr_vals = extract_ocr_price_candidates(text)
+                texts.append(f'[{crop_name}/{var_name}] {text} :: candidates={ocr_vals}')
+                for val in ocr_vals:
                     if val not in candidates:
                         candidates.append(val)
-    price = pick_best_price(candidates, ' '.join(texts))
-    return price, candidates, texts, saved
+                    ranked_hits.append({
+                        'crop': crop_name,
+                        'variant': var_name,
+                        'value': val,
+                        'score': score_ocr_candidate(crop_name, var_name, text, val),
+                        'text': text[:220],
+                    })
+    ranked_hits.sort(key=lambda x: x['score'], reverse=True)
+    price = ranked_hits[0]['value'] if ranked_hits else pick_best_price(candidates, ' '.join(texts))
+    return price, candidates, texts, saved, ranked_hits
 
 
 def crop_variants(img: Image.Image) -> List[Tuple[str, Image.Image]]:
@@ -884,13 +951,19 @@ def attempt_active_window_ocr(url: str) -> ExtractAttempt:
         used_input = ''
         per_image: List[Dict[str, Any]] = []
         for image_path in input_paths:
-            price, candidates, texts, saved_names = ocr_image_price(image_path)
+            price, candidates, texts, saved_names, ranked_hits = ocr_image_price(image_path)
             saved.extend(saved_names)
             all_texts.extend([f'{image_path.name}:{x}' for x in texts])
             for val in candidates:
                 if val not in all_candidates:
                     all_candidates.append(val)
-            per_image.append({'path': str(image_path), 'price': price, 'candidate_prices': candidates[:20], 'text_snip': ' | '.join(texts[:4])[:600]})
+            per_image.append({
+                'path': str(image_path),
+                'price': price,
+                'candidate_prices': candidates[:20],
+                'top_ranked_hits': ranked_hits[:12],
+                'text_snip': ' | '.join(texts[:6])[:1200]
+            })
             if best_price is None and price is not None:
                 best_price = price
                 used_input = str(image_path)
