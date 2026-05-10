@@ -6,7 +6,7 @@
     "旗舰店",
     "Apple"
   ],
-  "poll_minutes": 30,
+  "poll_minutes": 60,
   "baseline_price": 5999.0,
   "price_min": 4000.0,
   "price_max": 9000.0,
