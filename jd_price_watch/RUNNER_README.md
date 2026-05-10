@@ -9,14 +9,23 @@
 
 ## 当前固定行为
 - 每轮先自动打开：`https://item.jd.com/100278222276.html`
-- 等待 20 秒
-- 执行：`python watch_jd_price_multi.py --ocr-only --open-url --wait-seconds 20`
+- 每次尝试等待 20 秒
+- 执行：`python watch_jd_price_multi.py --ocr-only`
+- 若本轮未确认到京东商品页 / 未读到有效价格，会自动重试
+- 单轮最多重试：3 次
 - 只有真实价格跌破基线 `5999` 才发邮件
 - 邮件只发：`besam168168@gmail.com`
 - 小时版每轮间隔：3600 秒
 
+## 当前加固点
+- 不再只试 1 次；单轮失败会自动再次打开页面并重试
+- 每次尝试后会读取 `data\state_multi.json`
+- 若 `last_price` 为空或 `last_title` 仍是 `未知商品`，判定为本轮未确认成功，继续重试
+- 每次尝试结果都会追加到 `logs\hourly_watch_runner.log`
+
 ## 日志
 - `logs\hourly_watch_runner.log`
+- `logs\last_attempt_status.txt`
 - 业务状态：`data\state_multi.json`
 - 业务流水：`data\price_log.jsonl`
 
