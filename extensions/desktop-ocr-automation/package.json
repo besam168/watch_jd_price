@@ -1,0 +1,17 @@
+{
+  "name": "desktop-ocr-automation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "verify:python": "python -m py_compile desktop_ocr_agent.py && python desktop_ocr_agent.py --help",
+    "scan": "python desktop_ocr_agent.py --scan"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.41"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}

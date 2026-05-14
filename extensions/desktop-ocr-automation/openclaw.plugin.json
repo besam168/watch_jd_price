@@ -1,0 +1,11 @@
+{
+  "id": "desktop-ocr-automation",
+  "name": "Desktop OCR Automation",
+  "description": "OpenClaw plugin for primary-screen Chinese OCR and text-based desktop clicking using PaddleOCR.",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

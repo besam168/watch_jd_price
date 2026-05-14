@@ -1,0 +1,21 @@
+{
+  "screen": {
+    "mode": "primary",
+    "note": "只操作 Windows 主屏幕；副屏不会被截图或点击"
+  },
+  "ocr": {
+    "lang": "ch",
+    "use_angle_cls": true,
+    "confidence_min": 0.55
+  },
+  "click": {
+    "move_duration": 0.15,
+    "after_click_sleep": 0.5,
+    "fail_if_multiple": false
+  },
+  "default_task": {
+    "target_text": "确定",
+    "match_mode": "contains",
+    "dry_run": true
+  }
+}
