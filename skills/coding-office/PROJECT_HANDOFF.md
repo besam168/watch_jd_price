@@ -92,7 +92,53 @@ node -e "for (const f of ['config/coding-office.example.json','schemas/task.sche
 - 已新增 `examples/*.json`：review、validate、task dry-run、task execute 调用样例。
 - 已新增本文件 `PROJECT_HANDOFF.md`。
 
-## 5. 未完成内容
+## 5. 当前真实验收状态（2026-05-15 更新）
+
+### 5.1 已确认的关键事实
+
+- **OpenClaw 当前系统内本来就已经暴露了原生 safe-agent CLI 工具**，可直接使用：
+  - `safe-claude__claude_status`
+  - `safe-claude__claude_config`
+  - `safe-claude__claude_validate`
+  - `safe-claude__claude_review`
+  - `safe-claude__claude_task`
+  - `safe-codex__codex_status`
+  - `safe-codex__codex_config`
+  - `safe-codex__codex_validate`
+  - `safe-codex__codex_review`
+  - `safe-codex__codex_task`
+- 因此从实际使用角度，**系统原生就能直接调 Claude Code / Codex CLI**，并不一定非要依赖 `coding-agent` skill 去绕后台调度。
+- `coding-agent` 更偏“后台 coding task 调度方式”；`safe-claude` / `safe-codex` 更偏“直接本地 CLI 工具接口”。
+
+### 5.2 已做出的真实验收结果
+
+- 本机直接命令验证：
+  - `claude --version` 已成功返回 `2.1.119 (Claude Code)`
+  - `codex --version` 已成功返回 `codex-cli 0.117.0`
+- 原生 safe-* 工具的功能级 dry-run 验收：
+  - `claude_validate`：通过
+  - `codex_validate`：通过
+  - `claude_review`（dryRun）：通过
+  - `codex_review`（dryRun）：通过
+  - `claude_task`（dryRun）：通过
+  - `codex_task`（dryRun）：通过
+- 上述结果说明：
+  1. 命令拼装逻辑正常
+  2. `allowedRoots` 白名单机制正常
+  3. review 默认只读保护正常
+  4. task 的 dry-run 与写入门禁逻辑正常
+
+### 5.3 当前剩余边界
+
+- 原生 safe-* 工具的 `status` / `config` 在当前会话里仍显示 Windows 下的 CLI 自动发现路径有些别扭：
+  - 它们显示的 `claude` / `codex` 路径探测结果仍报 `ENOENT`
+  - 但本机直接执行 `claude --version` / `codex --version` 实际是通的
+- 因此当前最准确说法应为：
+  - **系统原生 safe-agent 工具已可用于 validate / review / task 的 dry-run 流程**
+  - **状态探测层仍有 Windows 路径发现的小问题**
+  - 这不影响它作为“本地 CLI 安全包装器”的核心价值判断
+
+## 6. 未完成内容
 
 - 尚未真实安装/启用 `openclaw-safe-agent-cli-mcp`，需要在 OpenClaw 环境执行安装命令。
 - 尚未确认 Claude CLI / Codex CLI 是否已安装并登录。
