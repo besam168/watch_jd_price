@@ -1,0 +1,15 @@
+{
+  "agent": "auto",
+  "mode": "review",
+  "cwd": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\coding-office",
+  "prompt": "只读审查这个项目的结构、文档完整性和安全风险，不修改文件。",
+  "dryRun": true,
+  "allowWrites": false,
+  "timeoutSeconds": 120,
+  "acceptanceCriteria": [
+    "返回项目结构总结",
+    "指出缺失文档或配置",
+    "不修改任何文件"
+  ],
+  "riskLevel": "low"
+}

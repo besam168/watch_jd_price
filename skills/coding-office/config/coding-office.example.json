@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Coding Office Config Example",
+  "description": "Safe defaults for OpenClaw Coding Office. Copy this file to a local ignored config before use and narrow allowedRoots to exact project directories.",
+  "defaultAgent": "auto",
+  "defaultMode": "review",
+  "allowedRoots": [
+    "C:\\Users\\besam\\.openclaw\\workspace\\skills\\coding-office",
+    "C:\\Users\\besam\\.openclaw\\workspace\\asan-voice-v1"
+  ],
+  "agents": {
+    "claude": {
+      "enabled": true,
+      "server": "safe-claude",
+      "tools": {
+        "status": "claude_status",
+        "config": "claude_config",
+        "validate": "claude_validate",
+        "review": "claude_review",
+        "task": "claude_task"
+      },
+      "bestFor": [
+        "architecture-review",
+        "documentation",
+        "handoff",
+        "risk-analysis"
+      ]
+    },
+    "codex": {
+      "enabled": true,
+      "server": "safe-codex",
+      "tools": {
+        "status": "codex_status",
+        "config": "codex_config",
+        "validate": "codex_validate",
+        "review": "codex_review",
+        "task": "codex_task"
+      },
+      "bestFor": [
+        "bug-fix",
+        "tests",
+        "code-edit",
+        "verification"
+      ]
+    },
+    "tanzo": {
+      "enabled": false,
+      "server": "future-tanzo",
+      "tools": {
+        "status": "tanzo_status",
+        "config": "tanzo_config",
+        "validate": "tanzo_validate",
+        "review": "tanzo_review",
+        "task": "tanzo_task"
+      },
+      "note": "Enable only after Tanzo CLI/API exists and follows the same safety gates."
+    }
+  },
+  "policy": {
+    "requireAllowedRoot": true,
+    "requireValidateBeforeTask": true,
+    "requireDryRunBeforeExecute": true,
+    "writeGate": {
+      "requiredForTaskExecution": true,
+      "dryRunMustBeFalse": true,
+      "allowWritesMustBeTrue": true
+    },
+    "defaultDryRun": true,
+    "defaultAllowWrites": false,
+    "maxTimeoutSeconds": 600,
+    "highRiskRequiresConfirmation": true,
+    "denyCommands": [
+      "del /s",
+      "rmdir /s",
+      "Remove-Item -Recurse",
+      "rm -rf",
+      "format",
+      "shutdown",
+      "reg delete",
+      "taskkill /f /im *"
+    ],
+    "denySecretTerms": [
+      "password",
+      "token",
+      "cookie",
+      "api_key",
+      "apikey",
+      "secret",
+      "ssh private key"
+    ]
+  },
+  "redaction": {
+    "maskBearerTokens": true,
+    "maskApiKeys": true,
+    "maskGithubTokens": true,
+    "maskEmails": false
+  },
+  "handoff": {
+    "requireProjectHandoffAfterTask": true,
+    "template": "HANDOFF_TEMPLATE.md"
+  }
+}

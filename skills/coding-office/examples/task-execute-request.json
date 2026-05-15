@@ -1,0 +1,16 @@
+{
+  "agent": "codex",
+  "mode": "task",
+  "cwd": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\coding-office",
+  "prompt": "在用户确认后，补充 Coding Office 文档、配置示例、schema 和项目交接清单，并运行 JSON 合法性检查。",
+  "dryRun": false,
+  "allowWrites": true,
+  "timeoutSeconds": 300,
+  "acceptanceCriteria": [
+    "核心文档存在",
+    "配置和 schema JSON 合法",
+    "生成 PROJECT_HANDOFF.md",
+    "不修改 allowedRoots 外文件"
+  ],
+  "riskLevel": "medium"
+}

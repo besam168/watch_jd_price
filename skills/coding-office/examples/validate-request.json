@@ -1,0 +1,15 @@
+{
+  "agent": "codex",
+  "mode": "validate",
+  "cwd": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\coding-office",
+  "prompt": "验证是否允许补充 Coding Office 文档、配置示例和 schema。只返回策略检查和命令预览，不执行修改。",
+  "dryRun": true,
+  "allowWrites": false,
+  "timeoutSeconds": 120,
+  "acceptanceCriteria": [
+    "确认 cwd 在 allowedRoots 内",
+    "确认不会访问 secret",
+    "确认不会执行危险命令"
+  ],
+  "riskLevel": "low"
+}

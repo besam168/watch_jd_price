@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/coding-office-result.schema.json",
+  "title": "Coding Office Task Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "summary",
+    "agent",
+    "mode",
+    "cwd",
+    "changedFiles",
+    "verification",
+    "risks",
+    "nextSteps",
+    "handoffRequired"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed",
+        "needs_confirmation",
+        "blocked",
+        "dry_run"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "agent": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "claude",
+        "codex",
+        "tanzo"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "status",
+        "config",
+        "validate",
+        "review",
+        "task"
+      ]
+    },
+    "cwd": {
+      "type": "string"
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "action"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "created",
+              "modified",
+              "deleted",
+              "none"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command",
+          "status",
+          "summary"
+        ],
+        "properties": {
+          "command": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "skipped",
+              "not_run"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handoffRequired": {
+      "type": "boolean"
+    },
+    "rawToolResultRef": {
+      "type": "string",
+      "description": "Optional pointer to the underlying MCP result/log, not raw secret-bearing output."
+    }
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openclaw.local/schemas/coding-office-task.schema.json",
+  "title": "Coding Office Task Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "agent",
+    "mode",
+    "cwd",
+    "prompt",
+    "dryRun",
+    "allowWrites"
+  ],
+  "properties": {
+    "agent": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "claude",
+        "codex",
+        "tanzo"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "status",
+        "config",
+        "validate",
+        "review",
+        "task"
+      ]
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Project root. Must resolve under configured allowedRoots."
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "dryRun": {
+      "type": "boolean",
+      "default": true
+    },
+    "allowWrites": {
+      "type": "boolean",
+      "default": false
+    },
+    "timeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 600,
+      "default": 120
+    },
+    "acceptanceCriteria": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "riskLevel": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "low"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "task"
+          },
+          "dryRun": {
+            "const": false
+          }
+        },
+        "required": [
+          "mode",
+          "dryRun"
+        ]
+      },
+      "then": {
+        "properties": {
+          "allowWrites": {
+            "const": true
+          }
+        },
+        "required": [
+          "allowWrites"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "agent": "codex",
+  "mode": "task",
+  "cwd": "C:\\Users\\besam\\.openclaw\\workspace\\skills\\coding-office",
+  "prompt": "补充 Coding Office 的 README、规格、配置示例、schema 和交接清单。先 dry-run，展示将修改的文件和验证方式。",
+  "dryRun": true,
+  "allowWrites": false,
+  "timeoutSeconds": 300,
+  "acceptanceCriteria": [
+    "列出预计修改文件",
+    "说明验证命令",
+    "不实际写入文件"
+  ],
+  "riskLevel": "medium"
+}
