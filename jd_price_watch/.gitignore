@@ -1,0 +1,37 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# runtime/state
+logs/
+data/
+
+# debug outputs
+ocr_debug/
+ocr_focus/
+ocr_variants/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.txt
+chrome_profiles_probe.json
+
+# local env
+.env
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+
+# keep repo content minimal by default
+active_window_auto.png
+latest_page.png
+latest_page_real_session.png
+jd_logged_probe.png
+jd_price_crop.png
+test_ocr_price.png
