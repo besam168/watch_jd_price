@@ -22,11 +22,11 @@
   "notify_on_any_drop": true,
   "notify_min_drop": 1.0,
   "suppress_first_record_notice": true,
-  "qq_email_to": "besam168168@gmail.com",
+  "qq_email_to": "        @gmail.com",
   "smtp": {
     "host": "smtp.qq.com",
     "port": 465,
-    "user": "910633260@qq.com",
+    "user": "       @qq.com",
     "password": "          "
   }
 }
